@@ -7,14 +7,16 @@ import AppKit
 import Combine
 import Foundation
 
-/// The leaf content of a pane: a terminal session, an open file, a browser, or
-/// a git diff. A project tab used to *be* one of these; now a tab is a
-/// niri-style layout of panes, and this is what sits at each leaf.
+/// The leaf content of a pane: a terminal session, an open file, a browser, a
+/// git diff, or a file compared against a branch or commit. A project tab used
+/// to *be* one of these; now a tab is a niri-style layout of panes, and this is
+/// what sits at each leaf.
 enum PaneContent: nonisolated Identifiable {
     case session(TerminalSession)
     case file(FileTab)
     case browser(BrowserTab)
     case diff(DiffTab)
+    case compare(CompareTab)
 
     nonisolated var id: UUID {
         switch self {
@@ -22,6 +24,7 @@ enum PaneContent: nonisolated Identifiable {
         case .file(let file): return file.id
         case .browser(let browser): return browser.id
         case .diff(let diff): return diff.id
+        case .compare(let compare): return compare.id
         }
     }
 
@@ -39,6 +42,7 @@ extension PaneContent {
         case .file(let file): return file.name
         case .browser(let browser): return browser.title
         case .diff(let diff): return diff.title
+        case .compare(let compare): return compare.title
         }
     }
 
@@ -48,12 +52,18 @@ extension PaneContent {
         case .file: return "doc.text"
         case .browser: return "globe"
         case .diff: return "plus.forwardslash.minus"
+        case .compare: return "arrow.left.and.right.square"
         }
     }
 
     @MainActor var isDirty: Bool {
-        if case .file(let file) = self { return file.isDirty }
-        return false
+        switch self {
+        case .file(let file): return file.isDirty
+        // The editable column is a real file buffer, so a comparison holding
+        // unsaved edits has to read as dirty everywhere a file tab does.
+        case .compare(let compare): return compare.file.isDirty
+        default: return false
+        }
     }
 }
 
@@ -148,6 +158,13 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
         allContents.compactMap { if case .diff(let diff) = $0 { return diff }; return nil }
     }
 
+    var compares: [CompareTab] {
+        allContents.compactMap {
+            if case .compare(let compare) = $0 { return compare }
+            return nil
+        }
+    }
+
     var browsers: [BrowserTab] {
         allContents.compactMap {
             if case .browser(let browser) = $0 { return browser }
@@ -157,11 +174,15 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     var hasMultiplePanes: Bool { allPanes.count > 1 }
 
-    /// Splitting is disallowed while a diff is focused: diffs stay in their own
-    /// single-pane tab so their always-mounted web view keeps filling the tab.
+    /// Splitting is disallowed while a diff or a comparison is focused. Diffs
+    /// stay in their own single-pane tab so their always-mounted web view keeps
+    /// filling it; a comparison is already a two-column split of its own, and
+    /// halving it again leaves neither column readable.
     var canSplit: Bool {
-        if case .diff? = focusedContent { return false }
-        return true
+        switch focusedContent {
+        case .diff, .compare: return false
+        default: return true
+        }
     }
 
     // MARK: - Navigation

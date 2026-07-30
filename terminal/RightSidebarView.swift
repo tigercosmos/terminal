@@ -14,6 +14,7 @@ struct RightSidebarView: View {
     @ObservedObject private var themeChanges = Theme.changes
     @StateObject private var fileTree = FileTreeModel()
     @StateObject private var git = GitStatusModel()
+    @StateObject private var compare = GitCompareModel()
     @StateObject private var info = SessionInfoModel()
     @State private var applicationIsActive = NSApp.isActive
     /// Which rule produced the current panel root; drives the Files badge.
@@ -24,6 +25,10 @@ struct RightSidebarView: View {
         manager.isPanelVisible
             && applicationIsActive
             && manager.panelTab != .git
+            // Comparing runs a diff against the target and reads the files it
+            // finds, so it refreshes on repository events rather than on a
+            // two-second timer.
+            && manager.panelTab != .compare
     }
 
     /// Every terminal in the selected project can change the same repository.
@@ -82,6 +87,21 @@ struct RightSidebarView: View {
                                 )
                             }
                         )
+                    case .compare:
+                        ComparePanel(
+                            model: compare,
+                            openFile: { manager.openFile($0) },
+                            openToSide: { manager.openFileToSide($0) },
+                            openCompare: { entry, target in
+                                manager.openCompare(
+                                    repoRoot: compare.repoRoot,
+                                    path: entry.path,
+                                    origPath: entry.origPath,
+                                    targetOID: target.oid,
+                                    targetName: target.name
+                                )
+                            }
+                        )
                     case .info:
                         InfoPanel(model: info, session: manager.selectedSession)
                     }
@@ -127,7 +147,7 @@ struct RightSidebarView: View {
             applicationIsActive = false
         }
         .onChange(of: commandCompletionSequences) {
-            guard manager.panelTab == .git else { return }
+            guard manager.panelTab == .git || manager.panelTab == .compare else { return }
             syncModels()
         }
         .onChange(of: manager.isPanelVisible) { syncModels() }
@@ -167,6 +187,12 @@ struct RightSidebarView: View {
                 systemImage: "arrow.triangle.branch",
                 title: String(localized: "Git"),
                 help: String(localized: "Git (⇧⌘G)")
+            )
+            tabButton(
+                .compare,
+                systemImage: "arrow.left.and.right",
+                title: String(localized: "Compare"),
+                help: String(localized: "Compare against a branch or commit (⇧⌘C)")
             )
         }
         .padding(.horizontal, 8)
@@ -219,6 +245,7 @@ struct RightSidebarView: View {
         switch manager.panelTab {
         case .files: fileTree.sync(root: root)
         case .git: git.sync(root: root)
+        case .compare: compare.sync(root: root)
         case .info:
             info.sync(
                 root: cwd, projectRoot: root, projectRootSource: source,
@@ -255,7 +282,7 @@ struct RightSidebarView: View {
 
 // MARK: - Shared panel chrome
 
-private struct PanelHeader: View {
+struct PanelHeader: View {
     let title: String
     let subtitle: String?
 
@@ -1663,7 +1690,7 @@ private struct GitPanel: View {
     }
 }
 
-private struct GitSectionHeader: View {
+struct GitSectionHeader: View {
     struct Action: Identifiable {
         let id = UUID()
         let systemImage: String

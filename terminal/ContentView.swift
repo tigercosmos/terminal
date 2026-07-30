@@ -473,6 +473,15 @@ private struct PaneTabItem: View {
                     close: close
                 )
                 .help(diff.path)
+            case .compare(let compare):
+                CompareTabLabel(
+                    compare: compare,
+                    customTitle: tab.customName,
+                    paneCount: paneCount,
+                    isSelected: isSelected,
+                    select: select,
+                    close: close
+                )
             case nil:
                 EmptyView()
             }
@@ -601,6 +610,45 @@ private struct FileTabLabel: View {
             close: close
         )
         .help(file.path)
+    }
+}
+
+/// A comparison's tab. Tracks the editable column's `FileTab` so unsaved edits
+/// raise the dirty marker exactly as they do on a file tab.
+private struct CompareTabLabel: View {
+    @ObservedObject var compare: CompareTab
+    @ObservedObject private var file: FileTab
+    /// User-assigned tab name overriding the file name.
+    var customTitle: String?
+    let paneCount: Int
+    let isSelected: Bool
+    let select: () -> Void
+    let close: () -> Void
+
+    init(
+        compare: CompareTab, customTitle: String?, paneCount: Int,
+        isSelected: Bool, select: @escaping () -> Void, close: @escaping () -> Void
+    ) {
+        _compare = ObservedObject(wrappedValue: compare)
+        _file = ObservedObject(wrappedValue: compare.file)
+        self.customTitle = customTitle
+        self.paneCount = paneCount
+        self.isSelected = isSelected
+        self.select = select
+        self.close = close
+    }
+
+    var body: some View {
+        TabItemChrome(
+            systemImage: "arrow.left.and.right.square",
+            title: customTitle ?? compare.title,
+            paneCount: paneCount,
+            isSelected: isSelected,
+            isDirty: file.isDirty,
+            select: select,
+            close: close
+        )
+        .help("\(compare.path) — compared against \(compare.targetName)")
     }
 }
 

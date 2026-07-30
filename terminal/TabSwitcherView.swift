@@ -697,6 +697,8 @@ private struct TabPaneThumbnail: View {
                 browserPreview(browser)
             case .diff(let diff):
                 diffPreview(diff)
+            case .compare(let compare):
+                comparePreview(compare)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -768,6 +770,24 @@ private struct TabPaneThumbnail: View {
                 .foregroundStyle(Color.red.opacity(0.76))
                 .background(Color.red.opacity(0.07))
             Text(textExcerpt(diff.web.newContent))
+                .foregroundStyle(Color.green.opacity(0.76))
+                .background(Color.green.opacity(0.07))
+        }
+        .font(.system(size: 4.5, design: .monospaced))
+        .lineSpacing(0)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(4)
+    }
+
+    /// Same two-column shape as the comparison itself: the target on the left,
+    /// the live file on the right.
+    private func comparePreview(_ compare: CompareTab) -> some View {
+        HStack(spacing: 1) {
+            Text(textExcerpt(compare.baseText))
+                .foregroundStyle(Color.red.opacity(0.76))
+                .background(Color.red.opacity(0.07))
+            Text(textExcerpt(compare.file.text))
                 .foregroundStyle(Color.green.opacity(0.76))
                 .background(Color.green.opacity(0.07))
         }

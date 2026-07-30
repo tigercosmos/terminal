@@ -249,6 +249,9 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "toggle-git", title: "Toggle Git Panel", systemImage: "arrow.triangle.branch", shortcut: "⇧⌘G") {
                 manager.togglePanel(.git)
             },
+            PaletteCommand(id: "toggle-compare", title: "Toggle Compare Panel", systemImage: "arrow.left.and.right", shortcut: "⇧⌘C") {
+                manager.togglePanel(.compare)
+            },
             PaletteCommand(id: "toggle-info", title: "Toggle Info Panel", systemImage: "info.circle", shortcut: "⇧⌘I") {
                 manager.togglePanel(.info)
             },

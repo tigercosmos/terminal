@@ -321,6 +321,7 @@ struct PaneLayoutView: View {
         case .session(let session):
             return session.surface.paneSnapshot()
         case .file(let file): return file.editorView?.paneSnapshot()
+        case .compare(let compare): return compare.file.editorView?.paneSnapshot()
         case .browser(let browser): return browser.webView.paneSnapshot()
         default: return nil
         }
@@ -534,6 +535,13 @@ private struct PaneView: View {
             // Rendered by the always-mounted diff stack behind the layout; stay
             // transparent and non-interactive so clicks and scrolls reach it.
             Color.clear.allowsHitTesting(false)
+        case .compare(let compare):
+            CompareDiffView(
+                compare: compare,
+                isFocused: isFocused,
+                onFocused: focus
+            )
+                .background(Color(nsColor: Theme.background))
         }
     }
 
@@ -709,6 +717,12 @@ private struct PaneHeaderTitle: View {
             PaneHeaderLabel(
                 systemImage: "plus.forwardslash.minus",
                 title: diff.title,
+                isFocused: isFocused
+            )
+        case .compare(let compare):
+            PaneHeaderLabel(
+                systemImage: "arrow.left.and.right.square",
+                title: compare.title,
                 isFocused: isFocused
             )
         }

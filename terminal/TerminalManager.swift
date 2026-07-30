@@ -15,6 +15,7 @@ enum RightPanel: String, Codable {
     case files
     case git
     case info
+    case compare
 }
 
 /// One Find menu command, routed from the menu bar to whichever find
@@ -455,6 +456,9 @@ final class TerminalManager: nonisolated ObservableObject {
         switch selectedProject?.focusedContent {
         case .session(let session): session.find.perform(action)
         case .file(let file): file.performFindAction(action)
+        // A comparison's editable column is an ordinary editor, so Find acts on
+        // it exactly as it does in a file pane.
+        case .compare(let compare): compare.file.performFindAction(action)
         case .browser, .diff, .none: break
         }
     }
@@ -463,16 +467,19 @@ final class TerminalManager: nonisolated ObservableObject {
     /// Diffs render their own views rather than a searchable text view.
     var canFind: Bool {
         switch selectedProject?.focusedContent {
-        case .session, .file: return true
+        case .session, .file, .compare: return true
         case .browser, .diff, .none: return false
         }
     }
 
     /// Whether Find and Replace has an editable pane to act on: terminal
-    /// output and diffs are read-only, so replace is only offered for a file.
+    /// output and diffs are read-only, so replace is only offered for a file —
+    /// including the editable column of a comparison.
     var canReplace: Bool {
-        if case .file? = selectedProject?.focusedContent { return true }
-        return false
+        switch selectedProject?.focusedContent {
+        case .file, .compare: return true
+        default: return false
+        }
     }
 
     /// Closes the focused pane (⌘W). When it's the last pane in its tab the
@@ -583,10 +590,24 @@ final class TerminalManager: nonisolated ObservableObject {
         )
     }
 
-    /// Saves the focused pane if it holds a file.
+    /// Opens a file compared against a branch or commit.
+    func openCompare(
+        repoRoot: String, path: String, origPath: String?,
+        targetOID: String, targetName: String
+    ) {
+        selectedProject?.openCompare(
+            repoRoot: repoRoot, path: path, origPath: origPath,
+            targetOID: targetOID, targetName: targetName
+        )
+    }
+
+    /// Saves the focused pane if it holds a file — including a comparison,
+    /// whose editable column is a file buffer like any other.
     func saveSelectedFile() {
-        if case .file(let file)? = selectedProject?.focusedContent {
-            file.save()
+        switch selectedProject?.focusedContent {
+        case .file(let file): file.save()
+        case .compare(let compare): compare.file.save()
+        default: break
         }
     }
 
@@ -827,6 +848,12 @@ final class TerminalManager: nonisolated ObservableObject {
             return .diff(
                 repoRoot: diff.repoRoot, path: diff.path, staged: diff.staged,
                 untracked: diff.untracked, origPath: diff.origPath
+            )
+        case .compare(let compare):
+            return .compare(
+                repoRoot: compare.repoRoot, path: compare.path,
+                origPath: compare.origPath, targetOID: compare.targetOID,
+                targetName: compare.targetName
             )
         }
     }

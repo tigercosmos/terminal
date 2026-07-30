@@ -13,21 +13,30 @@ import Foundation
 /// from disk.
 struct SessionSnapshot: Codable {
     struct ProjectSnapshot: Codable {
-        /// A single pane's content — the terminal, file, browser, or diff it
-        /// holds. The original case shapes stay unchanged, so old saved tabs
-        /// still decode; see `TabSnapshot`.
+        /// A single pane's content — the terminal, file, browser, diff, or
+        /// comparison it holds. The original case shapes stay unchanged, so old
+        /// saved tabs still decode; see `TabSnapshot`.
         enum PaneContentSnapshot: Codable {
             case session(workingDirectory: String)
             case file(path: String, editorState: EditorState?)
             case browser(url: String?)
             case diff(repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?)
+            /// The target commit is saved rather than the branch it came from:
+            /// a comparison tab is pinned to one commit for its lifetime, so
+            /// restoring it must reopen the same comparison, not whatever the
+            /// branch has moved on to since.
+            case compare(
+                repoRoot: String, path: String, origPath: String?,
+                targetOID: String, targetName: String
+            )
         }
 
         struct PaneSnapshot: Codable {
             var content: PaneContentSnapshot
             var weight: Double
             /// Key into the sidecar terminal-history store for a session pane;
-            /// nil for files, browsers, diffs, or when history restore is off.
+            /// nil for files, browsers, diffs, comparisons, or when history
+            /// restore is off.
             /// Optional so snapshots written before this feature still decode.
             var historyKey: String?
         }

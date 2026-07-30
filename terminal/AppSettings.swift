@@ -181,6 +181,14 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Annotate the cursor's line in a comparison with who last changed it.
+    /// On by default: it is the fastest way to answer "who wrote this, and
+    /// why?" without leaving the comparison, and it costs one `git blame` for
+    /// a single line.
+    @Published var compareLineBlame: Bool {
+        didSet { save() }
+    }
+
     /// Restore each terminal's previous scrollback (as static, styled text)
     /// when the app relaunches, above the freshly started shell. Off by
     /// default: opt-in, and it writes captured output to disk.
@@ -227,6 +235,7 @@ final class AppSettings: nonisolated ObservableObject {
             ?? false
         macosOptionAsAlt = toml["terminal.macos-option-as-alt"]?.bool ?? false
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
+        compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
         applyAppearance()
@@ -274,6 +283,7 @@ final class AppSettings: nonisolated ObservableObject {
         themeLight = Theme.defaultLightThemeName
         macosOptionAsAlt = false
         wrapLines = false
+        compareLineBlame = true
         restoreTerminalHistory = false
         terminalBackend = .fallback
     }
@@ -306,6 +316,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if wrapLines {
             lines.append("editor.wrap-lines = true")
+        }
+        if !compareLineBlame {
+            lines.append("editor.compare-line-blame = false")
         }
         if restoreTerminalHistory {
             lines.append("terminal.restore-history = true")

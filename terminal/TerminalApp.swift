@@ -200,6 +200,15 @@ private struct TerminalCommands: Commands {
             .keyboardShortcut("g", modifiers: [.command, .shift])
             .disabled(manager?.selectedProject == nil)
 
+            Button("Toggle Compare Panel") {
+                manager?.togglePanel(.compare)
+            }
+            // ⇧⌘D would be the obvious "diff" key, but it is already Split
+            // Down; ⇧⌘C keeps this with the other panel toggles and does not
+            // collide with the terminal's own ⌘C copy.
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(manager?.selectedProject == nil)
+
             Button("Toggle Info Panel") {
                 manager?.togglePanel(.info)
             }

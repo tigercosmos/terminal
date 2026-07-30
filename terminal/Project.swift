@@ -382,13 +382,34 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// the renamed file itself, or any file beneath a renamed directory.
     func updateFilePaths(from oldPath: String, to newPath: String) {
         for tab in tabs {
-            for case .file(let file) in tab.allContents {
-                if file.path == oldPath {
-                    file.updatePath(newPath)
-                } else if file.path.hasPrefix(oldPath + "/") {
-                    file.updatePath(newPath + String(file.path.dropFirst(oldPath.count)))
+            for content in tab.allContents {
+                switch content {
+                case .file(let file):
+                    repoint(file, from: oldPath, to: newPath) { file.updatePath($0) }
+                case .compare(let compare):
+                    // Only the editable column follows the rename; the target
+                    // column reads from a commit, which a move on disk cannot
+                    // change.
+                    repoint(compare.file, from: oldPath, to: newPath) {
+                        compare.updatePath($0)
+                    }
+                default:
+                    continue
                 }
             }
+        }
+    }
+
+    /// Applies a rename to one open buffer — the renamed file itself, or any
+    /// file beneath a renamed directory.
+    private func repoint(
+        _ file: FileTab, from oldPath: String, to newPath: String,
+        apply: (String) -> Void
+    ) {
+        if file.path == oldPath {
+            apply(newPath)
+        } else if file.path.hasPrefix(oldPath + "/") {
+            apply(newPath + String(file.path.dropFirst(oldPath.count)))
         }
     }
 
@@ -435,6 +456,57 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         return nil
     }
 
+    // MARK: - Comparisons
+
+    /// Opens a file compared against a branch or commit as a new tab, reusing
+    /// (and reloading) an existing tab for the same file and target.
+    ///
+    /// The comparison is keyed by the resolved commit, not by the name it was
+    /// chosen under: re-comparing after the branch moves is a different
+    /// comparison and gets its own tab, so an open one never changes underneath
+    /// unsaved edits.
+    func openCompare(
+        repoRoot: String, path: String, origPath: String?,
+        targetOID: String, targetName: String
+    ) {
+        if let (tab, pane) = findComparePane(
+            repoRoot: repoRoot, path: path, targetOID: targetOID
+        ), case .compare(let compare) = pane.content {
+            compare.reload()
+            compare.file.reloadFromDiskIfClean()
+            selectedTabID = tab.id
+            tab.focusedPaneID = pane.id
+            return
+        }
+        let context = selectedSession
+        let compare = CompareTab(
+            repoRoot: repoRoot, path: path, origPath: origPath,
+            targetOID: targetOID, targetName: targetName
+        )
+        let tab = makeTab(content: .compare(compare))
+        tab.contextSession = context
+        insertNextToSelected(tab)
+        selectedTabID = tab.id
+    }
+
+    private func findComparePane(
+        repoRoot: String, path: String, targetOID: String
+    ) -> (tab: PaneTab, pane: Pane)? {
+        for tab in tabs {
+            if let pane = tab.allPanes.first(where: {
+                if case .compare(let compare) = $0.content {
+                    return compare.repoRoot == repoRoot
+                        && compare.path == path
+                        && compare.targetOID == targetOID
+                }
+                return false
+            }) {
+                return (tab, pane)
+            }
+        }
+        return nil
+    }
+
     // MARK: - Closing
 
     /// Closes one piece of content: terminates a session, prompts before
@@ -454,6 +526,19 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             let window = NSApp.keyWindow ?? NSApp.mainWindow
             Task { @MainActor in
                 _ = await confirmCloseUnsaved(file, in: window)
+            }
+        case .compare(let compare):
+            // The editable column is a real buffer, so closing a comparison
+            // with unsaved edits has to prompt exactly as a file tab does.
+            guard compare.file.isDirty else {
+                removePaneWithContent(content.id)
+                return
+            }
+            let window = NSApp.keyWindow ?? NSApp.mainWindow
+            Task { @MainActor in
+                _ = await confirmCloseUnsaved(
+                    compare.file, contentID: compare.id, in: window
+                )
             }
         case .browser:
             removePaneWithContent(content.id)
@@ -502,8 +587,15 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     ///
     /// This is `async` on purpose: awaiting the sheet means each prompt in a
     /// batch is presented only after the previous one has fully dismissed.
+    ///
+    /// `contentID` is the pane's content, which is the file itself for a file
+    /// tab but the comparison for a compare tab — the buffer being saved there
+    /// is the comparison's editable column, not the pane's own content.
     @discardableResult
-    private func confirmCloseUnsaved(_ file: FileTab, in window: NSWindow?) async -> Bool {
+    private func confirmCloseUnsaved(
+        _ file: FileTab, contentID: UUID? = nil, in window: NSWindow?
+    ) async -> Bool {
+        let paneContentID = contentID ?? file.id
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = String(
@@ -530,10 +622,10 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             file.save()
             // Keep the pane open if the write failed; the error bar shows why.
             guard file.saveError == nil else { return true }
-            removePaneWithContent(file.id)
+            removePaneWithContent(paneContentID)
             return false
         case .alertSecondButtonReturn: // Don't Save
-            removePaneWithContent(file.id)
+            removePaneWithContent(paneContentID)
             return false
         default: // Cancel
             return true
@@ -545,14 +637,20 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// is only torn down once every prompt has been answered — so cancelling
     /// out of a save prompt leaves the saved panes open too.
     private func closeBatch(_ targets: [PaneContent]) {
-        let dirtyFiles = targets.compactMap { content -> FileTab? in
-            if case .file(let file) = content, file.isDirty { return file }
-            return nil
+        // A comparison's unsaved edits live in its editable column, so it joins
+        // the prompt queue under its own pane identity.
+        let dirtyFiles = targets.compactMap { content -> (file: FileTab, id: UUID)? in
+            switch content {
+            case .file(let file) where file.isDirty:
+                return (file, file.id)
+            case .compare(let compare) where compare.file.isDirty:
+                return (compare.file, compare.id)
+            default:
+                return nil
+            }
         }
-        let cleanContents = targets.filter { content in
-            if case .file(let file) = content { return !file.isDirty }
-            return true
-        }
+        let dirtyIDs = Set(dirtyFiles.map(\.id))
+        let cleanContents = targets.filter { !dirtyIDs.contains($0.id) }
 
         guard !dirtyFiles.isEmpty else {
             cleanContents.forEach { closeContent($0) }
@@ -561,10 +659,12 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
         let window = NSApp.keyWindow ?? NSApp.mainWindow
         Task { @MainActor in
-            for file in dirtyFiles where file.isDirty {
+            for target in dirtyFiles where target.file.isDirty {
                 // Bail the moment the user backs out — the clean panes, and any
                 // files not yet prompted, stay open.
-                if await confirmCloseUnsaved(file, in: window) { return }
+                if await confirmCloseUnsaved(
+                    target.file, contentID: target.id, in: window
+                ) { return }
             }
             cleanContents.forEach { closeContent($0) }
         }
@@ -668,6 +768,11 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             return .diff(DiffTab(
                 repoRoot: repoRoot, path: path, staged: staged,
                 untracked: untracked, origPath: origPath
+            ))
+        case .compare(let repoRoot, let path, let origPath, let targetOID, let targetName):
+            return .compare(CompareTab(
+                repoRoot: repoRoot, path: path, origPath: origPath,
+                targetOID: targetOID, targetName: targetName
             ))
         }
     }

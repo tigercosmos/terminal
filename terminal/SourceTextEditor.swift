@@ -300,11 +300,15 @@ struct SourceTextEditor: NSViewRepresentable {
 /// STTextView that reports when it takes first-responder status (a click, or a
 /// programmatic focus), so the owning pane can mark itself focused in the model,
 /// and appends pane-split items to its context menu.
-final class FocusReportingTextView: STTextView {
+class FocusReportingTextView: STTextView {
     var onBecomeFirstResponder: (() -> Void)?
     /// Owns the split context-menu items, kept off the text view so its own
     /// menu validation doesn't disable them.
     let splitTarget = SplitMenuTarget()
+    /// Whether to offer the split items at all. The comparison columns fill
+    /// their pane as a pair and cannot be split apart, so they leave the items
+    /// off rather than offering a command that does nothing.
+    var offersSplitMenuItems = true
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
@@ -314,6 +318,7 @@ final class FocusReportingTextView: STTextView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
+        guard offersSplitMenuItems else { return menu }
         menu.addItem(.separator())
         for item in splitTarget.browserMenuItems() { menu.addItem(item) }
         menu.addItem(.separator())

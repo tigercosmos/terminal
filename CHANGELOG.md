@@ -16,6 +16,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Compare your working tree against any branch or commit and keep editing: the
+  target sits read-only beside your live file, a Compare panel lists every file
+  that differs, each line shows who last changed it, and any file can be
+  reverted to the target
 - Opening files is much faster: switching back to an open file is now instant
   (keeping its undo history), and large files no longer stall while scrolled
   away from the top
