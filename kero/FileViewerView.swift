@@ -39,6 +39,10 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     @Published private(set) var isDirty = false
     @Published var saveError: String?
+    /// Set when a save was refused because the file changed on disk. Drives the
+    /// Overwrite/Reload choice in the save bar; `saveError` carries the reason
+    /// so every existing "did the save go through?" check still holds.
+    @Published private(set) var saveConflict = false
     /// Changes only when a clean tab picks up different bytes from disk. Text
     /// editors use this as their identity so an already-mounted pane is rebuilt
     /// with the new content while preserving its stored cursor/scroll state.
@@ -54,6 +58,9 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         "png", "jpg", "jpeg", "gif", "heic", "webp", "tiff", "bmp", "icns",
     ]
     private var imageFingerprint: Int?
+    /// Modification date of the bytes in `savedText`, used to notice that
+    /// something else wrote the file while this buffer was dirty.
+    private var savedModificationDate: Date?
     private var reloadGeneration: UInt = 0
     private var reloadTask: Task<Void, Never>?
 
@@ -70,6 +77,9 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         text = loaded.text
         savedText = loaded.text
         imageFingerprint = loaded.imageFingerprint
+        savedModificationDate = Self.modificationDate(
+            of: URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        )
     }
 
     var name: String {
@@ -83,6 +93,11 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         guard newPath != path else { return }
         invalidateReload()
         path = newPath
+        // Same bytes, same file — only the name moved. Re-anchor the conflict
+        // baseline so the rename itself is not mistaken for an outside write.
+        savedModificationDate = Self.modificationDate(
+            of: URL(fileURLWithPath: newPath).resolvingSymlinksInPath()
+        )
     }
 
     /// Recompute `isDirty` from the current `text` against the saved
@@ -105,17 +120,76 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         }
     }
 
+    /// Writes the buffer back to disk, refusing to overwrite a file that
+    /// changed underneath the editor.
+    ///
+    /// Kero's premise is that an agent is working in the same tree, so "the
+    /// bytes on disk are still the ones this buffer was loaded from" is not a
+    /// safe assumption. `reloadFromDiskIfClean` already declines to pull a
+    /// change over unsaved edits; without the matching check here, saving those
+    /// edits would silently discard whatever the agent wrote in the meantime.
+    /// ``saveOverwritingChanges()`` is the explicit way through.
     func save() {
+        write(overwritingExternalChanges: false)
+    }
+
+    /// Saves over a file that changed on disk, discarding the other change.
+    /// Only reachable from the conflict bar's explicit Overwrite action.
+    func saveOverwritingChanges() {
+        write(overwritingExternalChanges: true)
+    }
+
+    private func write(overwritingExternalChanges: Bool) {
         guard case .text = content, isDirty else { return }
+
+        // Writing atomically replaces the file at `path`, which would turn a
+        // symlink into a regular file and strand whatever it pointed at — a
+        // dotfile linked into a checkout is the common case. Resolve first so
+        // the write lands on the real file.
+        let target = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+
+        if !overwritingExternalChanges,
+           let savedModificationDate,
+           let current = Self.modificationDate(of: target),
+           current != savedModificationDate {
+            saveConflict = true
+            // A complete sentence, not a fragment spliced into the "Could not
+            // save:" template — this is a choice to make, not an error string.
+            saveError = String(
+                localized: "This file changed on disk since you opened it."
+            )
+            return
+        }
+
         invalidateReload()
         do {
-            try text.write(toFile: path, atomically: true, encoding: .utf8)
+            try text.write(to: target, atomically: true, encoding: .utf8)
             savedText = text
+            savedModificationDate = Self.modificationDate(of: target)
             isDirty = false
+            saveConflict = false
             saveError = nil
         } catch {
             saveError = error.localizedDescription
         }
+    }
+
+    /// Drops the buffer's edits in favor of what is on disk now. The other half
+    /// of the conflict bar.
+    func discardChangesAndReload() {
+        saveConflict = false
+        saveError = nil
+        isDirty = false
+        // Put the editor back on the last known-saved bytes before the read.
+        // `reloadFromDiskIfClean` only redraws when the file differs from that
+        // baseline, so a conflict whose content turned out to match (a `touch`,
+        // or a write that reverted the file) would otherwise leave the discarded
+        // edits on screen, now marked clean.
+        if case .text = content, text != savedText {
+            text = savedText
+            reloadRevision &+= 1
+        }
+        reloadFromDiskIfClean()
     }
 
     /// Re-read a clean preview when it returns on screen. Disk I/O happens off
@@ -129,8 +203,15 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         let expectedPath = path
 
         reloadTask = Task { [weak self] in
-            let data = await Task.detached(priority: .userInitiated) {
-                Self.readData(path: expectedPath)
+            let read = await Task.detached(priority: .userInitiated) {
+                // Sampled before the read on purpose. A write landing between
+                // the two makes the recorded date older than the bytes, which
+                // costs a spurious conflict prompt later; sampling after would
+                // pair new metadata with stale bytes and let a save overwrite
+                // silently.
+                let url = URL(fileURLWithPath: expectedPath).resolvingSymlinksInPath()
+                let modified = Self.modificationDate(of: url)
+                return (modified, Self.readData(path: expectedPath))
             }.value
             guard !Task.isCancelled,
                   let self,
@@ -139,15 +220,25 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
                   !self.isDirty
             else { return }
 
-            let loaded = Self.loadedContent(path: expectedPath, data: data)
+            let loaded = Self.loadedContent(path: expectedPath, data: read.1)
+            self.savedModificationDate = read.0
             guard !self.matches(loaded) else { return }
             self.content = loaded.content
             self.text = loaded.text
             self.savedText = loaded.text
             self.imageFingerprint = loaded.imageFingerprint
+            self.saveConflict = false
             self.saveError = nil
             self.reloadRevision &+= 1
         }
+    }
+
+    /// Deliberately not `URL.resourceValues`: that caches on the URL, so the
+    /// re-read taken right after a write returns the value fetched by the
+    /// conflict check moments earlier. Recording that stale date made the very
+    /// next save look like someone else had touched the file.
+    private nonisolated static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
     private func invalidateReload() {
@@ -291,11 +382,27 @@ struct FileViewerView: View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 10))
-            Text("Could not save: \(message)")
-                .font(.system(size: 11))
-                .lineLimit(1)
+            // A conflict already reads as a full sentence; only a raw failure
+            // needs the explanatory prefix.
+            Group {
+                if file.saveConflict {
+                    Text(message)
+                } else {
+                    Text("Could not save: \(message)")
+                }
+            }
+            .font(.system(size: 11))
+            .lineLimit(1)
             Spacer(minLength: 0)
+            // A conflict is a choice, not a failure: neither version can be
+            // dropped without the user saying which one wins.
+            if file.saveConflict {
+                Button("Overwrite") { file.saveOverwritingChanges() }
+                Button("Reload") { file.discardChangesAndReload() }
+            }
         }
+        .buttonStyle(.link)
+        .font(.system(size: 11))
         .foregroundStyle(Color(red: 0.82, green: 0.60, blue: 0.13))
         .padding(.horizontal, 12)
         .padding(.vertical, 5)

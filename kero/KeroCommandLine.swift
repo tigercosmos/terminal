@@ -2,8 +2,6 @@ import Darwin
 import Darwin.ncurses
 import Foundation
 
-private let notificationName = Notification.Name("sh.kero.cli")
-
 private struct CLITheme: Codable {
     let name: String
     let appearance: String
@@ -129,44 +127,40 @@ private final class AppConnection {
         appearance: Appearance? = nil,
         theme: String? = nil
     ) {
-        var info: [String: Any] = [
-            "token": token,
-            "action": action,
-        ]
+        var request = KeroCLIRequest(action: action, nonce: UUID().uuidString)
         if let id {
-            info["id"] = id
-            info["pid"] = NSNumber(value: getpid())
+            request.id = id
+            request.pid = getpid()
         }
-        if let appearance {
-            info["appearance"] = appearance.rawValue
-        }
-        if let theme {
-            info["theme"] = theme
-        }
-        DistributedNotificationCenter.default().post(
-            name: notificationName,
-            object: nil,
-            userInfo: info
-        )
+        request.appearance = appearance?.rawValue
+        request.theme = theme
+        send(request)
     }
 
     func createProject(arguments: [String]) {
-        let environment = ProcessInfo.processInfo.environment
-        let info: [String: Any] = [
-            "token": token,
-            "action": "openProject",
-            "arguments": arguments,
-            "directory": FileManager.default.currentDirectoryPath,
-            "path": environment["PATH"] ?? "",
-        ]
-        DistributedNotificationCenter.default().post(
-            name: notificationName,
-            object: nil,
-            userInfo: info
+        var request = KeroCLIRequest(
+            action: "openProject", nonce: UUID().uuidString
         )
+        request.arguments = arguments
+        request.directory = FileManager.default.currentDirectoryPath
+        request.path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        send(request)
         // Let the app's main run loop claim the request before this short-lived
         // process disappears from the invoking terminal.
         Thread.sleep(forTimeInterval: 0.05)
+    }
+
+    /// Signs the request with the launch secret rather than sending the secret
+    /// itself; see ``KeroCLIProtocol``.
+    private func send(_ request: KeroCLIRequest) {
+        guard let userInfo = KeroCLIProtocol.userInfo(
+            for: request, secret: token
+        ) else { return }
+        DistributedNotificationCenter.default().post(
+            name: KeroCLIProtocol.notificationName,
+            object: nil,
+            userInfo: userInfo
+        )
     }
 }
 

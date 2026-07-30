@@ -185,7 +185,12 @@ final class DiffTab: nonisolated ObservableObject, nonisolated Identifiable {
     ) -> (status: Int32, stdout: Data, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = args
+        // Reading a blob must never run code the repository supplies; see
+        // `GitStatusModel.untrustedConfig`.
+        process.arguments = [
+            "-c", "core.fsmonitor=",
+            "-c", "core.hooksPath=/dev/null",
+        ] + args
         process.currentDirectoryURL = URL(fileURLWithPath: root, isDirectory: true)
         var environment = ProcessInfo.processInfo.environment
         environment["GIT_OPTIONAL_LOCKS"] = "0"

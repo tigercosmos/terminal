@@ -607,7 +607,9 @@ final class GitStatusModel: nonisolated ObservableObject {
 
                 for args in commands {
                     transcript.append("$ git " + Self.displayCommand(args))
-                    let run = Self.runGit(args, in: dir)
+                    // The user asked for this command, so the repository's own
+                    // hooks (pre-commit, post-checkout, …) must run normally.
+                    let run = Self.runGit(args, in: dir, allowingRepositoryHooks: true)
                     let text = [run.stdout, run.stderr]
                         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                         .filter { !$0.isEmpty }
@@ -944,14 +946,35 @@ final class GitStatusModel: nonisolated ObservableObject {
         var loadedDetails = false
     }
 
+    /// Config that neutralizes the two settings a repository can use to make
+    /// Git execute a command on Kero's behalf. `core.fsmonitor` runs on any
+    /// index refresh — including the `status` Kero issues the moment a project
+    /// directory is opened — so a downloaded repository, or one an agent has
+    /// written `.git/config` in, would otherwise get code execution with no
+    /// user action at all. `core.hooksPath` is disabled for the same reason:
+    /// `status` can write the index and fire `post-index-change`.
+    ///
+    /// Hooks are a legitimate part of an *explicit* Git action, so
+    /// ``runGit(_:in:allowingRepositoryHooks:)`` re-enables them for the
+    /// commands the operation runner executes. `core.fsmonitor` stays off
+    /// everywhere: it is only a performance hint, and Kero never needs it.
+    private nonisolated static let untrustedConfig = ["-c", "core.fsmonitor="]
+    private nonisolated static let noHooksConfig = ["-c", "core.hooksPath=/dev/null"]
+
     /// Runs Git while draining stdout and stderr concurrently. Reading either
     /// pipe only after the process exits can deadlock when the other fills.
+    ///
+    /// `allowingRepositoryHooks` is opt-in: a caller that merely inspects the
+    /// repository must never run code the repository supplies. See
+    /// ``untrustedConfig``.
     nonisolated static func runGit(
-        _ args: [String], in dir: String
+        _ args: [String], in dir: String, allowingRepositoryHooks: Bool = false
     ) -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = args
+        process.arguments = untrustedConfig
+            + (allowingRepositoryHooks ? [] : noHooksConfig)
+            + args
         process.currentDirectoryURL = URL(fileURLWithPath: dir, isDirectory: true)
         var env = ProcessInfo.processInfo.environment
         env["GIT_OPTIONAL_LOCKS"] = "0"

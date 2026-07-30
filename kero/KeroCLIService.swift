@@ -12,15 +12,12 @@ import GhosttyTheme
 ///
 /// The CLI receives a per-launch secret and a generated catalog file through
 /// the terminal environment. Distributed notifications keep preview changes
-/// fast without opening a network listener. The token scopes requests to this
-/// Kero launch and rejects stale or accidental traffic; distributed
-/// notifications are observable by same-user processes, so this is not a
-/// security boundary against them.
+/// fast without opening a network listener. The secret never travels in a
+/// notification: requests are signed with it instead, so an observer cannot
+/// forge one. See ``KeroCLIProtocol``.
 @MainActor
 final class KeroCLIService {
     static let shared = KeroCLIService()
-
-    private static let notificationName = Notification.Name("sh.kero.cli")
 
     private struct CatalogTheme: Codable {
         let name: String
@@ -49,6 +46,7 @@ final class KeroCLIService {
     private var terminationObserver: NSObjectProtocol?
     private var previewMonitor: Timer?
     private var activePreview: ActivePreview?
+    private var handledNonces = KeroCLINonceWindow()
 
     private init() {
         let fileManager = FileManager.default
@@ -73,7 +71,7 @@ final class KeroCLIService {
 
         notificationObserver = DistributedNotificationCenter.default()
             .addObserver(
-                forName: Self.notificationName,
+                forName: KeroCLIProtocol.notificationName,
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
@@ -111,48 +109,42 @@ final class KeroCLIService {
     }
 
     private func handle(_ notification: Notification) {
-        guard let info = notification.userInfo,
-              info["token"] as? String == secret,
-              let action = info["action"] as? String
-        else { return }
+        guard let request = KeroCLIProtocol.request(
+            from: notification.userInfo, secret: secret
+        ), handledNonces.claim(request.nonce) else { return }
 
-        if action == "openProject" {
-            guard let arguments = info["arguments"] as? [String],
+        if request.action == "openProject" {
+            guard let arguments = request.arguments,
                   arguments.count <= 256,
                   arguments.allSatisfy({ $0.utf8.count <= 16_384 }),
-                  let directory = info["directory"] as? String
+                  let directory = request.directory
             else { return }
-            let path = info["path"] as? String
             TerminalManager.openCLIProject(
                 arguments: arguments,
                 directory: directory,
-                path: path
+                path: request.path
             )
             return
         }
 
-        if action == "refresh" {
+        if request.action == "refresh" {
             writeState()
             return
         }
 
-        guard let id = info["id"] as? String,
-              let pidNumber = info["pid"] as? NSNumber
-        else { return }
-        let pid = pid_t(pidNumber.int32Value)
-        guard pid > 1 else { return }
+        guard let id = request.id, let pid = request.pid, pid > 1 else { return }
 
-        switch action {
+        switch request.action {
         case "preview":
-            guard let name = info["theme"] as? String,
-                  let dark = appearance(from: info),
+            guard let name = request.theme,
+                  let dark = appearance(from: request),
                   processExists(pid)
             else { return }
             beginPreview(id: id, pid: pid, name: name, dark: dark)
 
         case "save":
-            guard let name = info["theme"] as? String,
-                  let dark = appearance(from: info),
+            guard let name = request.theme,
+                  let dark = appearance(from: request),
                   Theme.isCommonTheme(named: name, dark: dark)
             else { return }
             savePreview(id: id, name: name, dark: dark)
@@ -166,8 +158,8 @@ final class KeroCLIService {
         }
     }
 
-    private func appearance(from info: [AnyHashable: Any]) -> Bool? {
-        switch info["appearance"] as? String {
+    private func appearance(from request: KeroCLIRequest) -> Bool? {
+        switch request.appearance {
         case "dark": return true
         case "light": return false
         default: return nil

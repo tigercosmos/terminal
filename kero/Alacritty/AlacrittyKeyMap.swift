@@ -226,15 +226,36 @@ enum AlacrittyKeyMap {
         }
     }
 
+    /// The sequence that ends a bracketed paste, in both the ESC [ and C1 CSI
+    /// forms a terminal accepts.
+    static let bracketedPasteTerminators = ["\u{1b}[201~", "\u{9b}201~"]
+
+    /// Whether pasting `text` could submit a command on its own.
+    ///
+    /// A carriage return is the obvious way. The end-of-paste marker is the
+    /// other one: text carrying it closes the bracket early, so whatever
+    /// follows arrives as ordinary keystrokes even though the program asked to
+    /// be told this was a paste.
+    static func pasteNeedsConfirmation(_ text: String) -> Bool {
+        text.contains("\n") || text.contains("\r")
+            || bracketedPasteTerminators.contains(where: text.contains)
+    }
+
     /// Wraps pasted text in bracketed-paste markers when the program asked for
     /// them, so an editor can tell a paste from fast typing.
     static func paste(_ text: String, mode: AlacrittyTerminalMode) -> [UInt8] {
         // Carriage returns are what a terminal delivers for Enter; a raw \n
         // pasted into a shell reads as a literal newline instead of submit.
-        let normalized = text
+        var normalized = text
             .replacingOccurrences(of: "\r\n", with: "\r")
             .replacingOccurrences(of: "\n", with: "\r")
         guard mode.contains(.bracketedPaste) else { return Array(normalized.utf8) }
+        // Removed rather than escaped: there is no encoding that survives to
+        // the application as literal text, and leaving it in would let the
+        // paste terminate itself. See `pasteNeedsConfirmation`.
+        for terminator in bracketedPasteTerminators {
+            normalized = normalized.replacingOccurrences(of: terminator, with: "")
+        }
         return Array("\u{1b}[200~".utf8) + Array(normalized.utf8) + Array("\u{1b}[201~".utf8)
     }
 

@@ -121,12 +121,17 @@ enum TerminalHistorySerializer {
     )
 
     /// The rule that brackets the label on each side of the divider.
-    private static let restoredBannerRule = String(repeating: "\u{2500}", count: 4)
+    /// `nonisolated` alongside `restoredBannerText(label:)`, which reads it
+    /// from a static initializer running outside any actor.
+    private nonisolated static let restoredBannerRule = String(repeating: "\u{2500}", count: 4)
 
     /// The divider's plain, unstyled text — `<rule> <label> <rule>`. `visibleText`
     /// yields exactly this for a divider row, so recognizing one is an equality
     /// check against it.
-    private static func restoredBannerText(label: String) -> String {
+    /// `nonisolated` because `restoredBannerTexts` builds its set in a static
+    /// initializer, which runs outside any actor. The function only formats a
+    /// string, so there is nothing for the main actor to protect.
+    private nonisolated static func restoredBannerText(label: String) -> String {
         "\(restoredBannerRule) \(label) \(restoredBannerRule)"
     }
 
@@ -450,6 +455,14 @@ enum TerminalHistoryStore {
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
+            // Saved scrollback is whatever was on screen — keys, tokens, and
+            // paths included. The copy staged in the temp directory is already
+            // 0600 (`TerminalSession.makeLaunchArtifacts`); this is the same
+            // content living for much longer, so it gets the same treatment
+            // rather than the umask's.
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: fileURL.path
+            )
         } catch {
             NSLog("kero: failed to write \(fileURL.path): \(error)")
         }

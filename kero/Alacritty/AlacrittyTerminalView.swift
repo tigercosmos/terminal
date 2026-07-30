@@ -1583,8 +1583,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             }
             return
         }
-        let submitRisk = text.contains("\n") || text.contains("\r")
-        guard submitRisk else {
+        guard AlacrittyKeyMap.pasteNeedsConfirmation(text) else {
             write(AlacrittyKeyMap.paste(text, mode: terminalMode))
             return
         }

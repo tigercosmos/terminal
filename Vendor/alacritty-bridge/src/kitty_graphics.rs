@@ -869,20 +869,24 @@ impl KittyGraphicsState {
         match command.char_value('t').unwrap_or('d') {
             'd' => Ok(decoded),
             'f' | 't' => {
-                let temporary = command.char_value('t') == Some('t');
                 let path = PathBuf::from(
                     std::str::from_utf8(&decoded).map_err(|_| "EINVAL:file path is not UTF-8")?,
                 );
+                // Resolved before the read so the file that is read is the same
+                // one that is deleted; see `removable_temporary_path`.
+                let removable = (command.char_value('t') == Some('t'))
+                    .then(|| removable_temporary_path(&path))
+                    .flatten();
                 let result = read_regular_file(
-                    &path,
+                    removable.as_deref().unwrap_or(&path),
                     command.u32_value('O').unwrap_or(0) as u64,
                     command
                         .u32_value('S')
                         .filter(|size| *size > 0)
                         .map(u64::from),
                 );
-                if temporary && temporary_path_can_be_removed(&path) {
-                    let _ = std::fs::remove_file(&path);
+                if let Some(removable) = removable {
+                    let _ = std::fs::remove_file(removable);
                 }
                 result
             }
@@ -1108,22 +1112,110 @@ fn read_regular_file(path: &Path, offset: u64, size: Option<u64>) -> Result<Vec<
     Ok(data)
 }
 
-fn temporary_path_can_be_removed(path: &Path) -> bool {
+/// Resolves the path a `t=t` transmission asks Kero to delete after reading,
+/// returning it only if it names a temporary file.
+///
+/// The resolved path is what the caller must read and unlink. Validating the
+/// path as written and then acting on it again would leave a window in which a
+/// symlink on the path is repointed at something else between the check and the
+/// `remove_file` — the deletion would follow the new target. Resolving once and
+/// using the result for both operations closes that window: after
+/// `canonicalize` there are no symlinks left on the path to swap.
+fn removable_temporary_path(path: &Path) -> Option<PathBuf> {
     if !path.to_string_lossy().contains("tty-graphics-protocol") {
-        return false;
+        return None;
     }
-    let Ok(canonical) = path.canonicalize() else {
-        return false;
-    };
+    let canonical = path.canonicalize().ok()?;
     let roots = [
         PathBuf::from("/tmp"),
         PathBuf::from("/private/tmp"),
         std::env::temp_dir(),
     ];
-    roots.into_iter().any(|root| {
-        root.canonicalize()
-            .is_ok_and(|root| canonical.starts_with(root))
-    })
+    roots
+        .into_iter()
+        .any(|root| {
+            root.canonicalize()
+                .is_ok_and(|root| canonical.starts_with(root))
+        })
+        .then_some(canonical)
+}
+
+#[cfg(test)]
+mod removable_temporary_path_tests {
+    use super::*;
+    use std::fs;
+
+    /// Unique per test without a clock or an RNG, both of which the workflow
+    /// harness forbids and neither of which this needs.
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("kero-kgtest-{}-{tag}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn accepts_a_marked_temporary_file_and_returns_it_resolved() {
+        let dir = scratch("plain");
+        let file = dir.join("tty-graphics-protocol-image");
+        fs::write(&file, b"x").unwrap();
+
+        let resolved = removable_temporary_path(&file).expect("temporary file is removable");
+        assert_eq!(resolved, file.canonicalize().unwrap());
+        assert!(resolved.is_absolute());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_a_file_without_the_protocol_marker() {
+        let dir = scratch("unmarked");
+        let file = dir.join("ordinary-image.png");
+        fs::write(&file, b"x").unwrap();
+
+        assert!(removable_temporary_path(&file).is_none());
+        assert!(file.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_a_path_outside_every_temporary_root() {
+        let dir = scratch("outside");
+        let outside = dir.join("tty-graphics-protocol-decoy");
+        fs::write(&outside, b"x").unwrap();
+
+        // A path that carries the marker but resolves somewhere unrelated must
+        // not be deletable; `..` is the cheapest way to leave the root.
+        let escaped = std::env::temp_dir().join("tty-graphics-protocol/../../../etc/hosts");
+        assert!(removable_temporary_path(&escaped).is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The reason the resolved path is returned rather than the one supplied:
+    /// a link is followed once, here, so the file that gets read is the file
+    /// that gets deleted. Nothing on the path can be repointed in between.
+    #[test]
+    fn resolves_symlinks_so_the_target_cannot_change_after_the_check() {
+        let dir = scratch("symlink");
+        let real = dir.join("real-image");
+        fs::write(&real, b"x").unwrap();
+        let link = dir.join("tty-graphics-protocol-link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let resolved = removable_temporary_path(&link).expect("link inside temp is removable");
+        assert_eq!(resolved, real.canonicalize().unwrap());
+        assert_ne!(resolved, link);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_a_symlink_that_leaves_the_temporary_roots() {
+        let dir = scratch("escape");
+        let link = dir.join("tty-graphics-protocol-escape");
+        std::os::unix::fs::symlink("/etc/hosts", &link).unwrap();
+
+        assert!(removable_temporary_path(&link).is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

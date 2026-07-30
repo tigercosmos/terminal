@@ -17,6 +17,14 @@ the original feature bullet instead of adding separate entries for them.
 ## [unrelease]
 
 - Add per-pane live titles and split controls in split layouts
+- Opening a folder no longer lets that repository's own Git configuration run
+  commands on your machine
+- Terminal links that would leave your browser and launch an application now ask
+  first, showing where the link really leads
+- Editing a symlinked file writes through the link instead of replacing it
+- Saving a file that changed on disk since you opened it now offers to overwrite
+  or reload instead of silently discarding the other change
+- Saved terminal history is now readable only by your user account
 
 ## [0.1.34]
 

@@ -4191,6 +4191,22 @@
         }
       }
     },
+    "Open Link" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクを開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开链接"
+          }
+        }
+      }
+    },
     "Open Link in New Pane" : {
 
     },
@@ -4244,6 +4260,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开冲突更改"
+          }
+        }
+      }
+    },
+    "Overwrite" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上書き"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆盖"
           }
         }
       }
@@ -4740,6 +4772,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新启动 Kero 以应用语言更改。"
+          }
+        }
+      }
+    },
+    "Reload" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再読み込み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新加载"
           }
         }
       }
@@ -6341,6 +6389,22 @@
         }
       }
     },
+    "This file changed on disk since you opened it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルは開いたあとにディスク上で変更されました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件在你打开后已在磁盘上被更改。"
+          }
+        }
+      }
+    },
     "This kero CLI does not understand theme catalog version %lld." : {
       "localizations" : {
         "ja" : {
@@ -6353,6 +6417,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此 kero CLI 无法识别主题列表版本 %lld。"
+          }
+        }
+      }
+    },
+    "This link opens outside your browser, so it may launch an application. The link text in the terminal can differ from where it actually leads; the real destination is shown below." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリンクはブラウザの外で開くため、アプリケーションが起動される場合があります。ターミナルに表示されているリンクの文字列は、実際のリンク先と異なることがあります。実際のリンク先は以下のとおりです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此链接会在浏览器之外打开，因此可能启动某个应用程序。终端中显示的链接文字可能与实际地址不符；实际地址如下。"
           }
         }
       }
@@ -6933,6 +7013,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用所选内容查找"
+          }
+        }
+      }
+    },
+    "Warning: Potentially Unsafe Link" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "警告: リンクが安全でない可能性があります"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "警告：链接可能不安全"
           }
         }
       }

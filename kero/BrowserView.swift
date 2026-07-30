@@ -492,10 +492,17 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
         let handledSchemes = ["http", "https", "file", "about", "data", "blob"]
         if handledSchemes.contains(scheme) {
             decisionHandler(.allow)
-        } else {
-            NSWorkspace.shared.open(url)
-            decisionHandler(.cancel)
+            return
         }
+
+        // Everything else leaves the web view for another application. Only a
+        // navigation the user actually started may do that: a page that could
+        // hand LaunchServices an arbitrary scheme from a redirect, a timer, or
+        // a hidden iframe would be able to launch applications on its own.
+        if navigationAction.navigationType == .linkActivated {
+            NSWorkspace.shared.open(url)
+        }
+        decisionHandler(.cancel)
     }
 
     private func showNavigationError(_ error: any Error) {

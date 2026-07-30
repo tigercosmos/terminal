@@ -474,9 +474,51 @@ extension TerminalSession: TerminalBackendEvents {
         TerminalNotificationService.shared.post(message: message)
     }
 
+    /// Schemes a terminal link may open without asking. Everything else is
+    /// handed to LaunchServices only after the user has seen the real target.
+    private static let autoOpenableURLSchemes: Set<String> = [
+        "http", "https", "mailto",
+    ]
+
+    /// Opens a link clicked in the terminal.
+    ///
+    /// The text of an OSC 8 hyperlink is chosen independently of its target, so
+    /// a link reading `https://github.com/…` can carry a `file://` URL that
+    /// LaunchServices would happily hand to an application. Terminal output is
+    /// untrusted — it comes from remote hosts, files, and agents — so anything
+    /// outside ``autoOpenableURLSchemes`` is confirmed against the URL Kero
+    /// would actually open rather than the text that was clicked.
     func terminalDidRequestOpenURL(_ url: String) {
-        guard let target = URL(string: url) else { return }
-        NSWorkspace.shared.open(target)
+        guard let target = URL(string: url),
+              let scheme = target.scheme?.lowercased()
+        else { return }
+
+        if Self.autoOpenableURLSchemes.contains(scheme) {
+            NSWorkspace.shared.open(target)
+            return
+        }
+        confirmOpen(target)
+    }
+
+    private func confirmOpen(_ target: URL) {
+        guard let window = surface.window else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Warning: Potentially Unsafe Link")
+        alert.informativeText = String(
+            localized: "This link opens outside your browser, so it may launch an application. The link text in the terminal can differ from where it actually leads; the real destination is shown below."
+        )
+        alert.accessoryView = Self.clipboardPreview(target.absoluteString)
+        alert.addButton(withTitle: String(localized: "Open Link"))
+        let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+
+        Task { @MainActor in
+            let response = await alert.beginSheetModal(for: window)
+            guard response == .alertFirstButtonReturn else { return }
+            NSWorkspace.shared.open(target)
+        }
     }
 
     func terminalDidScroll(_ position: TerminalScrollPosition) {
@@ -542,8 +584,9 @@ extension TerminalSession: TerminalBackendEvents {
         }
     }
 
-    /// Bounded, read-only preview of the text under decision, mirroring
-    /// the preview area in Ghostty's own confirmation dialog.
+    /// Bounded, read-only preview of the text under decision — clipboard
+    /// contents or a link target — mirroring the preview area in Ghostty's own
+    /// confirmation dialog.
     private static func clipboardPreview(_ contents: String) -> NSView {
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 120))
         scroll.hasVerticalScroller = true
@@ -553,9 +596,39 @@ extension TerminalSession: TerminalBackendEvents {
         text.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         // A pathological clipboard can be arbitrarily large; the decision
         // only needs a glimpse.
-        text.string = String(contents.prefix(4096))
+        text.string = visibleControlCharacters(in: String(contents.prefix(4096)))
         text.autoresizingMask = [.width]
         scroll.documentView = text
         return scroll
+    }
+
+    /// Renders C0/C1 control characters as their Control Pictures glyphs.
+    ///
+    /// The point of this sheet is that the user approves what will actually be
+    /// sent. An escape character draws as nothing, so text carrying a bracketed
+    /// paste terminator or a cursor-movement sequence would otherwise preview as
+    /// something quite different from what the terminal receives.
+    private static func visibleControlCharacters(in contents: String) -> String {
+        var output = String.UnicodeScalarView()
+        for scalar in contents.unicodeScalars {
+            switch scalar.value {
+            // Line breaks and tabs are the shape of the text, not hidden state.
+            case 0x09, 0x0a:
+                output.append(scalar)
+            case 0x0d:
+                // A lone CR would redraw over the line it previews.
+                output.append(Unicode.Scalar(0x240d)!)
+            case 0x00...0x1f:
+                output.append(Unicode.Scalar(0x2400 + scalar.value)!)
+            case 0x7f:
+                output.append(Unicode.Scalar(0x2421)!)
+            case 0x80...0x9f:
+                // No pictures exist for C1; mark them rather than drop them.
+                output.append(contentsOf: "\u{fffd}".unicodeScalars)
+            default:
+                output.append(scalar)
+            }
+        }
+        return String(output)
     }
 }
