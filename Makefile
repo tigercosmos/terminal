@@ -64,10 +64,16 @@ build: ## Build the app (Debug)
 build-release: ## Build the app (Release)
 	$(XCODEBUILD) -configuration Release $(BUILD_SIGNING) build
 
+# `open` hands the calling shell's environment to the app it launches. A shell
+# running inside Terminal exports the CLI bridge, and the app treats an inherited
+# bridge for its own bundle as "I was invoked as the `terminal` CLI" — so
+# launching a build from a shell inside that same build would open a project in
+# the running instance instead of starting the app. Dropping the bridge here
+# makes `make run` mean "launch the app" wherever it is typed.
 run: build ## Build and launch the app (Debug)
 	@$(call resolve_app,Debug); \
 	echo "Launching $$app"; \
-	open "$$app"
+	env -u TERMINAL_CLI_STATE -u TERMINAL_CLI_TOKEN -u TERMINAL_CLI_BUNDLE open "$$app"
 
 install: ## Build Release and install into /Applications
 	$(XCODEBUILD) -configuration Release $(INSTALL_SIGNING) build

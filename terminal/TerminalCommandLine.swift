@@ -82,6 +82,15 @@ private final class AppConnection {
                 String(localized: "`terminal` must be run inside a Terminal terminal.")
             )
         }
+        // The inherited token signs for the app that opened this shell, and the
+        // two builds listen on different channels — so a `terminal` from one
+        // build cannot drive another build's app. Say so rather than posting a
+        // request nothing will answer.
+        guard environment["TERMINAL_CLI_BUNDLE"] == TerminalCLIProtocol.bundleIdentifier else {
+            throw CLIError.message(
+                String(localized: "This `terminal` belongs to a different Terminal build than the one running this shell.")
+            )
+        }
         stateURL = URL(fileURLWithPath: statePath)
         self.token = token
     }
@@ -602,10 +611,11 @@ enum TerminalCommandLine {
     /// executable is called directly. Other arguments may belong to AppKit or
     /// Xcode and must continue through the normal application entry point.
     static var shouldRun: Bool {
-        let environment = ProcessInfo.processInfo.environment
-        let hasBridge = environment["TERMINAL_CLI_STATE"]?.isEmpty == false
-            && environment["TERMINAL_CLI_TOKEN"]?.isEmpty == false
-        if hasBridge { return true }
+        // Only a bridge this bundle issued means "run as the CLI". Testing for
+        // the variables alone made any GUI launch that merely inherited them —
+        // `open`ing one build from a shell inside another — exit as a CLI
+        // instead of opening a window.
+        if TerminalCLIProtocol.bridgeTargetsThisBundle() { return true }
         return CommandLine.arguments.dropFirst().first?.hasPrefix("+") == true
     }
 

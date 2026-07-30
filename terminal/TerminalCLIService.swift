@@ -98,6 +98,10 @@ final class TerminalCLIService {
         var environment = [
             "TERMINAL_CLI_STATE": stateURL.path,
             "TERMINAL_CLI_TOKEN": secret,
+            // Names the app these credentials belong to. The CLI refuses a
+            // bridge issued by a different build rather than signing for an app
+            // that is not listening; see `TerminalCLIProtocol`.
+            "TERMINAL_CLI_BUNDLE": TerminalCLIProtocol.bundleIdentifier,
         ]
         if let executableURL = Bundle.main.executableURL {
             let bin = executableURL.deletingLastPathComponent().path

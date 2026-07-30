@@ -43,7 +43,36 @@ struct TerminalCLIRequest: Codable {
 /// boundary, and it is not meant to be one: that process is running as the user
 /// already. What it removes is the broadcast.
 enum TerminalCLIProtocol {
-    static let notificationName = Notification.Name("com.github.tigercosmos.terminal.cli")
+    /// The bundle the CLI and its owning app share. The `terminal` executable
+    /// lives inside the app bundle, so both processes resolve the same value —
+    /// and a Debug build resolves a different one from an installed Release
+    /// build. The fallback covers a `terminal` invoked through a symlink
+    /// outside any bundle, which can then still reach a release app.
+    static let bundleIdentifier =
+        Bundle.main.bundleIdentifier ?? "com.github.tigercosmos.terminal"
+
+    /// Namespaced per bundle, so a Debug build and an installed Release build
+    /// never share a channel. Distributed notifications are matched by name
+    /// across the whole user session, so an unqualified name let whichever app
+    /// happened to be listening act on the other's requests.
+    static let notificationName = Notification.Name("\(bundleIdentifier).cli")
+
+    /// Whether the CLI bridge in `environment` was issued by *this* bundle.
+    ///
+    /// Presence alone does not mean this process is the CLI: every Terminal
+    /// shell exports these variables, they are inherited by everything that
+    /// shell launches, and `open(1)` hands them to whatever app it starts. So
+    /// `open`ing a Debug build from a shell inside a Release build used to make
+    /// the Debug app take the CLI path, post its request to the Release app,
+    /// and exit before ever showing a window.
+    static func bridgeTargetsThisBundle(
+        _ environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard environment["TERMINAL_CLI_STATE"]?.isEmpty == false,
+              environment["TERMINAL_CLI_TOKEN"]?.isEmpty == false
+        else { return false }
+        return environment["TERMINAL_CLI_BUNDLE"] == bundleIdentifier
+    }
 
     private static let bodyKey = "body"
     private static let macKey = "mac"
