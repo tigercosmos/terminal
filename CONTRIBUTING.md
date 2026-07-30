@@ -28,11 +28,18 @@ Xcode and point builds at it with
 Open `terminal.xcodeproj` and run the `terminal` scheme, or:
 
 ```bash
-xcodebuild -project terminal.xcodeproj -scheme terminal -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+make build       # or: make run, to build and launch it
 ```
 
-Prefix that with `DEVELOPER_DIR=...` as above if Xcode 27 is not the selected
-toolchain.
+`make` lists the rest (`test`, `install`, `web`, …). Pass
+`DEVELOPER_DIR=...` as above if Xcode 27 is not the selected toolchain:
+`make build DEVELOPER_DIR=/Applications/Xcode-27.0.0-Beta.4.app/Contents/Developer`.
+
+The underlying command, if you'd rather run it directly:
+
+```bash
+xcodebuild -project terminal.xcodeproj -scheme terminal -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+```
 
 ## Verifying a change
 
@@ -41,7 +48,7 @@ evidence that a feature works. Also run the Rust bridge's tests when you touch
 `Vendor/alacritty-bridge`:
 
 ```sh
-cd Vendor/alacritty-bridge && cargo test
+make test        # cargo test for the bridge, plus the website's type-check
 ```
 
 ## Pull requests
