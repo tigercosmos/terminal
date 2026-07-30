@@ -7,6 +7,7 @@ panes, a file tree, a git panel, an editor, and a diff viewer. AppKit used over 
 
 - [PRODUCT.md](PRODUCT.md) — who Terminal is for; product and design calls follow from it.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — build, verify, and what a PR must say. Read before opening one.
+- [STYLE.md](STYLE.md) — how the code is written. Canonical when this file only summarizes.
 - [RELEASING.md](RELEASING.md) — maintainer-only. Never bump the version in a PR.
 
 ## Verify

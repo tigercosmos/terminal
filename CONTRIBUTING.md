@@ -51,6 +51,13 @@ evidence that a feature works. Also run the Rust bridge's tests when you touch
 make test        # cargo test for the bridge, plus the website's type-check
 ```
 
+## Code style
+
+[STYLE.md](STYLE.md) is the style guide: naming, comments, Swift concurrency
+and localization conventions, the Rust bridge's obligations, and the commit
+message format. The rule that outranks all of it — read the code nearby and
+follow it.
+
 ## Pull requests
 
 Say what a user can now do that they could not before, or what stopped going
