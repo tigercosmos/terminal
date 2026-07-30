@@ -132,7 +132,7 @@ where
                     // including cursor movement. Kitty commands are intercepted
                     // outside that parser, so commit the buffered terminal
                     // operations before reading the cursor used to anchor an
-                    // image placement. Kero still suppresses presentation until
+                    // image placement. Terminal still suppresses presentation until
                     // the outer synchronized update ends, preserving atomicity.
                     if state.parser.sync_bytes_count() > 0 {
                         state.parser.stop_sync(terminal);
@@ -268,7 +268,7 @@ where
 
     pub(crate) fn spawn(mut self) -> JoinHandle<()> {
         std::thread::Builder::new()
-            .name("Kero Alacritty PTY".into())
+            .name("Terminal Alacritty PTY".into())
             .spawn(move || {
                 let mut state = GraphicsEventLoopState::default();
                 let mut buffer = [0u8; READ_BUFFER_SIZE];
@@ -277,7 +277,7 @@ where
 
                 if let Err(error) = unsafe { self.pty.register(&self.poller, interest, poll_mode) }
                 {
-                    eprintln!("kero: Alacritty event loop registration failed: {error}");
+                    eprintln!("terminal: Alacritty event loop registration failed: {error}");
                     return;
                 }
 
@@ -293,7 +293,7 @@ where
                         match error.kind() {
                             ErrorKind::Interrupted => continue,
                             _ => {
-                                eprintln!("kero: Alacritty polling failed: {error}");
+                                eprintln!("terminal: Alacritty polling failed: {error}");
                                 break;
                             }
                         }
@@ -328,13 +328,13 @@ where
                                 }
                                 if event.readable {
                                     if let Err(error) = self.pty_read(&mut state, &mut buffer) {
-                                        eprintln!("kero: Alacritty PTY read failed: {error}");
+                                        eprintln!("terminal: Alacritty PTY read failed: {error}");
                                         break 'event_loop;
                                     }
                                 }
                                 if event.writable {
                                     if let Err(error) = self.pty_write(&mut state) {
-                                        eprintln!("kero: Alacritty PTY write failed: {error}");
+                                        eprintln!("terminal: Alacritty PTY write failed: {error}");
                                         break 'event_loop;
                                     }
                                 }
@@ -347,14 +347,14 @@ where
                     if needs_write != interest.writable {
                         interest.writable = needs_write;
                         if let Err(error) = self.pty.reregister(&self.poller, interest, poll_mode) {
-                            eprintln!("kero: Alacritty PTY registration update failed: {error}");
+                            eprintln!("terminal: Alacritty PTY registration update failed: {error}");
                             break;
                         }
                     }
                 }
                 let _ = self.pty.deregister(&self.poller);
             })
-            .expect("spawn Kero Alacritty PTY event loop")
+            .expect("spawn Terminal Alacritty PTY event loop")
     }
 }
 

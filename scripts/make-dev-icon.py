@@ -9,7 +9,7 @@ alpha channel — which defines the exact rounded-rect silhouette and its paddin
 
     # 1. recolor with gpt-image (OAuth via Codex login or OPENAI_API_KEY):
     bunx gpt-image edit "recolor green -> orange, keep everything else identical" \
-        -i kero/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png \
+        -i terminal/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png \
         -o /tmp/dev-master.png --size 1024x1024 --quality high
 
     # 2. assemble AppIcon-Dev.appiconset from that master:
@@ -27,7 +27,7 @@ import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ASSETS = ROOT / "kero" / "Assets.xcassets"
+ASSETS = ROOT / "terminal" / "Assets.xcassets"
 SRC = ASSETS / "AppIcon.appiconset"
 DST = ASSETS / "AppIcon-Dev.appiconset"
 ALPHA_REF = SRC / "icon_512x512@2x.png"  # 1024x1024 production master (has alpha)

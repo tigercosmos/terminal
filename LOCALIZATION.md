@@ -1,8 +1,8 @@
-# Localizing Kero
+# Localizing Terminal
 
-Kero follows the macOS language selected by the user, including the per-app
+Terminal follows the macOS language selected by the user, including the per-app
 language in System Settings. Users can also choose a language from
-**Kero → Settings → Appearance → Language**; Kero asks to relaunch so native
+**Terminal → Settings → Appearance → Language**; Terminal asks to relaunch so native
 menus, dialogs, and SwiftUI views all change together. English is the
 development language. The currently maintained localizations are:
 
@@ -14,15 +14,15 @@ development language. The currently maintained localizations are:
 
 ## Translate existing text
 
-Open `kero.xcodeproj` in Xcode, select `Localizable.xcstrings`, choose a
+Open `terminal.xcodeproj` in Xcode, select `Localizable.xcstrings`, choose a
 language, and edit its translation. Xcode keeps placeholders, plural variants,
 and translation state visible. The other catalogs cover macOS-owned UI:
 
 - `InfoPlist.xcstrings` — privacy permission text.
-- `ServicesMenu.xcstrings` — Kero’s Finder Services menu item.
+- `ServicesMenu.xcstrings` — Terminal’s Finder Services menu item.
 
 Keep placeholders such as `%@` and `%lld` intact. Preserve product and
-technology names such as Kero, Git, Finder, and VS Code, as well as keyboard
+technology names such as Terminal, Git, Finder, and VS Code, as well as keyboard
 shortcut symbols. Translation-only pull requests are welcome.
 
 For work outside Xcode, use **Product → Export Localizations…** to produce
@@ -36,7 +36,7 @@ the source code.
 2. Add that language to all three String Catalogs.
 3. Translate every entry, including plural variants and the privacy prompt.
 4. Run the app in that language and check menus, settings, the sidebars,
-   dialogs, and `kero +themes`.
+   dialogs, and `terminal +themes`.
 5. Add the language and identifier to the table above.
 
 ## Add localizable text in Swift

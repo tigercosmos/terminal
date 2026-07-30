@@ -1,15 +1,20 @@
-# CLAUDE.md
+# AGENTS.md
 
-Kero is a native macOS terminal workspace: SwiftUI around libghostty surfaces, with projects,
+<!-- Kept byte-identical to CLAUDE.md apart from this heading; edit both. -->
+
+Terminal is a native macOS terminal workspace: SwiftUI around libghostty surfaces, with projects,
 panes, a file tree, a git panel, an editor, and a diff viewer. AppKit used over SwiftUI where performance matters.
 
-- [PRODUCT.md](PRODUCT.md) — who Kero is for; product and design calls follow from it.
+- [PRODUCT.md](PRODUCT.md) — who Terminal is for; product and design calls follow from it.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — build, verify, and what a PR must say. Read before opening one.
 - [RELEASING.md](RELEASING.md) — maintainer-only. Never bump the version in a PR.
 
 ## Verify
 
-Build, run the app, exercise the change;
+Build, run the app, and exercise the change — a successful build says nothing
+about whether the change works. `cargo test` in `Vendor/alacritty-bridge` when
+you touch the Rust bridge. Requires Xcode 27; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Conventions
 

@@ -15,13 +15,13 @@ export function SiteLayout({
         <h1 className="text-2xl font-bold tracking-[0.02em]">
           <Link to="/" className="flex items-center gap-2.5">
             <img
-              src="/kero-icon.png"
+              src="/terminal-icon.png"
               alt=""
               width={100}
               height={100}
               className="block size-12 rounded-md border border-zinc-600"
             />
-            kero
+            terminal
           </Link>
         </h1>
         {headerContent}

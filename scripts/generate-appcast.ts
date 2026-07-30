@@ -5,13 +5,13 @@
 // Usage:
 //   bun scripts/generate-appcast.ts <updates-dir>
 //
-// <updates-dir> holds the packaged archives (e.g. kero-1.1.zip) plus any older
+// <updates-dir> holds the packaged archives (e.g. terminal-1.1.zip) plus any older
 // archives so Sparkle can build deltas. appcast.xml is written into that dir.
 //
 // The private signing key is read from your login keychain (see RELEASING.md).
 // Env overrides:
 //   SPARKLE_BIN          dir containing the Sparkle tools (generate_appcast)
-//   DOWNLOAD_URL_PREFIX  base URL for <enclosure> links (default releases.kero.sh)
+//   DOWNLOAD_URL_PREFIX  base URL for <enclosure> links (required — no default)
 import { $ } from "bun";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -56,7 +56,7 @@ export async function generateAppcast(
     );
   }
   console.log(`Using: ${gen}`);
-  // Same prefix for both: archives and the kero-<version>.md release notes are
+  // Same prefix for both: archives and the terminal-<version>.md release notes are
   // served from the same origin. The notes prefix makes generate_appcast emit
   // <sparkle:releaseNotesLink> for any notes file matching an archive name.
   await $`${gen} --download-url-prefix ${downloadUrlPrefix} --release-notes-url-prefix ${downloadUrlPrefix} ${updatesDir}`;
@@ -66,6 +66,7 @@ export async function generateAppcast(
 if (import.meta.main) {
   const updatesDir = process.argv[2];
   if (!updatesDir) die("usage: bun scripts/generate-appcast.ts <updates-dir>");
-  const prefix = process.env.DOWNLOAD_URL_PREFIX ?? "https://releases.kero.sh/";
+  const prefix = process.env.DOWNLOAD_URL_PREFIX;
+  if (!prefix) die("set DOWNLOAD_URL_PREFIX to the base URL your archives are served from");
   await generateAppcast(updatesDir, prefix);
 }

@@ -1,11 +1,11 @@
 [package]
-name = "kero_alacritty"
+name = "terminal_alacritty"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [lib]
-name = "kero_alacritty"
+name = "terminal_alacritty"
 # Static for the app, which links it directly; rlib so the examples under
 # `examples/` can drive the same C ABI headlessly.
 crate-type = ["staticlib", "rlib"]

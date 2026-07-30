@@ -2,29 +2,29 @@
 //
 // Bump the Homebrew cask in the tap to a released version.
 //
-// The cask (https://github.com/egoist/homebrew-tap, Casks/kero.rb) points at the
+// The cask (Casks/terminal.rb in the tap named by TAP_REPO) points at the
 // DMG in R2, so it needs the new version + its sha256 after every release.
 // `scripts/release.ts` calls this at the end; it's also runnable on its own to
 // retry a failed push or to backfill a version released before this existed:
 //
-//   bun scripts/bump-cask.ts            # version from build/export/Kero.app
+//   bun scripts/bump-cask.ts            # version from build/export/Terminal.app
 //   bun scripts/bump-cask.ts 0.1.25     # explicit version (downloads the DMG
 //                                       # from R2 if it isn't in build/)
 //
 // Env (NO_TAP=1 skips the bump, but that's release.ts's flag — running this
 // script directly is already an explicit request to bump):
-//   TAP_REPO     default egoist/homebrew-tap
-//   TAP_CASK     path of the cask within the tap, default Casks/kero.rb
+//   TAP_REPO     required — the Homebrew tap repo holding the cask
+//   TAP_CASK     path of the cask within the tap, default Casks/terminal.rb
 //   TAP_DIR      local checkout, default build/homebrew-tap
 import { $ } from "bun";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { die, say } from "./lib";
 
-const TAP_REPO = process.env.TAP_REPO ?? "egoist/homebrew-tap";
-const TAP_CASK = process.env.TAP_CASK ?? "Casks/kero.rb";
+const TAP_REPO = process.env.TAP_REPO ?? "";
+const TAP_CASK = process.env.TAP_CASK ?? "Casks/terminal.rb";
 const TAP_DIR = process.env.TAP_DIR ?? join(process.env.BUILD_DIR ?? "build", "homebrew-tap");
-const DOWNLOAD_URL_PREFIX = process.env.DOWNLOAD_URL_PREFIX ?? "https://releases.kero.sh/";
+const DOWNLOAD_URL_PREFIX = process.env.DOWNLOAD_URL_PREFIX ?? "";
 
 /** macOS versions Homebrew knows by name, for the `depends_on macos:` check. */
 const MACOS_NAMES: Record<string, string> = {
@@ -54,7 +54,7 @@ export async function bumpCask(version: string, dmgPath?: string): Promise<boole
   if (dmgPath && existsSync(dmgPath)) {
     dmg = await Bun.file(dmgPath).arrayBuffer();
   } else {
-    const url = `${DOWNLOAD_URL_PREFIX}kero-${version}.dmg`;
+    const url = `${DOWNLOAD_URL_PREFIX}terminal-${version}.dmg`;
     say(`Downloading ${url} to hash it…`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`could not download ${url} (HTTP ${res.status})`);
@@ -89,7 +89,7 @@ export async function bumpCask(version: string, dmgPath?: string): Promise<boole
 
   await Bun.write(caskPath, after);
   await $`git -C ${TAP_DIR} add ${TAP_CASK}`;
-  await $`git -C ${TAP_DIR} commit --quiet -m ${`kero ${version}`}`;
+  await $`git -C ${TAP_DIR} commit --quiet -m ${`terminal ${version}`}`;
   await $`git -C ${TAP_DIR} push --quiet origin main`;
   say(`Bumped ${TAP_REPO} to ${version}`);
   return true;
@@ -123,7 +123,7 @@ if (import.meta.main) {
 
   let version = process.argv[2];
   if (!version) {
-    const plist = join(process.env.BUILD_DIR ?? "build", "export/Kero.app/Contents/Info.plist");
+    const plist = join(process.env.BUILD_DIR ?? "build", "export/Terminal.app/Contents/Info.plist");
     if (!existsSync(plist)) {
       die("no version given and no built app to read one from — pass it, e.g. `bun scripts/bump-cask.ts 0.1.25`");
     }
@@ -132,9 +132,9 @@ if (import.meta.main) {
 
   const buildDir = process.env.BUILD_DIR ?? "build";
   try {
-    await bumpCask(version, join(buildDir, `kero-${version}.dmg`));
+    await bumpCask(version, join(buildDir, `terminal-${version}.dmg`));
   } catch (error) {
     die(error instanceof Error ? error.message : String(error));
   }
-  await checkMinimumSystemVersion(join(buildDir, "export/Kero.app/Contents/Info.plist"));
+  await checkMinimumSystemVersion(join(buildDir, "export/Terminal.app/Contents/Info.plist"));
 }

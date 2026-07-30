@@ -1,4 +1,4 @@
-//! C ABI over `alacritty_terminal` for Kero's Alacritty backend.
+//! C ABI over `alacritty_terminal` for Terminal's Alacritty backend.
 //!
 //! `alacritty_terminal` is emulation only — VT parser, grid, PTY, selection —
 //! with no renderer of any kind. This crate owns the terminal state and the
@@ -8,7 +8,7 @@
 //! size) is answered here rather than crossing the boundary twice.
 //!
 //! Threading: the PTY read loop runs on its own thread and mutates the
-//! terminal behind a `FairMutex`. Every `kero_alacritty_*` entry point takes
+//! terminal behind a `FairMutex`. Every `terminal_alacritty_*` entry point takes
 //! that lock, so Swift may call them from the main thread while the loop runs.
 //! The snapshot buffer is owned by the handle and is only valid until the next
 //! call on that handle.
@@ -50,62 +50,62 @@ use kitty_graphics::{KittyGraphicsScreen, KittyGraphicsSize, KittyGraphicsStore}
 
 /// Event kinds pushed to Swift from the PTY thread. Swift bounces these onto
 /// the main thread before touching any view state.
-pub const KERO_EVENT_WAKEUP: u32 = 0;
-pub const KERO_EVENT_TITLE: u32 = 1;
-pub const KERO_EVENT_BELL: u32 = 2;
-pub const KERO_EVENT_EXIT: u32 = 3;
-pub const KERO_EVENT_CLIPBOARD_STORE: u32 = 4;
-pub const KERO_EVENT_CLIPBOARD_LOAD: u32 = 5;
-pub const KERO_EVENT_WORKING_DIRECTORY: u32 = 6;
-pub const KERO_EVENT_PROGRESS: u32 = 7;
-pub const KERO_EVENT_NOTIFICATION: u32 = 8;
-pub const KERO_EVENT_SHELL_PROMPT_START: u32 = 9;
-pub const KERO_EVENT_SHELL_COMMAND_START: u32 = 10;
-pub const KERO_EVENT_SHELL_COMMAND_EXECUTING: u32 = 11;
-pub const KERO_EVENT_SHELL_COMMAND_FINISHED: u32 = 12;
+pub const TERMINAL_EVENT_WAKEUP: u32 = 0;
+pub const TERMINAL_EVENT_TITLE: u32 = 1;
+pub const TERMINAL_EVENT_BELL: u32 = 2;
+pub const TERMINAL_EVENT_EXIT: u32 = 3;
+pub const TERMINAL_EVENT_CLIPBOARD_STORE: u32 = 4;
+pub const TERMINAL_EVENT_CLIPBOARD_LOAD: u32 = 5;
+pub const TERMINAL_EVENT_WORKING_DIRECTORY: u32 = 6;
+pub const TERMINAL_EVENT_PROGRESS: u32 = 7;
+pub const TERMINAL_EVENT_NOTIFICATION: u32 = 8;
+pub const TERMINAL_EVENT_SHELL_PROMPT_START: u32 = 9;
+pub const TERMINAL_EVENT_SHELL_COMMAND_START: u32 = 10;
+pub const TERMINAL_EVENT_SHELL_COMMAND_EXECUTING: u32 = 11;
+pub const TERMINAL_EVENT_SHELL_COMMAND_FINISHED: u32 = 12;
 
 /// Per-cell attributes handed to the renderer. A subset of
-/// `alacritty_terminal`'s `Flags` plus Kero's own `SELECTED`.
-pub const KERO_CELL_INVERSE: u16 = 1 << 0;
-pub const KERO_CELL_BOLD: u16 = 1 << 1;
-pub const KERO_CELL_ITALIC: u16 = 1 << 2;
-pub const KERO_CELL_UNDERLINE: u16 = 1 << 3;
-pub const KERO_CELL_STRIKEOUT: u16 = 1 << 4;
-pub const KERO_CELL_DIM: u16 = 1 << 5;
-pub const KERO_CELL_HIDDEN: u16 = 1 << 6;
-pub const KERO_CELL_WIDE: u16 = 1 << 7;
-pub const KERO_CELL_WIDE_SPACER: u16 = 1 << 8;
-pub const KERO_CELL_SELECTED: u16 = 1 << 9;
+/// `alacritty_terminal`'s `Flags` plus Terminal's own `SELECTED`.
+pub const TERMINAL_CELL_INVERSE: u16 = 1 << 0;
+pub const TERMINAL_CELL_BOLD: u16 = 1 << 1;
+pub const TERMINAL_CELL_ITALIC: u16 = 1 << 2;
+pub const TERMINAL_CELL_UNDERLINE: u16 = 1 << 3;
+pub const TERMINAL_CELL_STRIKEOUT: u16 = 1 << 4;
+pub const TERMINAL_CELL_DIM: u16 = 1 << 5;
+pub const TERMINAL_CELL_HIDDEN: u16 = 1 << 6;
+pub const TERMINAL_CELL_WIDE: u16 = 1 << 7;
+pub const TERMINAL_CELL_WIDE_SPACER: u16 = 1 << 8;
+pub const TERMINAL_CELL_SELECTED: u16 = 1 << 9;
 
 /// Nothing changed; the host can drop the frame entirely.
-pub const KERO_DAMAGE_NONE: u32 = 0;
+pub const TERMINAL_DAMAGE_NONE: u32 = 0;
 /// Only the listed rows changed.
-pub const KERO_DAMAGE_PARTIAL: u32 = 1;
+pub const TERMINAL_DAMAGE_PARTIAL: u32 = 1;
 /// Everything changed — a resize, a screen swap, a scroll.
-pub const KERO_DAMAGE_FULL: u32 = 2;
+pub const TERMINAL_DAMAGE_FULL: u32 = 2;
 
 #[repr(C)]
-pub struct KeroDamage {
+pub struct TerminalDamage {
     pub kind: u32,
     /// Viewport row indices, owned by the handle and valid only until the next
-    /// call on it. Empty unless `kind` is `KERO_DAMAGE_PARTIAL`.
+    /// call on it. Empty unless `kind` is `TERMINAL_DAMAGE_PARTIAL`.
     pub rows: *const usize,
     pub rows_len: usize,
 }
 
-pub type KeroEventCallback =
+pub type TerminalEventCallback =
     extern "C" fn(context: *mut c_void, kind: u32, data: *const u8, len: usize);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct KeroCell {
+pub struct TerminalCell {
     /// Unicode scalar; a space for an empty cell.
     pub ch: u32,
     /// Packed 0x00RRGGBB, already resolved through the palette and any OSC 4
     /// overrides — the renderer never resolves colors itself.
     pub fg: u32,
     pub bg: u32,
-    /// UTF-8 text in `KeroSnapshot::text` when this cell has combining marks.
+    /// UTF-8 text in `TerminalSnapshot::text` when this cell has combining marks.
     pub text_offset: u32,
     pub text_len: u16,
     pub flags: u16,
@@ -113,7 +113,7 @@ pub struct KeroCell {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct KeroURLRange {
+pub struct TerminalURLRange {
     /// Inclusive viewport-relative cell bounds. Lines can be outside the
     /// viewport when a soft-wrapped URL begins or ends in scrollback.
     pub start_line: i32,
@@ -122,11 +122,11 @@ pub struct KeroURLRange {
     pub end_column: usize,
 }
 
-/// A theme in the form the bridge resolves colors against. Kero owns the
+/// A theme in the form the bridge resolves colors against. Terminal owns the
 /// palette so Alacritty panes match Ghostty panes exactly.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct KeroTheme {
+pub struct AlacrittyPalette {
     pub palette: [u32; 256],
     pub foreground: u32,
     pub background: u32,
@@ -134,10 +134,10 @@ pub struct KeroTheme {
 }
 
 #[repr(C)]
-pub struct KeroSnapshot {
+pub struct TerminalSnapshot {
     /// `columns * rows` cells in row-major order, owned by the handle and
     /// valid only until the next call on it.
-    pub cells: *const KeroCell,
+    pub cells: *const TerminalCell,
     pub columns: usize,
     pub rows: usize,
     /// Viewport-relative cursor, or -1 when it should not be drawn.
@@ -151,7 +151,7 @@ pub struct KeroSnapshot {
     pub text: *const u8,
     pub text_len: usize,
     /// Rows scrolled back from the live prompt, and the total including
-    /// scrollback — together these drive Kero's overlay scrollbar.
+    /// scrollback — together these drive Terminal's overlay scrollbar.
     pub display_offset: usize,
     pub total_lines: usize,
     pub screen_lines: usize,
@@ -159,7 +159,7 @@ pub struct KeroSnapshot {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct KeroKittyPlacement {
+pub struct TerminalKittyPlacement {
     pub placement_serial: u64,
     pub image_id: u32,
     pub placement_id: u32,
@@ -185,14 +185,14 @@ pub struct KeroKittyPlacement {
 }
 
 #[repr(C)]
-pub struct KeroKittySnapshot {
+pub struct TerminalKittySnapshot {
     pub revision: u64,
-    pub placements: *const KeroKittyPlacement,
+    pub placements: *const TerminalKittyPlacement,
     pub placements_len: usize,
 }
 
 #[repr(C)]
-pub struct KeroConfig {
+pub struct TerminalConfig {
     /// Shell to exec, and its argv beyond argv[0].
     pub shell: *const c_char,
     pub args: *const *const c_char,
@@ -212,7 +212,7 @@ pub struct KeroConfig {
 
 /// `alacritty_terminal` handles OSC sequences that mutate its grid, but does
 /// not expose host events for working directories or OSC 9. Termy solves this
-/// at the PTY boundary; Kero uses the same seam so the emulator still receives
+/// at the PTY boundary; Terminal uses the same seam so the emulator still receives
 /// every sequence it understands while app integrations are lifted out first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OscEvent {
@@ -363,7 +363,7 @@ impl OscInterceptor {
 // MARK: - Synchronized update tracking
 
 /// Tracks DEC private mode 2026 at the PTY boundary. Alacritty buffers the
-/// enclosed bytes atomically, but Kero's host-driven cursor timer can otherwise
+/// enclosed bytes atomically, but Terminal's host-driven cursor timer can otherwise
 /// request a frame while that buffer is still being assembled.
 #[derive(Debug, Default)]
 struct SyncUpdateTracker {
@@ -556,7 +556,7 @@ fn hex_value(byte: u8) -> Option<u8> {
 
 // MARK: - Event proxy
 
-/// Swift's view pointer, carried to the PTY thread. Kero keeps the surface
+/// Swift's view pointer, carried to the PTY thread. Terminal keeps the surface
 /// alive for as long as the handle exists, and every callback is bounced onto
 /// the main thread on the Swift side before it touches anything.
 #[derive(Clone, Copy)]
@@ -566,14 +566,14 @@ unsafe impl Sync for SwiftContext {}
 
 /// State the PTY thread needs in order to answer queries without calling into
 /// Swift: the palette for color reports, and the geometry for size reports.
-/// Per terminal, since Kero runs many panes at different sizes.
+/// Per terminal, since Terminal runs many panes at different sizes.
 struct Shared {
-    theme: KeroTheme,
+    theme: AlacrittyPalette,
     window_size: WindowSize,
     synchronized_update: bool,
     synchronized_update_ending: bool,
     synchronized_update_deadline: Option<Instant>,
-    /// OSC 52 read formatters waiting for Kero's confirmation sheet. Keeping
+    /// OSC 52 read formatters waiting for Terminal's confirmation sheet. Keeping
     /// the formatter here preserves whether the request used BEL or ST.
     pending_clipboard: VecDeque<(u64, Arc<dyn Fn(&str) -> String + Sync + Send + 'static>)>,
     next_clipboard_id: u64,
@@ -581,7 +581,7 @@ struct Shared {
 
 #[derive(Clone)]
 struct Proxy {
-    callback: KeroEventCallback,
+    callback: TerminalEventCallback,
     context: SwiftContext,
     /// Filled once the event loop exists. Replies that the terminal generates
     /// on its own (DSR, color and size queries) are written straight back here
@@ -635,20 +635,20 @@ impl Proxy {
     fn emit_osc(&self, event: OscEvent) {
         match event {
             OscEvent::WorkingDirectory(path) => {
-                self.emit(KERO_EVENT_WORKING_DIRECTORY, path.as_bytes())
+                self.emit(TERMINAL_EVENT_WORKING_DIRECTORY, path.as_bytes())
             }
             OscEvent::Progress { state, percent } => self.emit(
-                KERO_EVENT_PROGRESS,
+                TERMINAL_EVENT_PROGRESS,
                 &[state, percent.unwrap_or(0), u8::from(percent.is_some())],
             ),
             OscEvent::Notification(message) => {
-                self.emit(KERO_EVENT_NOTIFICATION, message.as_bytes())
+                self.emit(TERMINAL_EVENT_NOTIFICATION, message.as_bytes())
             }
-            OscEvent::ShellPromptStart => self.emit(KERO_EVENT_SHELL_PROMPT_START, &[]),
-            OscEvent::ShellCommandStart => self.emit(KERO_EVENT_SHELL_COMMAND_START, &[]),
-            OscEvent::ShellCommandExecuting => self.emit(KERO_EVENT_SHELL_COMMAND_EXECUTING, &[]),
+            OscEvent::ShellPromptStart => self.emit(TERMINAL_EVENT_SHELL_PROMPT_START, &[]),
+            OscEvent::ShellCommandStart => self.emit(TERMINAL_EVENT_SHELL_COMMAND_START, &[]),
+            OscEvent::ShellCommandExecuting => self.emit(TERMINAL_EVENT_SHELL_COMMAND_EXECUTING, &[]),
             OscEvent::ShellCommandFinished(exit_code) => self.emit(
-                KERO_EVENT_SHELL_COMMAND_FINISHED,
+                TERMINAL_EVENT_SHELL_COMMAND_FINISHED,
                 &exit_code.unwrap_or(-1).to_le_bytes(),
             ),
         }
@@ -783,16 +783,16 @@ impl EventListener for Proxy {
         match event {
             Event::Wakeup => {
                 self.finish_synchronized_update_if_ready();
-                self.emit(KERO_EVENT_WAKEUP, &[]);
+                self.emit(TERMINAL_EVENT_WAKEUP, &[]);
             }
-            Event::Bell => self.emit(KERO_EVENT_BELL, &[]),
-            Event::Title(title) => self.emit(KERO_EVENT_TITLE, title.as_bytes()),
-            // Kero derives the tab title from the shell and directory, so a
+            Event::Bell => self.emit(TERMINAL_EVENT_BELL, &[]),
+            Event::Title(title) => self.emit(TERMINAL_EVENT_TITLE, title.as_bytes()),
+            // Terminal derives the tab title from the shell and directory, so a
             // reset is simply the absence of a title.
-            Event::ResetTitle => self.emit(KERO_EVENT_TITLE, &[]),
-            Event::Exit | Event::ChildExit(_) => self.emit(KERO_EVENT_EXIT, &[]),
+            Event::ResetTitle => self.emit(TERMINAL_EVENT_TITLE, &[]),
+            Event::Exit | Event::ChildExit(_) => self.emit(TERMINAL_EVENT_EXIT, &[]),
             Event::ClipboardStore(_, text) => {
-                self.emit(KERO_EVENT_CLIPBOARD_STORE, text.as_bytes())
+                self.emit(TERMINAL_EVENT_CLIPBOARD_STORE, text.as_bytes())
             }
             Event::ClipboardLoad(_, format) => {
                 let id = {
@@ -807,7 +807,7 @@ impl EventListener for Proxy {
                     shared.pending_clipboard.push_back((id, format));
                     id
                 };
-                self.emit(KERO_EVENT_CLIPBOARD_LOAD, &id.to_le_bytes());
+                self.emit(TERMINAL_EVENT_CLIPBOARD_LOAD, &id.to_le_bytes());
             }
             Event::PtyWrite(text) => self.write_pty(text),
             Event::ColorRequest(index, format) => {
@@ -844,18 +844,18 @@ impl Dimensions for TermSize {
     }
 }
 
-pub struct KeroTerminal {
+pub struct TerminalHandle {
     term: Arc<FairMutex<Term<Proxy>>>,
     notifier: GraphicsNotifier,
     shared: Arc<FairMutex<Shared>>,
     kitty_graphics: Arc<FairMutex<KittyGraphicsStore>>,
     kitty_graphics_size: Arc<FairMutex<KittyGraphicsSize>>,
-    cells: Vec<KeroCell>,
+    cells: Vec<TerminalCell>,
     /// Variable-length UTF-8 cell contents for combining character clusters.
     cell_text: Vec<u8>,
     child_pid: i32,
     /// Kept so the host can ask which process group is in the foreground —
-    /// that is how Kero tells a shell at its prompt from a running TUI.
+    /// that is how Terminal tells a shell at its prompt from a running TUI.
     master_fd: RawFd,
     /// Every match of the active find, in buffer order, and which one is
     /// selected. Collected up front so the host can show a total.
@@ -866,7 +866,7 @@ pub struct KeroTerminal {
     url_regex: RegexSearch,
     /// Reused per frame so damage reporting does not allocate.
     dirty_rows: Vec<usize>,
-    kitty_placements: Vec<KeroKittyPlacement>,
+    kitty_placements: Vec<TerminalKittyPlacement>,
     /// Retains each placement's PNG while C pointers are visible to Swift.
     kitty_images: Vec<Arc<[u8]>>,
     last_kitty_damage_revision: u64,
@@ -894,7 +894,7 @@ fn dim(value: u32) -> u32 {
 }
 
 /// Resolves a `Colors` index — which is `NamedColor as usize` — to the theme.
-fn color_for_index(index: usize, theme: &KeroTheme) -> u32 {
+fn color_for_index(index: usize, theme: &AlacrittyPalette) -> u32 {
     match index {
         0..=255 => theme.palette[index],
         i if i == NamedColor::Foreground as usize => theme.foreground,
@@ -910,8 +910,8 @@ fn color_for_index(index: usize, theme: &KeroTheme) -> u32 {
 }
 
 /// OSC 4 / OSC 10-11 overrides win over the theme, exactly as they do in
-/// Kero's Ghostty panes.
-fn resolve(color: Color, colors: &Colors, theme: &KeroTheme) -> u32 {
+/// Terminal's Ghostty panes.
+fn resolve(color: Color, colors: &Colors, theme: &AlacrittyPalette) -> u32 {
     match color {
         Color::Spec(rgb) => pack(rgb),
         Color::Indexed(index) => colors[index as usize]
@@ -948,12 +948,12 @@ unsafe fn cstr_array(pointer: *const *const c_char, len: usize) -> Vec<String> {
 /// Every pointer in `config` must be valid for the duration of the call, and
 /// `context` must outlive the returned handle.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_new(
-    config: *const KeroConfig,
-    theme: *const KeroTheme,
-    callback: KeroEventCallback,
+pub unsafe extern "C" fn terminal_alacritty_new(
+    config: *const TerminalConfig,
+    theme: *const AlacrittyPalette,
+    callback: TerminalEventCallback,
     context: *mut c_void,
-) -> *mut KeroTerminal {
+) -> *mut TerminalHandle {
     if config.is_null() || theme.is_null() {
         return std::ptr::null_mut();
     }
@@ -1007,7 +1007,7 @@ pub unsafe extern "C" fn kero_alacritty_new(
             shape: CursorShape::Block,
             blinking: true,
         },
-        // Kero owns clipboard policy at the app level. Reads are enabled in
+        // Terminal owns clipboard policy at the app level. Reads are enabled in
         // the emulator only so the host can present its confirmation sheet;
         // the bridge writes nothing back until that request is approved.
         osc52: Osc52::CopyPaste,
@@ -1052,7 +1052,7 @@ pub unsafe extern "C" fn kero_alacritty_new(
     let _ = proxy.sender.set(sender.clone());
     event_loop.spawn();
 
-    Box::into_raw(Box::new(KeroTerminal {
+    Box::into_raw(Box::new(TerminalHandle {
         term,
         notifier: GraphicsNotifier(sender),
         shared,
@@ -1076,9 +1076,9 @@ pub unsafe extern "C" fn kero_alacritty_new(
 /// Stops the read loop and releases the handle.
 ///
 /// # Safety
-/// `handle` must come from `kero_alacritty_new` and must not be used after.
+/// `handle` must come from `terminal_alacritty_new` and must not be used after.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_free(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_free(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }
@@ -1086,12 +1086,12 @@ pub unsafe extern "C" fn kero_alacritty_free(handle: *mut KeroTerminal) {
     let _ = terminal.notifier.0.send(GraphicsMsg::Shutdown);
 }
 
-/// PID of the shell, for Kero's process panel and its teardown signals.
+/// PID of the shell, for Terminal's process panel and its teardown signals.
 ///
 /// # Safety
-/// `handle` must be a live handle from `kero_alacritty_new`.
+/// `handle` must be a live handle from `terminal_alacritty_new`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_child_pid(handle: *mut KeroTerminal) -> i32 {
+pub unsafe extern "C" fn terminal_alacritty_child_pid(handle: *mut TerminalHandle) -> i32 {
     if handle.is_null() {
         return 0;
     }
@@ -1102,9 +1102,9 @@ pub unsafe extern "C" fn kero_alacritty_child_pid(handle: *mut KeroTerminal) -> 
 /// than the shell that launched it. Falls back to the shell's own PID.
 ///
 /// # Safety
-/// `handle` must be a live handle from `kero_alacritty_new`.
+/// `handle` must be a live handle from `terminal_alacritty_new`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_foreground_pid(handle: *mut KeroTerminal) -> i32 {
+pub unsafe extern "C" fn terminal_alacritty_foreground_pid(handle: *mut TerminalHandle) -> i32 {
     if handle.is_null() {
         return 0;
     }
@@ -1127,8 +1127,8 @@ extern "C" {
 /// # Safety
 /// `handle` must be live and `bytes` valid for `len`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_write(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_write(
+    handle: *mut TerminalHandle,
     bytes: *const u8,
     len: usize,
 ) {
@@ -1148,8 +1148,8 @@ pub unsafe extern "C" fn kero_alacritty_write(
 /// # Safety
 /// `handle` must be live and `bytes` valid for `len`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_write_control(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_write_control(
+    handle: *mut TerminalHandle,
     bytes: *const u8,
     len: usize,
 ) {
@@ -1161,15 +1161,15 @@ pub unsafe extern "C" fn kero_alacritty_write_control(
     terminal.notifier.notify(payload);
 }
 
-/// Completes a pending OSC 52 clipboard read after Kero's confirmation sheet
+/// Completes a pending OSC 52 clipboard read after Terminal's confirmation sheet
 /// has resolved it. Denied requests are removed without ever writing clipboard
 /// contents to the PTY.
 ///
 /// # Safety
 /// `handle` must be live and `bytes` valid for `len` when non-null.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_resolve_clipboard(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_resolve_clipboard(
+    handle: *mut TerminalHandle,
     request_id: u64,
     bytes: *const u8,
     len: usize,
@@ -1208,8 +1208,8 @@ pub unsafe extern "C" fn kero_alacritty_resolve_clipboard(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_resize(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_resize(
+    handle: *mut TerminalHandle,
     columns: u16,
     rows: u16,
     cell_width: u16,
@@ -1246,7 +1246,7 @@ pub unsafe extern "C" fn kero_alacritty_resize(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_scroll(handle: *mut KeroTerminal, delta: i32) {
+pub unsafe extern "C" fn terminal_alacritty_scroll(handle: *mut TerminalHandle, delta: i32) {
     if handle.is_null() {
         return;
     }
@@ -1258,7 +1258,7 @@ pub unsafe extern "C" fn kero_alacritty_scroll(handle: *mut KeroTerminal, delta:
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_scroll_to_offset(handle: *mut KeroTerminal, offset: usize) {
+pub unsafe extern "C" fn terminal_alacritty_scroll_to_offset(handle: *mut TerminalHandle, offset: usize) {
     if handle.is_null() {
         return;
     }
@@ -1271,9 +1271,9 @@ pub unsafe extern "C" fn kero_alacritty_scroll_to_offset(handle: *mut KeroTermin
 /// # Safety
 /// `handle` must be live and `theme` valid for the call.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_set_theme(
-    handle: *mut KeroTerminal,
-    theme: *const KeroTheme,
+pub unsafe extern "C" fn terminal_alacritty_set_theme(
+    handle: *mut TerminalHandle,
+    theme: *const AlacrittyPalette,
 ) {
     if handle.is_null() || theme.is_null() {
         return;
@@ -1289,8 +1289,8 @@ pub unsafe extern "C" fn kero_alacritty_set_theme(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_selection_start(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_selection_start(
+    handle: *mut TerminalHandle,
     line: i32,
     column: usize,
     kind: u32,
@@ -1315,8 +1315,8 @@ pub unsafe extern "C" fn kero_alacritty_selection_start(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_selection_update(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_selection_update(
+    handle: *mut TerminalHandle,
     line: i32,
     column: usize,
     right_half: bool,
@@ -1337,7 +1337,7 @@ pub unsafe extern "C" fn kero_alacritty_selection_update(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_selection_clear(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_selection_clear(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }
@@ -1349,7 +1349,7 @@ pub unsafe extern "C" fn kero_alacritty_selection_clear(handle: *mut KeroTermina
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_select_all(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_select_all(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }
@@ -1367,7 +1367,7 @@ pub unsafe extern "C" fn kero_alacritty_select_all(handle: *mut KeroTerminal) {
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_has_selection(handle: *mut KeroTerminal) -> bool {
+pub unsafe extern "C" fn terminal_alacritty_has_selection(handle: *mut TerminalHandle) -> bool {
     if handle.is_null() {
         return false;
     }
@@ -1384,8 +1384,8 @@ pub unsafe extern "C" fn kero_alacritty_has_selection(handle: *mut KeroTerminal)
 /// # Safety
 /// `handle` must be live and `buffer` valid for `capacity` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_selection_text(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_selection_text(
+    handle: *mut TerminalHandle,
     buffer: *mut u8,
     capacity: usize,
 ) -> usize {
@@ -1410,14 +1410,14 @@ pub unsafe extern "C" fn kero_alacritty_selection_text(
 /// Counts every match of `needle` in the screen and scrollback, and selects
 /// the one nearest the viewport.
 ///
-/// The needle is matched literally: Kero's find bar is a plain text field, so
+/// The needle is matched literally: Terminal's find bar is a plain text field, so
 /// regex metacharacters in it are escaped rather than interpreted.
 ///
 /// # Safety
 /// `handle` must be live and `needle` a valid C string.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_find(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_find(
+    handle: *mut TerminalHandle,
     needle: *const c_char,
 ) -> usize {
     if handle.is_null() {
@@ -1455,8 +1455,8 @@ pub unsafe extern "C" fn kero_alacritty_find(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_find_step(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_find_step(
+    handle: *mut TerminalHandle,
     forward: bool,
 ) -> isize {
     if handle.is_null() {
@@ -1488,7 +1488,7 @@ pub unsafe extern "C" fn kero_alacritty_find_step(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_find_end(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_find_end(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }
@@ -1521,22 +1521,22 @@ struct VtStyle {
     hyperlink: Option<String>,
 }
 
-fn style_for(cell: &Cell, colors: &Colors, theme: &KeroTheme) -> VtStyle {
+fn style_for(cell: &Cell, colors: &Colors, theme: &AlacrittyPalette) -> VtStyle {
     let mut flags = 0;
     for (source, target) in [
-        (Flags::BOLD, KERO_CELL_BOLD),
-        (Flags::ITALIC, KERO_CELL_ITALIC),
-        (Flags::STRIKEOUT, KERO_CELL_STRIKEOUT),
-        (Flags::DIM, KERO_CELL_DIM),
-        (Flags::HIDDEN, KERO_CELL_HIDDEN),
-        (Flags::INVERSE, KERO_CELL_INVERSE),
+        (Flags::BOLD, TERMINAL_CELL_BOLD),
+        (Flags::ITALIC, TERMINAL_CELL_ITALIC),
+        (Flags::STRIKEOUT, TERMINAL_CELL_STRIKEOUT),
+        (Flags::DIM, TERMINAL_CELL_DIM),
+        (Flags::HIDDEN, TERMINAL_CELL_HIDDEN),
+        (Flags::INVERSE, TERMINAL_CELL_INVERSE),
     ] {
         if cell.flags.contains(source) {
             flags |= target;
         }
     }
     if cell.flags.intersects(Flags::ALL_UNDERLINES) {
-        flags |= KERO_CELL_UNDERLINE;
+        flags |= TERMINAL_CELL_UNDERLINE;
     }
     VtStyle {
         foreground: resolve(cell.fg, colors, theme),
@@ -1555,13 +1555,13 @@ fn push_sgr(output: &mut Vec<u8>, style: &VtStyle) {
         format!("48;2;{};{};{}", background.r, background.g, background.b),
     ];
     for (flag, code) in [
-        (KERO_CELL_BOLD, "1"),
-        (KERO_CELL_DIM, "2"),
-        (KERO_CELL_ITALIC, "3"),
-        (KERO_CELL_UNDERLINE, "4"),
-        (KERO_CELL_INVERSE, "7"),
-        (KERO_CELL_HIDDEN, "8"),
-        (KERO_CELL_STRIKEOUT, "9"),
+        (TERMINAL_CELL_BOLD, "1"),
+        (TERMINAL_CELL_DIM, "2"),
+        (TERMINAL_CELL_ITALIC, "3"),
+        (TERMINAL_CELL_UNDERLINE, "4"),
+        (TERMINAL_CELL_INVERSE, "7"),
+        (TERMINAL_CELL_HIDDEN, "8"),
+        (TERMINAL_CELL_STRIKEOUT, "9"),
     ] {
         if style.flags & flag != 0 {
             codes.push(code.to_owned());
@@ -1602,7 +1602,7 @@ fn cell_has_visible_content(cell: &Cell) -> bool {
 /// reflow them at its current width.
 fn serialize_vt<T: EventListener>(
     term: &Term<T>,
-    theme: &KeroTheme,
+    theme: &AlacrittyPalette,
     scrollback_only: bool,
 ) -> Vec<u8> {
     let first_line = term.topmost_line();
@@ -1685,13 +1685,13 @@ fn serialize_vt<T: EventListener>(
 
 /// Writes the whole buffer — scrollback and screen — as a styled VT stream
 /// into `buffer`, using the same length protocol as selection text. This backs
-/// Kero's history capture and its tab-switcher previews.
+/// Terminal's history capture and its tab-switcher previews.
 ///
 /// # Safety
 /// `handle` must be live and `buffer` valid for `capacity` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_buffer_text(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_buffer_text(
+    handle: *mut TerminalHandle,
     scrollback_only: bool,
     buffer: *mut u8,
     capacity: usize,
@@ -1835,11 +1835,11 @@ fn hyperlink_url_at<T: EventListener>(term: &Term<T>, point: Point) -> Option<(S
 /// `handle` must be live; `range` must be null or valid; and `buffer` must be
 /// null or valid for `capacity` bytes.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_url_at(
-    handle: *mut KeroTerminal,
+pub unsafe extern "C" fn terminal_alacritty_url_at(
+    handle: *mut TerminalHandle,
     line: i32,
     column: usize,
-    range: *mut KeroURLRange,
+    range: *mut TerminalURLRange,
     buffer: *mut u8,
     capacity: usize,
 ) -> usize {
@@ -1859,7 +1859,7 @@ pub unsafe extern "C" fn kero_alacritty_url_at(
         return 0;
     };
     if !range.is_null() {
-        *range = KeroURLRange {
+        *range = TerminalURLRange {
             start_line: bounds.start().line.0 + offset as i32,
             start_column: bounds.start().column.0,
             end_line: bounds.end().line.0 + offset as i32,
@@ -1874,13 +1874,13 @@ pub unsafe extern "C" fn kero_alacritty_url_at(
     bytes.len()
 }
 
-/// Whether the primary screen has rows above the viewport — Kero uses this to
+/// Whether the primary screen has rows above the viewport — Terminal uses this to
 /// tell a scrolled shell from a full-screen TUI.
 ///
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_has_scrollback(handle: *mut KeroTerminal) -> bool {
+pub unsafe extern "C" fn terminal_alacritty_has_scrollback(handle: *mut TerminalHandle) -> bool {
     if handle.is_null() {
         return false;
     }
@@ -1893,7 +1893,7 @@ pub unsafe extern "C" fn kero_alacritty_has_scrollback(handle: *mut KeroTerminal
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_clear(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_clear(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }
@@ -1913,7 +1913,7 @@ pub unsafe extern "C" fn kero_alacritty_clear(handle: *mut KeroTerminal) {
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_synchronized_update(handle: *mut KeroTerminal) -> bool {
+pub unsafe extern "C" fn terminal_alacritty_synchronized_update(handle: *mut TerminalHandle) -> bool {
     if handle.is_null() {
         return false;
     }
@@ -1961,12 +1961,12 @@ mod tests {
         );
     }
 
-    fn theme() -> KeroTheme {
+    fn theme() -> AlacrittyPalette {
         let mut palette = [0; 256];
         for (index, color) in palette.iter_mut().enumerate() {
             *color = index as u32 * 0x010101;
         }
-        KeroTheme {
+        AlacrittyPalette {
             palette,
             foreground: 0xeeeeee,
             background: 0x111111,
@@ -2047,24 +2047,25 @@ mod tests {
 
     #[test]
     fn history_export_preserves_osc8_links() {
-        let term = parse(b"\x1b]8;;https://kero.sh\x1b\\Kero\x1b]8;;\x1b\\");
+        let term = parse(b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\");
         let output = serialize_vt(&term, &theme(), false);
         let text = String::from_utf8(output).unwrap();
 
-        assert!(text.contains("\x1b]8;;https://kero.sh\x1b\\"));
-        assert!(text.contains("Kero"));
+        assert!(text.contains("\x1b]8;;https://example.com\x1b\\"));
+        assert!(text.contains("Terminal"));
         assert!(text.contains("\x1b]8;;\x1b\\"));
     }
 
     #[test]
     fn osc8_url_lookup_returns_visible_cell_bounds() {
-        let term = parse(b"x\x1b]8;;https://kero.sh\x1b\\Kero\x1b]8;;\x1b\\ y");
+        let term = parse(b"x\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\ y");
         let (url, bounds) = hyperlink_url_at(&term, Point::new(Line(0), Column(2))).unwrap();
 
-        assert_eq!(url, "https://kero.sh");
+        assert_eq!(url, "https://example.com");
+        // "Terminal" is the anchor text: 8 cells, starting after the leading "x".
         assert_eq!(
             bounds,
-            Point::new(Line(0), Column(1))..=Point::new(Line(0), Column(4))
+            Point::new(Line(0), Column(1))..=Point::new(Line(0), Column(8))
         );
     }
 
@@ -2073,7 +2074,7 @@ mod tests {
         let mut interceptor = OscInterceptor::default();
         let input = concat!(
             "before",
-            "\x1b]7;file://host/Users/egoist/My%20Project\x07",
+            "\x1b]7;file://host/Users/example/My%20Project\x07",
             "\x1b]9;4;1;150\x1b\\",
             "\x1b]9;Build complete\x07",
             "\x1b]133;A\x07",
@@ -2088,7 +2089,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                OscEvent::WorkingDirectory("/Users/egoist/My Project".to_owned()),
+                OscEvent::WorkingDirectory("/Users/example/My Project".to_owned()),
                 OscEvent::Progress {
                     state: 1,
                     percent: Some(100),
@@ -2126,10 +2127,10 @@ mod tests {
     #[test]
     fn osc_interceptor_preserves_sequences_owned_by_alacritty() {
         let mut interceptor = OscInterceptor::default();
-        let input = b"\x1b]8;;https://kero.sh\x1b\\Kero\x1b]8;;\x1b\\";
+        let input = b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\";
         let (output, events) = intercept(&mut interceptor, input);
 
-        assert_eq!(output, b"\x1b]8;;https://kero.sh\x07Kero\x1b]8;;\x07");
+        assert_eq!(output, b"\x1b]8;;https://example.com\x07Terminal\x1b]8;;\x07");
         assert!(events.is_empty());
     }
 
@@ -2179,11 +2180,11 @@ mod tests {
 /// FFI. The row list belongs to the handle and is valid until the next call.
 ///
 /// # Safety
-/// `handle` must be live and `out` a valid `KeroDamage`.
+/// `handle` must be live and `out` a valid `TerminalDamage`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_take_damage(
-    handle: *mut KeroTerminal,
-    out: *mut KeroDamage,
+pub unsafe extern "C" fn terminal_alacritty_take_damage(
+    handle: *mut TerminalHandle,
+    out: *mut TerminalDamage,
 ) {
     if handle.is_null() || out.is_null() {
         return;
@@ -2193,15 +2194,15 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
 
     let mut term = terminal.term.lock();
     let mut kind = match term.damage() {
-        TermDamage::Full => KERO_DAMAGE_FULL,
+        TermDamage::Full => TERMINAL_DAMAGE_FULL,
         TermDamage::Partial(iter) => {
             for bounds in iter {
                 terminal.dirty_rows.push(bounds.line);
             }
             if terminal.dirty_rows.is_empty() {
-                KERO_DAMAGE_NONE
+                TERMINAL_DAMAGE_NONE
             } else {
-                KERO_DAMAGE_PARTIAL
+                TERMINAL_DAMAGE_PARTIAL
             }
         }
     };
@@ -2210,11 +2211,11 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
     let graphics_revision = terminal.kitty_graphics.lock().revision;
     if graphics_revision != terminal.last_kitty_damage_revision {
         terminal.last_kitty_damage_revision = graphics_revision;
-        kind = KERO_DAMAGE_FULL;
+        kind = TERMINAL_DAMAGE_FULL;
         terminal.dirty_rows.clear();
     }
 
-    *out = KeroDamage {
+    *out = TerminalDamage {
         kind,
         rows: terminal.dirty_rows.as_ptr(),
         rows_len: terminal.dirty_rows.len(),
@@ -2227,11 +2228,11 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
 /// call on it, which keeps a redraw from allocating.
 ///
 /// # Safety
-/// `handle` must be live and `out` must be a valid `KeroSnapshot`.
+/// `handle` must be live and `out` must be a valid `TerminalSnapshot`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_snapshot(
-    handle: *mut KeroTerminal,
-    out: *mut KeroSnapshot,
+pub unsafe extern "C" fn terminal_alacritty_snapshot(
+    handle: *mut TerminalHandle,
+    out: *mut TerminalSnapshot,
 ) {
     if handle.is_null() || out.is_null() {
         return;
@@ -2250,7 +2251,7 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
     terminal.cell_text.clear();
     terminal.cells.resize(
         columns * screen_lines,
-        KeroCell {
+        TerminalCell {
             ch: u32::from(' '),
             fg: theme.foreground,
             bg: background,
@@ -2279,34 +2280,34 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
         let mut flags = 0u16;
         let source = cell.flags;
         if source.contains(Flags::INVERSE) {
-            flags |= KERO_CELL_INVERSE;
+            flags |= TERMINAL_CELL_INVERSE;
         }
         if source.contains(Flags::BOLD) {
-            flags |= KERO_CELL_BOLD;
+            flags |= TERMINAL_CELL_BOLD;
         }
         if source.contains(Flags::ITALIC) {
-            flags |= KERO_CELL_ITALIC;
+            flags |= TERMINAL_CELL_ITALIC;
         }
         if source.intersects(Flags::ALL_UNDERLINES) {
-            flags |= KERO_CELL_UNDERLINE;
+            flags |= TERMINAL_CELL_UNDERLINE;
         }
         if source.contains(Flags::STRIKEOUT) {
-            flags |= KERO_CELL_STRIKEOUT;
+            flags |= TERMINAL_CELL_STRIKEOUT;
         }
         if source.contains(Flags::DIM) {
-            flags |= KERO_CELL_DIM;
+            flags |= TERMINAL_CELL_DIM;
         }
         if source.contains(Flags::HIDDEN) {
-            flags |= KERO_CELL_HIDDEN;
+            flags |= TERMINAL_CELL_HIDDEN;
         }
         if source.contains(Flags::WIDE_CHAR) {
-            flags |= KERO_CELL_WIDE;
+            flags |= TERMINAL_CELL_WIDE;
         }
         if source.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-            flags |= KERO_CELL_WIDE_SPACER;
+            flags |= TERMINAL_CELL_WIDE_SPACER;
         }
         if selection.is_some_and(|range| range.contains(item.point)) {
-            flags |= KERO_CELL_SELECTED;
+            flags |= TERMINAL_CELL_SELECTED;
         }
 
         let (text_offset, text_len) =
@@ -2332,7 +2333,7 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
                 (0, 0)
             };
 
-        terminal.cells[line as usize * columns + column] = KeroCell {
+        terminal.cells[line as usize * columns + column] = TerminalCell {
             ch: u32::from(cell.c),
             fg: resolve(cell.fg, colors, &theme),
             bg: resolve(cell.bg, colors, &theme),
@@ -2352,7 +2353,7 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
         (cursor.point.line.0 as isize, cursor.point.column.0 as isize)
     };
 
-    *out = KeroSnapshot {
+    *out = TerminalSnapshot {
         cells: terminal.cells.as_ptr(),
         columns,
         rows: screen_lines,
@@ -2382,11 +2383,11 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
 /// handle and remain valid until its next FFI call.
 ///
 /// # Safety
-/// `handle` must be live and `out` must be a valid `KeroKittySnapshot`.
+/// `handle` must be live and `out` must be a valid `TerminalKittySnapshot`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
-    handle: *mut KeroTerminal,
-    out: *mut KeroKittySnapshot,
+pub unsafe extern "C" fn terminal_alacritty_kitty_snapshot(
+    handle: *mut TerminalHandle,
+    out: *mut TerminalKittySnapshot,
 ) {
     if handle.is_null() || out.is_null() {
         return;
@@ -2429,7 +2430,7 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
             .kitty_images
             .last()
             .expect("image was retained for the placement");
-        terminal.kitty_placements.push(KeroKittyPlacement {
+        terminal.kitty_placements.push(TerminalKittyPlacement {
             placement_serial: placement.placement_serial,
             image_id: placement.image_id,
             placement_id: placement.placement_id,
@@ -2454,7 +2455,7 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
         });
     }
 
-    *out = KeroKittySnapshot {
+    *out = TerminalKittySnapshot {
         revision,
         placements: terminal.kitty_placements.as_ptr(),
         placements_len: terminal.kitty_placements.len(),
@@ -2467,7 +2468,7 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_mode(handle: *mut KeroTerminal) -> u32 {
+pub unsafe extern "C" fn terminal_alacritty_mode(handle: *mut TerminalHandle) -> u32 {
     if handle.is_null() {
         return 0;
     }
@@ -2515,7 +2516,7 @@ pub unsafe extern "C" fn kero_alacritty_mode(handle: *mut KeroTerminal) -> u32 {
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_mark_exited(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn terminal_alacritty_mark_exited(handle: *mut TerminalHandle) {
     if handle.is_null() {
         return;
     }

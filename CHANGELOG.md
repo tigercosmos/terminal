@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to kero. This file is the **source of truth for the release
+All notable changes to terminal. This file is the **source of truth for the release
 notes shown in the in-app updater**: [`scripts/release.ts`](scripts/release.ts)
 extracts the section whose heading matches the version being released
 (`MARKETING_VERSION`) and publishes it next to the update, so Sparkle shows it in
@@ -47,7 +47,7 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [0.1.31]
 
-- File previews now refresh after files are changed outside Kero
+- File previews now refresh after files are changed outside Terminal
 - Option-key characters from macOS input sources such as Polish Pro now work in terminals; users who prefer terminal Meta bindings can opt in under Settings → Terminal
 
 ## [0.1.30]
@@ -57,8 +57,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [0.1.29]
 
-- Add `kero` command: run `kero` in any Kero terminal to create a project in the current directory, optionally with an argv to run directly (`kero vim ~/foo.js`); `kero +themes` browses themes with a live app-wide preview and saves the selection on Return
-- The Git panel now refreshes after commands and when Kero regains focus instead of polling continuously in the background
+- Add `terminal` command: run `terminal` in any Terminal terminal to create a project in the current directory, optionally with an argv to run directly (`terminal vim ~/foo.js`); `terminal +themes` browses themes with a live app-wide preview and saves the selection on Return
+- The Git panel now refreshes after commands and when Terminal regains focus instead of polling continuously in the background
 
 ## [0.1.28]
 
@@ -92,7 +92,7 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [0.1.22]
 
-- Add “Open in Kero” to Finder’s folder context menu, opening each selected folder as a project with its terminal started there
+- Add “Open in Terminal” to Finder’s folder context menu, opening each selected folder as a project with its terminal started there
 - Full-screen programs with their own background color (vim, htop, TUIs) now fill the terminal pane: the padding around the grid takes on the adjacent content's background instead of always showing the theme background, leaving only a hairline frame at the pane edges
 - Fix non-ASCII rendering in git diff view
 - Allow to rename session tabs
@@ -106,9 +106,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [0.1.20]
 
-- Security: stop terminal programs from silently reading your clipboard — an OSC 52 escape sequence (for example from a remote SSH host) could previously read the macOS clipboard without any prompt; kero now asks for confirmation first, matching the Ghostty app default (#8)
+- Security: stop terminal programs from silently reading your clipboard — an OSC 52 escape sequence (for example from a remote SSH host) could previously read the macOS clipboard without any prompt; terminal now asks for confirmation first, matching the Ghostty app default (#8)
 - Warn before pasting text that looks like it could execute commands, matching Ghostty's paste protection
-- Add color themes: Settings → Colors picks a theme per appearance — kero's Default Light/Dark plus all 485 bundled Ghostty themes — recoloring the terminal, window chrome, sidebars, and editor live. The built-in Defaults keep the GitHub palette and translucent sidebar; every other theme colors the sidebar too
+- Add color themes: Settings → Colors picks a theme per appearance — terminal's Default Light/Dark plus all 485 bundled Ghostty themes — recoloring the terminal, window chrome, sidebars, and editor live. The built-in Defaults keep the GitHub palette and translucent sidebar; every other theme colors the sidebar too
 - Fix fuzzy-looking terminal text: font thickening was unintentionally always on, making glyphs heavier and softer than stock Ghostty
 - Add a "Thicken font strokes" toggle in Settings → Font for those who prefer the heavier rendering
 
@@ -175,7 +175,7 @@ the original feature bullet instead of adding separate entries for them.
 ## [0.1.4]
 
 - Add "Session Contents Restored" divider to restored terminals
-- set TERM_PROGRAM to Kero
+- set TERM_PROGRAM to Terminal
 - fix embedded language highlighting in markdown
 
 ## [0.1]

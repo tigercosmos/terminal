@@ -3,7 +3,7 @@ import changelogSource from '../../../CHANGELOG.md?raw'
 import { SiteLayout } from '@/components/site-layout'
 
 const CONTRIBUTORS_URL =
-  'https://api.github.com/repos/egoist/kero/contributors?per_page=1&anon=1'
+  'https://api.github.com/repos/tigercosmos/terminal/contributors?per_page=1&anon=1'
 const FALLBACK_CONTRIBUTOR_COUNT = 2
 
 async function getContributorCount() {
@@ -11,7 +11,7 @@ async function getContributorCount() {
     const response = await fetch(CONTRIBUTORS_URL, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'kero.sh',
+        'User-Agent': 'tigercosmos-terminal',
       },
       signal: AbortSignal.timeout(2500),
     })
@@ -37,10 +37,10 @@ export const Route = createFileRoute('/changelog')({
   loader: getContributorCount,
   head: () => ({
     meta: [
-      { title: 'Changelog — Kero' },
+      { title: 'Changelog — Terminal' },
       {
         name: 'description',
-        content: 'The latest improvements, fixes, and new features in Kero.',
+        content: 'The latest improvements, fixes, and new features in Terminal.',
       },
     ],
   }),
@@ -100,7 +100,7 @@ function Changelog() {
             Changelog
           </h2>
           <p className="max-w-[540px] text-muted-foreground">
-            What changed in each kero release: new features, improvements, and fixes.
+            What changed in each terminal release: new features, improvements, and fixes.
           </p>
         </div>
         <dl className="mt-3 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-card/70">
@@ -114,7 +114,7 @@ function Changelog() {
       </section>
 
       <section
-        aria-label={`The last ${RELEASES.length} Kero releases`}
+        aria-label={`The last ${RELEASES.length} Terminal releases`}
         className="relative ml-2 pl-7 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[linear-gradient(to_bottom,var(--border)_0%,var(--border)_92%,transparent_100%)] sm:ml-3 sm:pl-10"
       >
         {RELEASES.map((release, index) => {

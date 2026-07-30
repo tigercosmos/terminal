@@ -10,11 +10,11 @@ Developers who spend most of their working session in a macOS terminal, often ru
 
 ## Product Purpose
 
-Kero is a terminal-centered project workspace. It keeps shells, files, diffs, repository state, and lightweight project controls close enough that developers can supervise ongoing work without switching to a full IDE. Success means the terminal remains primary while review and source-control actions stay fast, accurate, and understandable.
+Terminal is a terminal-centered project workspace. It keeps shells, files, diffs, repository state, and lightweight project controls close enough that developers can supervise ongoing work without switching to a full IDE. Success means the terminal remains primary while review and source-control actions stay fast, accurate, and understandable.
 
 ## Brand Personality
 
-Calm, precise, native. Kero should feel like a focused macOS tool that respects expert workflows, stays out of the way, and communicates state truthfully.
+Calm, precise, native. Terminal should feel like a focused macOS tool that respects expert workflows, stays out of the way, and communicates state truthfully.
 
 ## Anti-references
 

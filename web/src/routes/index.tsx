@@ -12,24 +12,26 @@ export const Route = createFileRoute('/')({
 
 type Release = { version: string; minSystem: string; dmg: string }
 
-const RELEASES_ORIGIN = 'https://releases.kero.sh'
+// No release host yet. Point this at the origin serving your archives and
+// appcast once one exists; until then the download call-to-action links to
+// the repository instead of a URL that would 404.
+const RELEASES_ORIGIN = ''
 const APPCAST_URL = `${RELEASES_ORIGIN}/appcast.xml`
-const GITHUB_URL = 'https://github.com/egoist/kero'
-// Cask lives in egoist/homebrew-tap, so the tap has to be named explicitly.
-// `--cask` is optional — brew falls back to casks, and the tap has no `kero` formula.
-const BREW_COMMAND = 'brew install egoist/tap/kero'
+const GITHUB_URL = 'https://github.com/tigercosmos/terminal'
+// No Homebrew tap yet; set this once a cask is published.
+const BREW_COMMAND = ''
 
 // Shown only if the appcast can't be reached; kept current so downloads still work.
 const FALLBACK: Release = {
   version: '0.1.11',
   minSystem: '15.6',
-  dmg: `${RELEASES_ORIGIN}/kero-0.1.11.dmg`,
+  dmg: `${RELEASES_ORIGIN}/terminal-0.1.11.dmg`,
 }
 
 /**
  * Pick the newest release out of the Sparkle appcast — the item with the highest
  * build number (`sparkle:version`). The site links the notarized `.dmg`, which
- * sits beside the `.zip` update enclosure at `kero-<version>.dmg`.
+ * sits beside the `.zip` update enclosure at `terminal-<version>.dmg`.
  */
 function parseLatestRelease(xml: string): Release | null {
   let best: { build: number; version: string; minSystem: string } | null = null
@@ -52,11 +54,13 @@ function parseLatestRelease(xml: string): Release | null {
   return {
     version: best.version,
     minSystem: best.minSystem,
-    dmg: `${RELEASES_ORIGIN}/kero-${best.version}.dmg`,
+    dmg: `${RELEASES_ORIGIN}/terminal-${best.version}.dmg`,
   }
 }
 
-async function fetchLatestRelease(): Promise<Release> {
+async function fetchLatestRelease(): Promise<Release | null> {
+  // No release host configured yet — nothing to advertise.
+  if (!RELEASES_ORIGIN) return null
   try {
     const res = await fetch(APPCAST_URL, {
       signal: AbortSignal.timeout(2500),
@@ -143,7 +147,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       },
       {
         name: 'Built on libghostty',
-        detail: "Ghostty's terminal core, embedded and hosted natively by kero",
+        detail: "Ghostty's terminal core, embedded and hosted natively by terminal",
       },
       {
         name: 'Desktop notifications',
@@ -194,16 +198,16 @@ const SHORTCUTS: Row[] = [
 
 const FAQ: { q: string; a: ReactNode }[] = [
   {
-    q: 'Is kero free?',
+    q: 'Is terminal free?',
     a: 'Yes. Free to download, no subscription, no account.',
   },
   {
     q: 'Does it replace my shell?',
-    a: 'No. kero hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. The terminal underneath is libghostty, the same core as Ghostty.',
+    a: 'No. terminal hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. The terminal underneath is libghostty, the same core as Ghostty.',
   },
   {
     q: 'Does it collect any data?',
-    a: 'No telemetry, no analytics. The only network call kero makes is the update check against releases.kero.sh.',
+    a: 'No telemetry, no analytics. The only network call Terminal makes is the update check, and that is off until an update feed is configured.',
   },
   {
     q: 'What happens to my sessions when I quit?',
@@ -242,14 +246,24 @@ function Home() {
     >
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <a
-            href={latest.dmg}
-            download
-            className="inline-flex items-center gap-2 rounded-[9px] border border-border bg-card px-4 py-[7px] text-foreground transition-colors hover:border-brand hover:bg-brand/8 hover:text-brand"
-          >
-            <span className="i-mingcute-apple-fill size-4 shrink-0" />
-            Download .dmg
-          </a>
+          {latest ? (
+            <a
+              href={latest.dmg}
+              download
+              className="inline-flex items-center gap-2 rounded-[9px] border border-border bg-card px-4 py-[7px] text-foreground transition-colors hover:border-brand hover:bg-brand/8 hover:text-brand"
+            >
+              <span className="i-mingcute-apple-fill size-4 shrink-0" />
+              Download .dmg
+            </a>
+          ) : (
+            <a
+              href={`${GITHUB_URL}#install`}
+              className="inline-flex items-center gap-2 rounded-[9px] border border-border bg-card px-4 py-[7px] text-foreground transition-colors hover:border-brand hover:bg-brand/8 hover:text-brand"
+            >
+              <span className="i-mingcute-apple-fill size-4 shrink-0" />
+              Build from source
+            </a>
+          )}
           <a
             href={GITHUB_URL}
             target="_blank"
@@ -260,19 +274,18 @@ function Home() {
             GitHub
           </a>
         </div>
-        <CopyCommand command={BREW_COMMAND} />
+        {BREW_COMMAND ? <CopyCommand command={BREW_COMMAND} /> : null}
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-          <Pill>v{latest.version}</Pill>
-          <Pill>macOS {latest.minSystem}+</Pill>
-          <Pill>signed &amp; notarized</Pill>
+          {latest ? <Pill>v{latest.version}</Pill> : null}
+          {latest ? <Pill>macOS {latest.minSystem}+</Pill> : null}
           <Pill>free & open-source</Pill>
         </div>
       </section>
 
       <figure className="m-0 flex flex-col gap-2">
         <img
-          src="/kero-screenshot.png"
-          alt="kero showing a project's terminal session with the git panel open"
+          src="/terminal-screenshot.png"
+          alt="terminal showing a project's terminal session with the git panel open"
           width={2286}
           height={1568}
           className="block w-full rounded-lg border border-border bg-card"

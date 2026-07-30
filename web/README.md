@@ -1,6 +1,6 @@
-# Kero — website
+# Terminal — website
 
-Landing page for **Kero**, the native terminal workspace for macOS.
+Landing page for **Terminal**, the native terminal workspace for macOS.
 
 ## Stack
 
@@ -30,17 +30,17 @@ bun run deploy        # vite build → wrangler deploy
 picks it up. `bun run preview` serves the built Worker locally.
 
 Config lives in [`wrangler.jsonc`](wrangler.jsonc) (worker name, compatibility
-flags). To serve from `kero.sh`, uncomment the `routes` entry there once the zone
+flags). To serve from your own domain, uncomment the `routes` entry there once the zone
 is on Cloudflare. Run `bun run cf-typegen` after adding any bindings.
 
 ## Notes
 
 - The theme lives in [`src/styles/app.css`](src/styles/app.css) — a GitHub-dark
-  palette that mirrors the macOS app (`kero/Theme.swift`).
+  palette that mirrors the macOS app (`terminal/Theme.swift`).
 - Add more components with `bunx shadcn@latest add <name>` — the project is
   already configured for Base UI (`components.json` → `"style": "base-nova"`).
 - The download URL and version live in the `LATEST` constant at the top of
   [`src/routes/index.tsx`](src/routes/index.tsx). Bump it on each release.
-- The hero product shot is [`public/kero-screenshot.png`](public/kero-screenshot.png)
+- The hero product shot is [`public/terminal-screenshot.png`](public/terminal-screenshot.png)
   (a real app screenshot with transparent padding + shadow) — swap the file to
   update it.

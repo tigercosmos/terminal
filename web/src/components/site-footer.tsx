@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 const X_URL = 'https://x.com/localhost_4173'
-const GITHUB_URL = 'https://github.com/egoist/kero'
+const GITHUB_URL = 'https://github.com/tigercosmos/terminal'
 
 export function SiteFooter() {
   return (

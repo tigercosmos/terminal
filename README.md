@@ -1,8 +1,8 @@
-# Kero
+# Terminal
 
 A native terminal workspace for macOS.
 
-![preview](https://kero.sh/kero-screenshot.png)
+![preview](web/public/terminal-screenshot.png)
 
 ## Features
 
@@ -13,15 +13,16 @@ A native terminal workspace for macOS.
 - Group by projects
 - File tree
 
-## Download
+## Install
 
-https://kero.sh
-
-Or with Homebrew:
+No prebuilt downloads yet — this fork has no release host, Homebrew tap, or
+update-signing key of its own. Build it from source:
 
 ```sh
-brew install egoist/tap/kero
+git clone --recurse-submodules https://github.com/tigercosmos/terminal.git
 ```
+
+Then follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 

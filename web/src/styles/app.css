@@ -60,7 +60,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Kero — GitHub Light palette (light mode) */
+/* Terminal — GitHub Light palette (light mode) */
 :root {
   --background: #ffffff;
   --foreground: #1f2328;
@@ -99,7 +99,7 @@
   --sidebar-ring: #0969da;
 }
 
-/* Kero — near-black developer canvas (default) */
+/* Terminal — near-black developer canvas (default) */
 .dark {
   --background: #08090d;
   --foreground: #e6edf3;
@@ -156,7 +156,7 @@
   }
 }
 
-@keyframes kero-blink {
+@keyframes terminal-blink {
   0%,
   49% {
     opacity: 1;
@@ -167,5 +167,5 @@
   }
 }
 .animate-caret {
-  animation: kero-blink 1.1s step-end infinite;
+  animation: terminal-blink 1.1s step-end infinite;
 }

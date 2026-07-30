@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 //
-// Automated kero release:
+// Automated terminal release:
 //   archive → Developer ID export → notarize → staple → package →
 //   sign & (re)generate the Sparkle appcast → upload to Cloudflare R2.
 //
-// Download origin: https://releases.kero.sh  (R2 bucket + custom domain).
+// Download origin: set DOWNLOAD_URL_PREFIX — this fork has no release host yet.
 //
 // One-time setup (see RELEASING.md):
 //   • Sparkle EdDSA keys in your keychain   — `generate_keys`
@@ -41,21 +41,21 @@ if (unknownArg) die(`unknown option: ${unknownArg}`);
 const localBuild = args.includes("--local");
 
 // ---- config (override via env) -------------------------------------------
-const PROJECT = "kero.xcodeproj";
-const SCHEME = "kero";
+const PROJECT = "terminal.xcodeproj";
+const SCHEME = "terminal";
 const CONFIGURATION = process.env.CONFIGURATION ?? "Release";
 const BUILD_DIR = process.env.BUILD_DIR ?? "build";
 const UPDATES_DIR = join(BUILD_DIR, "updates");
-const ARCHIVE_PATH = join(BUILD_DIR, "kero.xcarchive");
+const ARCHIVE_PATH = join(BUILD_DIR, "terminal.xcarchive");
 const EXPORT_DIR = join(BUILD_DIR, "export");
 const EXPORT_OPTIONS = process.env.EXPORT_OPTIONS ?? "scripts/ExportOptions.plist";
 const NOTARY_PROFILE = process.env.NOTARY_PROFILE ?? "NOTARY";
 // Codesigning identity for the .dmg itself. A partial name matches when there's
 // a single Developer ID Application cert; override with the full name/SHA-1.
 const SIGN_IDENTITY = process.env.SIGN_IDENTITY ?? "Developer ID Application";
-const DOWNLOAD_URL_PREFIX = process.env.DOWNLOAD_URL_PREFIX ?? "https://releases.kero.sh/";
+const DOWNLOAD_URL_PREFIX = process.env.DOWNLOAD_URL_PREFIX ?? "";
 const R2_REMOTE = process.env.R2_REMOTE ?? "r2";
-const R2_BUCKET = process.env.R2_BUCKET ?? "kero-releases";
+const R2_BUCKET = process.env.R2_BUCKET ?? "terminal-releases";
 const R2_DEST = `${R2_REMOTE}:${R2_BUCKET}`;
 // Keep a broader recent window available for delta generation. Override to
 // trade delta coverage for less download/storage.
@@ -94,7 +94,7 @@ await $`xcodebuild -project ${PROJECT} -scheme ${SCHEME} -configuration ${CONFIG
 say("Exporting Developer ID app…");
 await $`xcodebuild -exportArchive -archivePath ${ARCHIVE_PATH} -exportOptionsPlist ${EXPORT_OPTIONS} -exportPath ${EXPORT_DIR}`;
 
-const app = join(EXPORT_DIR, "Kero.app");
+const app = join(EXPORT_DIR, "Terminal.app");
 if (!existsSync(app)) die(`exported app not found at ${app}`);
 const appPlist = join(app, "Contents/Info.plist");
 
@@ -102,9 +102,9 @@ const appPlist = join(app, "Contents/Info.plist");
 const version = (await $`plutil -extract CFBundleShortVersionString raw ${appPlist}`.text()).trim();
 const build = (await $`plutil -extract CFBundleVersion raw ${appPlist}`.text()).trim();
 if (!version) die("could not read CFBundleShortVersionString");
-const zipName = `kero-${version}.zip`; // Sparkle in-app update (deltas)
-const dmgName = `kero-${version}.dmg`; // notarized download
-say(`Releasing kero ${version} (build ${build})`);
+const zipName = `terminal-${version}.zip`; // Sparkle in-app update (deltas)
+const dmgName = `terminal-${version}.dmg`; // notarized download
+say(`Releasing terminal ${version} (build ${build})`);
 
 // Don't clobber an already-published version unless forced.
 if (!localBuild && process.env.FORCE !== "1") {
@@ -128,22 +128,22 @@ const dmgStaging = join(BUILD_DIR, "dmg");
 rmSync(dmgStaging, { recursive: true, force: true });
 rmSync(dmgPath, { force: true });
 mkdirSync(dmgStaging, { recursive: true });
-await $`ditto ${app} ${join(dmgStaging, "Kero.app")}`;
+await $`ditto ${app} ${join(dmgStaging, "Terminal.app")}`;
 // create-dmg can return non-zero from cosmetic Finder-scripting hiccups even
 // when the image is fine, so check for the file instead of the exit code.
 await $`create-dmg \
-  --volname ${`Kero ${version}`} \
+  --volname ${`Terminal ${version}`} \
   --window-size 540 380 \
   --icon-size 128 \
-  --icon ${"Kero.app"} 150 195 \
+  --icon ${"Terminal.app"} 150 195 \
   --app-drop-link 390 195 \
-  --hide-extension ${"Kero.app"} \
+  --hide-extension ${"Terminal.app"} \
   --no-internet-enable \
   ${dmgPath} ${dmgStaging}`.nothrow();
 if (!existsSync(dmgPath)) die("create-dmg did not produce a disk image");
 await $`codesign --force --sign ${SIGN_IDENTITY} ${dmgPath}`;
 if (localBuild) {
-  say(`Done. Built and signed kero ${version} locally; nothing was notarized or published:`);
+  say(`Done. Built and signed terminal ${version} locally; nothing was notarized or published:`);
   console.log(`     app      : ${app}`);
   console.log(`     download : ${dmgPath}`);
   process.exit(0);
@@ -171,12 +171,12 @@ if (process.env.NO_HISTORY !== "1") {
     await $`rclone lsjson ${R2_DEST} ${RCLONE_FLAGS} --files-only --include ${"*.zip"} --include ${"appcast.xml"}`.text(),
   ) as RemoteFile[];
   const archiveVersion = (name: string) =>
-    name.slice("kero-".length, -".zip".length);
+    name.slice("terminal-".length, -".zip".length);
   const versionOrder = new Intl.Collator("en", { numeric: true });
   const recentArchives = remoteFiles
     .filter(
       ({ Name, IsDir }) =>
-        !IsDir && /^kero-.+\.zip$/.test(Name) && Name !== zipName,
+        !IsDir && /^terminal-.+\.zip$/.test(Name) && Name !== zipName,
     )
     .sort((a, b) =>
       versionOrder.compare(archiveVersion(b.Name), archiveVersion(a.Name)),
@@ -207,13 +207,13 @@ say(`Packaging ${zipName}…`);
 await $`ditto -c -k --keepParent ${app} ${join(UPDATES_DIR, zipName)}`;
 
 // Release notes: slice this version's section out of CHANGELOG.md next to the
-// archive (as kero-<version>.md). generate_appcast then attaches it as the
+// archive (as terminal-<version>.md). generate_appcast then attaches it as the
 // update's <sparkle:releaseNotesLink>, which Sparkle renders in the prompt.
 const changelog = "CHANGELOG.md";
 if (existsSync(changelog)) {
   const notes = extractReleaseNotes(await Bun.file(changelog).text(), version);
   if (notes) {
-    await Bun.write(join(UPDATES_DIR, `kero-${version}.md`), `${notes}\n`);
+    await Bun.write(join(UPDATES_DIR, `terminal-${version}.md`), `${notes}\n`);
     say(`Attached release notes for ${version}`);
   } else {
     say(`No "${version}" section in ${changelog} — releasing without notes`);
@@ -253,7 +253,7 @@ if (process.env.NO_TAP !== "1") {
   }
 }
 
-say(`Done. kero ${version} is live:`);
+say(`Done. terminal ${version} is live:`);
 console.log(`     download : ${DOWNLOAD_URL_PREFIX}${dmgName}`);
 console.log(`     update   : ${DOWNLOAD_URL_PREFIX}${zipName}`);
 console.log(`     feed     : ${DOWNLOAD_URL_PREFIX}appcast.xml`);

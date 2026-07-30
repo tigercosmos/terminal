@@ -1,4 +1,4 @@
-//! Headless harness: drives the bridge exactly as Kero does and prints the
+//! Headless harness: drives the bridge exactly as Terminal does and prints the
 //! grid as text plus per-cell flags.
 //!
 //! This exists to tell an emulator bug from a renderer bug without AppKit in
@@ -10,10 +10,10 @@ use std::ffi::{c_void, CString};
 use std::thread::sleep;
 use std::time::Duration;
 
-use kero_alacritty::*;
+use terminal_alacritty::*;
 
 extern "C" fn on_event(_context: *mut c_void, kind: u32, _data: *const u8, _len: usize) {
-    if kind == KERO_EVENT_EXIT {
+    if kind == TERMINAL_EVENT_EXIT {
         eprintln!("[event] exit");
     }
 }
@@ -49,7 +49,7 @@ fn main() {
     let args = [arg.as_ptr(), script.as_ptr()];
     let env = [term.as_ptr()];
 
-    let config = KeroConfig {
+    let config = TerminalConfig {
         shell: shell.as_ptr(),
         args: args.as_ptr(),
         args_len: args.len(),
@@ -63,7 +63,7 @@ fn main() {
         scrollback_lines: 1000,
     };
 
-    let mut theme = KeroTheme {
+    let mut theme = AlacrittyPalette {
         palette: [0; 256],
         foreground: 0xffffff,
         background: 0,
@@ -73,23 +73,23 @@ fn main() {
         *slot = (index as u32) * 0x010101;
     }
 
-    let handle = unsafe { kero_alacritty_new(&config, &theme, on_event, std::ptr::null_mut()) };
+    let handle = unsafe { terminal_alacritty_new(&config, &theme, on_event, std::ptr::null_mut()) };
     assert!(!handle.is_null(), "failed to spawn");
     sleep(Duration::from_millis(600));
 
     for command in &commands {
         let line = format!("{command}\n");
-        unsafe { kero_alacritty_write(handle, line.as_ptr(), line.len()) };
+        unsafe { terminal_alacritty_write(handle, line.as_ptr(), line.len()) };
         sleep(Duration::from_millis(700));
     }
     sleep(Duration::from_millis(400));
 
     if scroll != 0 {
-        unsafe { kero_alacritty_scroll(handle, scroll) };
+        unsafe { terminal_alacritty_scroll(handle, scroll) };
         sleep(Duration::from_millis(100));
     }
 
-    let mut snapshot = KeroSnapshot {
+    let mut snapshot = TerminalSnapshot {
         cells: std::ptr::null(),
         columns: 0,
         rows: 0,
@@ -105,14 +105,14 @@ fn main() {
         total_lines: 0,
         screen_lines: 0,
     };
-    unsafe { kero_alacritty_snapshot(handle, &mut snapshot) };
+    unsafe { terminal_alacritty_snapshot(handle, &mut snapshot) };
 
     if let Some(needle) = needle {
         let c_needle = CString::new(needle.clone()).unwrap();
-        let count = unsafe { kero_alacritty_find(handle, c_needle.as_ptr()) };
+        let count = unsafe { terminal_alacritty_find(handle, c_needle.as_ptr()) };
         println!("find {needle:?} -> {count} matches");
         for _ in 0..count.min(3) {
-            let index = unsafe { kero_alacritty_find_step(handle, true) };
+            let index = unsafe { terminal_alacritty_find_step(handle, true) };
             println!("  stepped to {index}");
         }
     }
@@ -145,5 +145,5 @@ fn main() {
         }
     }
 
-    unsafe { kero_alacritty_free(handle) };
+    unsafe { terminal_alacritty_free(handle) };
 }
