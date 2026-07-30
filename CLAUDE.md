@@ -25,3 +25,18 @@ you touch the Rust bridge. Requires Xcode 27; see
   ship. Never add or revise release notes for incremental fixes, refactors,
   implementation details, or regressions introduced and resolved while a
   feature is still in progress on an unreleased branch.
+
+## Agent tooling
+
+Shared by Claude Code, Codex, and Cursor; `.codex/` and `.cursor/` symlink
+into `.claude/`.
+
+- `.claude/skills/` — `verify-change` (build, run, exercise, test),
+  `swift-style-review` (after editing Swift under `terminal/`), `commit-code`,
+  `create-pr`, `worktree`.
+- `.claude/hooks/check-source.sh` — reports rustfmt findings on an edited
+  `.rs` file. Advisory; the bridge has a few pre-existing diffs.
+- `.claude/hooks/check-version-bump.sh` — blocks a `git commit` that stages
+  `MARKETING_VERSION` or a numbered `CHANGELOG.md` heading.
+- `.claude/settings.json` — permissions, hooks, status line. Machine-local
+  overrides go in the git-ignored `settings.local.json`.
