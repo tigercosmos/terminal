@@ -16,6 +16,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Opening files is much faster: switching back to an open file is now instant
+  (keeping its undo history), and large files no longer stall while scrolled
+  away from the top
 - Add per-pane live titles and split controls in split layouts
 - Opening a folder no longer lets that repository's own Git configuration run
   commands on your machine

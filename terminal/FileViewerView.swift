@@ -53,6 +53,18 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// editor, nils out when the pane unmounts.
     weak var editorView: NSView?
 
+    /// The built editor, kept alive across tab switches. Rebuilding the editor
+    /// on every remount re-set the text, re-parsed it for highlighting, and —
+    /// for a file scrolled deep into a large document — made TextKit re-measure
+    /// every line above the restored offset, which took whole seconds. Reusing
+    /// the live view makes switching back to an open file instant (and keeps
+    /// its undo history, which a rebuild used to drop). Same idea as the diff
+    /// panes that stay mounted for their web views, just held here because
+    /// file panes do unmount. `cachedEditorRevision` pairs the view with the
+    /// disk content it was built from; a reload builds a fresh editor.
+    var cachedEditorScrollView: NSScrollView?
+    var cachedEditorRevision: UInt = 0
+
     private nonisolated static let maxTextBytes = 5 << 20
     private nonisolated static let imageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "gif", "heic", "webp", "tiff", "bmp", "icns",

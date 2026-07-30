@@ -5,6 +5,8 @@
 
 import AppKit
 import STPluginNeon
+// For NSTextContentManager.length, used to clamp the restored selection.
+import STTextKitPlus
 import STTextView
 import SwiftUI
 
@@ -63,6 +65,30 @@ struct SourceTextEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
+        // Reuse the live editor from the previous mount of this file: it
+        // already holds the text, its parse and highlight state, its undo
+        // stack, and — decisively — TextKit's per-line measurements, which
+        // cost whole seconds to rebuild for a large file scrolled away from
+        // the top. A reload (revision bump) means different bytes, so only
+        // then is the editor built from scratch.
+        if let cached = file.cachedEditorScrollView,
+           file.cachedEditorRevision == file.reloadRevision,
+           let cachedTextView = cached.documentView as? FocusReportingTextView {
+            cachedTextView.onBecomeFirstResponder = onFocused
+            cachedTextView.splitTarget.onSplit = onSplit
+            cachedTextView.splitTarget.onNewBrowserTab = onNewBrowserTab
+            cachedTextView.splitTarget.onNewBrowserPane = onNewBrowserPane
+            context.coordinator.attach(textView: cachedTextView, scrollView: cached)
+            if isFocused {
+                DispatchQueue.main.async {
+                    cachedTextView.window?.makeFirstResponder(cachedTextView)
+                }
+            }
+            context.coordinator.wasFocused = isFocused
+            file.editorView = cached
+            return cached
+        }
+
         let scrollView = RestorableScrollView()
         let textView = FocusReportingTextView()
         textView.onBecomeFirstResponder = onFocused
@@ -114,7 +140,9 @@ struct SourceTextEditor: NSViewRepresentable {
         // observer starts overwriting `editorState` immediately.
         let state = file.editorState
         if let location = state.selectionLocation {
-            let limit = (textView.text ?? "").utf16.count
+            // Not `textView.text`: that getter materializes a copy of the
+            // whole document just to clamp one offset.
+            let limit = textView.textContentManager.length
             let start = min(max(0, location), limit)
             let length = min(max(0, state.selectionLength ?? 0), limit - start)
             textView.textSelection = NSRange(location: start, length: length)
@@ -151,6 +179,8 @@ struct SourceTextEditor: NSViewRepresentable {
         context.coordinator.wasFocused = isFocused
         // Expose the view so a pane-move drag can snapshot it as a thumbnail.
         file.editorView = scrollView
+        file.cachedEditorScrollView = scrollView
+        file.cachedEditorRevision = file.reloadRevision
         return scrollView
     }
 
