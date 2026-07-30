@@ -1,6 +1,6 @@
 # Why terminal vendors STTextView
 
-This directory is a **verbatim copy of upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11`**, with exactly **three** local source patches. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `terminal.xcodeproj`), not as a remote SPM dependency.
+This directory is a **verbatim copy of upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11`**, with exactly **four** local source patches. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `terminal.xcodeproj`), not as a remote SPM dependency.
 
 We vendor it for one reason: **to carry source-level fixes that aren't in any upstream release.** SPM has no patch/overlay mechanism for a remote package — the only way to ship changes to a dependency's own source is to check that source into the repo and point the project at the local copy. Once the patches below land upstream, we can delete this directory and go back to a pinned remote dependency (see [Exit path](#exit-path)).
 
@@ -60,6 +60,28 @@ override open func addRenderingAttribute(_ attribute: NSAttributedString.Key, va
 
 **Why the fix is safe.** An empty range has nothing to render, so skipping the call is a no-op — it only suppresses the crash. Worth upstreaming.
 
+### Gutter line numbering is O(document) per layout pass
+
+**`Sources/STTextViewAppKit/STTextView+Gutter.swift`** (plus a cache property and its invalidation in **`STTextView.swift`**) — numbering the gutter walks the whole document above the viewport on every layout pass.
+
+`layoutGutterLineNumbers()` computed the first visible line's number as
+
+```swift
+textContentManager.textElements(
+    for: NSTextRange(location: documentRange.location, end: viewportRange.location)!
+).count
+```
+
+which materializes an `NSTextParagraph` (with its attributed substring) for **every line above the viewport**, on **every** gutter layout — and the gutter lays out on every viewport layout, selection change, and scroll tick.
+
+**Symptom.** With a large file scrolled away from the top, every layout pass pays O(document) allocations: ~13 ms per pass for a 120k-line file (measured), on top of TextKit's own work — scrolling burns CPU, and any restored scroll position multiplies the cost across the initial layout passes.
+
+**The fix.** Count paragraph separators directly in the backing `NSTextStorage` string, in fixed-size chunks with no per-line objects, and cache `(characterOffset, lineIndex)` of the last numbered viewport start (`gutterLineIndexCache` on `STTextView`) so a scroll only scans the delta between the old and new positions. The cache is invalidated in `didChangeText()`; attribute-only changes keep it, since they cannot renumber lines. A non-storage-backed content manager falls back to the original element walk.
+
+The counted separators are exactly the ones `NSTextContentStorage` splits paragraphs on: **LF, CR, CRLF (one separator), and PS (U+2029)** — and deliberately *not* NEL (U+0085), LS (U+2028), VT or FF, which it keeps inside a paragraph. This was established by probing `textElements(for:)` directly rather than assumed: counting NEL numbered every line after one too high.
+
+**Why the fix is safe.** The viewport start is always a paragraph start (layout fragments cover whole paragraphs), so "separators before the offset" equals "paragraphs before the viewport" — the same number the element walk produced. Verified against that element walk as an oracle over forward, backward and random scrolling, mixed separators, and edits above the viewport. Measured on a 120k-line file scrolled to 90% depth: the replaced element walk alone cost 10.5 ms per pass (0.87 ms at 10k lines — linear in document size), while the whole patched layout pass, TextKit's own work included, is 3.7 ms at both 10k and 120k lines. Worth upstreaming.
+
 ## Identifying the vendored version
 
 Don't trust `CHANGELOG.md` in this directory — upstream's own changelog stops at `2.3.8` even on the `2.3.11` tag, so it is not a version marker. To confirm the base, diff `Sources/` against upstream tags and pick the one that differs only by the patches above:
@@ -68,13 +90,13 @@ Don't trust `CHANGELOG.md` in this directory — upstream's own changelog stops 
 git clone https://github.com/krzyzanowskim/STTextView.git /tmp/sttv && cd /tmp/sttv
 git checkout 2.3.11 -- Sources
 diff -ru Sources /path/to/terminal/Vendor/STTextView/Sources
-# expect: only the three documented source files and hunks differ
+# expect: only the four documented source files and hunks differ
 ```
 
 ## Re-vendoring / bumping the version
 
 1. Check out the new upstream tag's tree over this directory (keep the `.md` docs like this one).
-2. Re-apply all three patches above; grep for `terminal patch` to find them, and check whether upstream has since fixed any root cause — if so, drop the corresponding patch.
+2. Re-apply all four patches above; grep for `terminal patch` to find them, and check whether upstream has since fixed any root cause — if so, drop the corresponding patch.
 3. Verify the delta is limited to the documented source files, using the diff recipe above.
 4. Build with the project's usual command and confirm gutter numbers stay aligned after changing font/size (settings → editor) with a file open.
 
@@ -88,4 +110,4 @@ Don't re-add these to the package — they live on the app side, in [`terminal/S
 
 ## Exit path
 
-These three fixes are the only things keeping this vendored. Upstream them, and once all ship in a release, delete `Vendor/STTextView`, remove the `XCLocalSwiftPackageReference` from `terminal.xcodeproj`, and add STTextView back as a normal remote package dependency pinned to that release. (The empty-range guard could alternatively move upstream into the Neon plugin's `applyStyle`; either home retires the patch.)
+These four fixes are the only things keeping this vendored. Upstream them, and once all ship in a release, delete `Vendor/STTextView`, remove the `XCLocalSwiftPackageReference` from `terminal.xcodeproj`, and add STTextView back as a normal remote package dependency pinned to that release. (The empty-range guard could alternatively move upstream into the Neon plugin's `applyStyle`; either home retires the patch.)

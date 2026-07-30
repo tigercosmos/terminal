@@ -139,16 +139,17 @@ extension STTextView {
                 return
             }
 
-            // Calculate how many lines exist before the viewport
-            let textElementsBeforeViewport = textContentManager.textElements(
-                for: NSTextRange(
-                    location: textLayoutManager.documentRange.location,
-                    end: viewportRange.location
-                )!
-            )
-
+            // Calculate how many lines exist before the viewport.
+            // terminal patch: this used `textContentManager.textElements(for:)`
+            // over documentStart..<viewportStart, which materializes an
+            // NSTextParagraph for every line above the viewport — O(document)
+            // allocations on every layout pass. Opening a large file at a
+            // restored scroll position took ~1s, and every scrolled layout
+            // pass repaid the cost. Count paragraph separators in the backing
+            // string instead, resuming from the previous viewport start so
+            // scrolling only scans the delta.
             var requiredWidthFitText = gutterView.minimumThickness
-            let startLineIndex = textElementsBeforeViewport.count
+            let startLineIndex = lineIndex(at: viewportRange.location)
             var linesCount = 0
 
             for (layoutFragment, fragmentView) in visibleFragmentViews {
@@ -232,5 +233,88 @@ extension STTextView {
         }
 
         gutterView.layoutMarkers()
+    }
+
+    /// terminal patch: the zero-based line index of `location`, which the
+    /// viewport layout guarantees is a paragraph start. Counts paragraph
+    /// separators in the backing string — no per-line object materialization —
+    /// and resumes from the previously numbered viewport start
+    /// (`gutterLineIndexCache`) so a scroll only scans the text between the
+    /// old and new positions.
+    private func lineIndex(at location: NSTextLocation) -> Int {
+        let documentStart = textLayoutManager.documentRange.location
+        let offset = textContentManager.offset(from: documentStart, to: location)
+        guard offset > 0 else {
+            gutterLineIndexCache = (0, 0)
+            return 0
+        }
+        // Every STTextView is storage-backed in practice; keep the original
+        // element walk as the fallback for any exotic content manager.
+        guard let backing = (textContentManager as? NSTextContentStorage)?.textStorage?.mutableString else {
+            return textContentManager.textElements(
+                for: NSTextRange(location: documentStart, end: location)!
+            ).count
+        }
+
+        var (baseOffset, baseLine) = gutterLineIndexCache ?? (0, 0)
+        if baseOffset < 0 || baseOffset > backing.length {
+            // Defensive: a stale cache (missed invalidation) must degrade to a
+            // full rescan, never to an out-of-bounds read.
+            (baseOffset, baseLine) = (0, 0)
+        }
+
+        let line: Int
+        if offset >= baseOffset {
+            line = baseLine + Self.paragraphSeparatorCount(
+                in: backing, range: NSRange(location: baseOffset, length: offset - baseOffset)
+            )
+        } else {
+            line = baseLine - Self.paragraphSeparatorCount(
+                in: backing, range: NSRange(location: offset, length: baseOffset - offset)
+            )
+        }
+        gutterLineIndexCache = (offset, line)
+        return line
+    }
+
+    /// Number of paragraph separators in `range`, matching the boundaries
+    /// NSTextContentStorage splits paragraphs on: LF, CR, CRLF (one separator)
+    /// and PS (U+2029). Deliberately *not* NEL (U+0085), LS (U+2028), VT or FF
+    /// — `-[NSTextContentStorage textElements(for:)]` keeps those inside a
+    /// paragraph, so counting them would number every line after one too high.
+    /// Scans fixed-size chunks so large documents never materialize per-line
+    /// objects or a full character copy at once.
+    private static func paragraphSeparatorCount(in string: NSString, range: NSRange) -> Int {
+        guard range.length > 0 else { return 0 }
+        var count = 0
+        var buffer = [unichar](repeating: 0, count: min(range.length, 64 * 1024))
+        var location = range.location
+        let end = range.location + range.length
+        // Tracks a CR at a chunk's trailing edge so the LF opening the next
+        // chunk is still recognized as the same CRLF separator.
+        var previousWasCR = false
+        while location < end {
+            let chunkLength = min(buffer.count, end - location)
+            buffer.withUnsafeMutableBufferPointer { pointer in
+                string.getCharacters(pointer.baseAddress!, range: NSRange(location: location, length: chunkLength))
+            }
+            for index in 0..<chunkLength {
+                switch buffer[index] {
+                case 0x0A: // LF, already counted when it completes a CRLF
+                    if !previousWasCR { count += 1 }
+                    previousWasCR = false
+                case 0x0D: // CR separates on its own; a following LF is skipped
+                    count += 1
+                    previousWasCR = true
+                case 0x2029: // PS
+                    count += 1
+                    previousWasCR = false
+                default:
+                    previousWasCR = false
+                }
+            }
+            location += chunkLength
+        }
+        return count
     }
 }

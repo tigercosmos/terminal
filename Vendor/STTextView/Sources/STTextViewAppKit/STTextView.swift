@@ -521,6 +521,12 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
     var fragmentViewMap: NSMapTable<NSTextLayoutFragment, STTextLayoutFragmentView>
     var lastUsedFragmentViews: Set<STTextLayoutFragmentView> = []
+    /// terminal patch: (character offset, line index) of the last viewport start
+    /// the gutter numbered, so the next gutter layout only counts the paragraph
+    /// separators between the two positions instead of walking the document
+    /// from the top. Reset on every text change (see `didChangeText()`);
+    /// attribute-only changes keep it, since they cannot renumber lines.
+    var gutterLineIndexCache: (characterOffset: Int, lineIndex: Int)?
     private var _usageBoundsForTextContainerObserver: NSKeyValueObservation?
 
     lazy var _speechSynthesizer = AVSpeechSynthesizer()
@@ -1638,6 +1644,9 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     /// Subclasses implementing methods that change their text should invoke this method at the end of those methods.
     open func didChangeText() {
         _completionTextChangeGeneration += 1
+        // terminal patch: the edit may have added or removed lines anywhere in
+        // the document, so the gutter's cached line index is no longer valid.
+        gutterLineIndexCache = nil
 
         let notification = Notification(name: STTextView.textDidChangeNotification, object: self, userInfo: nil)
         NotificationCenter.default.post(notification)
