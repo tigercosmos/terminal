@@ -18,15 +18,19 @@ endif
 
 XCODEBUILD := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)'
 
-# Development builds are unsigned so a checkout without Config/Local.xcconfig
-# still builds. `install` uses the project's automatic signing instead, since an
-# app in /Applications should carry your identity and entitlements; override it
-# when you have no Developer ID:
+# Every target here builds unsigned, `install` included. Automatic signing falls
+# back to an ad-hoc signature when there is no Developer ID, and an ad-hoc
+# signature plus ENABLE_HARDENED_RUNTIME trips Library Validation: it demands a
+# Team ID match that ad-hoc code can never satisfy, so dyld rejects the embedded
+# Sparkle.framework and the app dies at launch. Unsigned builds carry no
+# hardened runtime, so they run. Shipping builds are signed and notarized by
+# scripts/release.ts (see RELEASING.md), never from here. To sign an install
+# with your own identity anyway:
 #
-#   make install INSTALL_SIGNING="$(UNSIGNED)"
+#   make install INSTALL_SIGNING=""
 UNSIGNED        := CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 BUILD_SIGNING   ?= $(UNSIGNED)
-INSTALL_SIGNING ?=
+INSTALL_SIGNING ?= $(UNSIGNED)
 
 # The product name differs per configuration ("Terminal Debug.app" vs
 # "Terminal.app"), and derived data lives wherever Xcode put it, so the built
