@@ -7,6 +7,9 @@ view are one pane away.
 Terminal is a fork of [Kero](https://kero.sh/). It builds from source only —
 there is no `brew install`, tap, or prebuilt download for this fork.
 
+**[tigercosmos.github.io/terminal](https://tigercosmos.github.io/terminal/)** —
+the full feature list, every keyboard shortcut, and the changelog.
+
 ![preview](web/public/terminal-screenshot.png)
 
 ## Features
