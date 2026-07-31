@@ -1,5 +1,60 @@
 # Releasing terminal
 
+There are two release paths, and they are independent:
+
+- **The GitHub Release `.dmg`** — what people download today. Pushing a `v*`
+  tag builds it in CI and attaches it to the release. No keys, no accounts, and
+  nothing to set up. It ships *unsigned*. See
+  [below](#the-github-release-dmg).
+- **The signed, notarized, self-updating build** — `bun scripts/release.ts`,
+  run on a maintainer's Mac. It needs a Developer ID, a Sparkle key, and a host
+  for the archives, none of which this fork has yet. Everything after the next
+  section describes it.
+
+---
+
+## The GitHub Release `.dmg`
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on a
+`v*` tag push and:
+
+1. builds the app universal (arm64 + x86_64) in Release, **unsigned** —
+   `CODE_SIGNING_ALLOWED=NO`, the same reasoning as the
+   [Makefile](Makefile): an ad-hoc signature plus Hardened Runtime trips
+   Library Validation on the embedded `Sparkle.framework` and the app dies at
+   launch;
+2. checks the tag against `MARKETING_VERSION` and fails if they disagree, so a
+   mistyped tag can't publish a mislabelled build;
+3. packages `terminal-<version>.dmg` with `hdiutil` (the app plus an
+   `/Applications` symlink — `create-dmg`'s arranged window needs Finder
+   scripting, which is unreliable on a headless runner);
+4. creates the release if the tag doesn't have one yet, using this version's
+   [`CHANGELOG.md`](CHANGELOG.md) section as the notes, and uploads the `.dmg`.
+   If you created the release yourself when tagging, it only uploads.
+
+Cutting one:
+
+```sh
+# bump MARKETING_VERSION + CURRENT_PROJECT_VERSION, retitle the CHANGELOG
+# section, commit, then:
+git tag v1.1 && git push origin v1.1
+```
+
+Because the build is unsigned, macOS quarantines the download and refuses to
+open it until the flag is cleared:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Terminal.app
+```
+
+The workflow puts that line in every release's notes, and the website repeats
+it under the download button. There is no in-app update from these builds —
+Sparkle stays off until the setup below exists.
+
+---
+
+## Sparkle: signed, notarized, self-updating builds
+
 Terminal is built to auto-update with [Sparkle](https://sparkle-project.org),
 but **this fork ships with updating turned off**: `SUFeedURL` and
 `SUPublicEDKey` in `terminal/Info.plist` are both empty, and `Updater.swift`
@@ -123,6 +178,9 @@ Verify with `rclone lsf r2:terminal-releases --s3-no-check-bucket`.
 ---
 
 ## Cutting a release
+
+Steps 1 and 2 are shared with the GitHub Release `.dmg` above — the tag push
+and this script both read the version and the notes from the same two places.
 
 1. **Bump the version** in the `terminal` target's build settings:
    - `MARKETING_VERSION` — user-visible, e.g. `1.1` (`CFBundleShortVersionString`).

@@ -4,8 +4,9 @@ A native macOS terminal workspace built for supervising coding agents: the shell
 stays primary, and the project's files, Git state, and a full diff and compare
 view are one pane away.
 
-Terminal is a fork of [Kero](https://kero.sh/). It builds from source only —
-there is no `brew install`, tap, or prebuilt download for this fork.
+Terminal is a fork of [Kero](https://kero.sh/). Download the latest `.dmg` from
+[Releases](https://github.com/tigercosmos/terminal/releases/latest) or build it
+from source; there is no `brew install` or tap for this fork.
 
 **[tigercosmos.github.io/terminal](https://tigercosmos.github.io/terminal/)** —
 the full feature list, every keyboard shortcut, and the changelog.
@@ -64,8 +65,17 @@ What this fork adds on top of [Kero](https://github.com/egoist/kero):
 
 ## Install
 
-No `brew install` and no prebuilt downloads for now — this fork has no release
-host, Homebrew tap, or update-signing key of its own. Build it from source:
+Grab the `.dmg` from the
+[latest release](https://github.com/tigercosmos/terminal/releases/latest) and
+drag Terminal to Applications. This fork has no Developer ID, so the build is
+unsigned and macOS quarantines it — clear the flag once and it opens normally:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Terminal.app
+```
+
+There is no Homebrew tap and no in-app updater; new versions come from the same
+releases page. Or build it from source:
 
 ```sh
 git clone --recurse-submodules https://github.com/tigercosmos/terminal.git

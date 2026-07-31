@@ -16,6 +16,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Terminal is now a download: every release attaches a `.dmg` you can drag to
+  Applications instead of building from source. It is unsigned, so macOS
+  quarantines it until you run
+  `xattr -dr com.apple.quarantine /Applications/Terminal.app` once
 - The Files panel follows a terminal onto the host it has connected to: `ssh`
   somewhere and the file tree shows that machine's files, browsable and
   openable read-only over the same connection you are already using. Files,

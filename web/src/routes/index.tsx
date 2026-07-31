@@ -12,20 +12,21 @@ export const Route = createFileRoute('/')({
 
 type Release = { version: string; minSystem: string; dmg: string }
 
-// No release host yet. Point this at the origin serving your archives and
-// appcast once one exists; until then the download call-to-action links to
-// the repository instead of a URL that would 404.
+// No Sparkle release host yet. Point this at the origin serving your archives
+// and appcast once one exists; until then the download comes from GitHub
+// Releases, where the release workflow attaches an unsigned .dmg per tag.
 const RELEASES_ORIGIN = ''
 const APPCAST_URL = `${RELEASES_ORIGIN}/appcast.xml`
 const GITHUB_URL = 'https://github.com/tigercosmos/terminal'
+const LATEST_RELEASE_API = 'https://api.github.com/repos/tigercosmos/terminal/releases/latest'
 // No Homebrew tap yet; set this once a cask is published.
 const BREW_COMMAND = ''
 
-// Shown only if the appcast can't be reached; kept current so downloads still work.
+// Shown only if the release can't be looked up; kept current so downloads still work.
 const FALLBACK: Release = {
-  version: '0.1.11',
+  version: '0.2.0',
   minSystem: '15.6',
-  dmg: `${RELEASES_ORIGIN}/terminal-0.1.11.dmg`,
+  dmg: `${GITHUB_URL}/releases/download/v0.2.0/terminal-0.2.0.dmg`,
 }
 
 /**
@@ -58,17 +59,51 @@ function parseLatestRelease(xml: string): Release | null {
   }
 }
 
-async function fetchLatestRelease(): Promise<Release | null> {
-  // No release host configured yet — nothing to advertise.
-  if (!RELEASES_ORIGIN) return null
+// The site runs as a Cloudflare Worker; cache these lookups at the edge so we
+// don't refetch on every render. `cf` isn't part of the DOM RequestInit type,
+// hence the cast at each call site.
+const edgeCached = (seconds: number) =>
+  ({
+    signal: AbortSignal.timeout(2500),
+    cf: { cacheTtl: seconds, cacheEverything: true },
+  }) as RequestInit & { cf: { cacheTtl: number; cacheEverything: boolean } }
+
+/**
+ * The newest GitHub Release that has a `.dmg` attached — the download path for
+ * this fork, since it has no Sparkle host. The API reports no deployment
+ * target, so the minimum system comes from FALLBACK.
+ */
+async function fetchLatestGitHubRelease(): Promise<Release> {
   try {
-    const res = await fetch(APPCAST_URL, {
-      signal: AbortSignal.timeout(2500),
-      // The site runs as a Cloudflare Worker; cache the appcast at the edge so we
-      // don't refetch on every render (matches its own 5-min max-age). `cf` isn't
-      // part of the DOM RequestInit type, hence the cast.
-      cf: { cacheTtl: 300, cacheEverything: true },
-    } as RequestInit & { cf: { cacheTtl: number; cacheEverything: boolean } })
+    const res = await fetch(LATEST_RELEASE_API, {
+      ...edgeCached(300),
+      // GitHub rejects API requests without a User-Agent.
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'terminal-website' },
+    })
+    if (!res.ok) return FALLBACK
+    const release = (await res.json()) as {
+      tag_name?: string
+      assets?: { name?: string; browser_download_url?: string }[]
+    }
+    const dmg = release.assets?.find((a) => a.name?.endsWith('.dmg'))?.browser_download_url
+    if (!dmg) return FALLBACK
+    return {
+      version: (release.tag_name ?? FALLBACK.version).replace(/^v/, ''),
+      minSystem: FALLBACK.minSystem,
+      dmg,
+    }
+  } catch {
+    return FALLBACK
+  }
+}
+
+async function fetchLatestRelease(): Promise<Release | null> {
+  // With a Sparkle host, the appcast is authoritative — it names the build the
+  // in-app updater would install. Without one, GitHub Releases is the source.
+  if (!RELEASES_ORIGIN) return fetchLatestGitHubRelease()
+  try {
+    // Matches the appcast's own 5-min max-age.
+    const res = await fetch(APPCAST_URL, edgeCached(300))
     if (!res.ok) return FALLBACK
     return parseLatestRelease(await res.text()) ?? FALLBACK
   } catch {
@@ -198,7 +233,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'No update checks',
         detail:
-          'Sparkle is built in but never starts — this fork ships no update feed and no signing key, so nothing checks in; pull and rebuild to move up',
+          'Sparkle is built in but never starts — this fork ships no update feed and no signing key, so nothing checks in; download the newest release or pull and rebuild to move up',
       },
     ],
   },
@@ -259,8 +294,9 @@ const FAQ: { q: string; a: ReactNode }[] = [
         untrusted input, and a Makefile replaced the build incantations. It
         tracks Kero and merges upstream work back in, so everything Kero does is
         still here. The practical difference is distribution — Kero ships
-        notarized builds and a Homebrew cask; this fork has no signing key and
-        builds from source only.
+        notarized builds and a Homebrew cask; this fork has no signing key, so
+        its .dmg is unsigned — macOS quarantines it until you clear the flag,
+        and there is no in-app updater.
       </>
     ),
   },
@@ -342,6 +378,18 @@ function Home() {
           </a>
         </div>
         {BREW_COMMAND ? <CopyCommand command={BREW_COMMAND} /> : null}
+        {/* The .dmg is unsigned, so macOS quarantines it and refuses to open the
+            app until the flag is cleared. Say so where the download is, not
+            buried in the FAQ. */}
+        {latest ? (
+          <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+            <span>
+              Unsigned build — after moving Terminal to Applications, clear the
+              quarantine flag once:
+            </span>
+            <CopyCommand command="xattr -dr com.apple.quarantine /Applications/Terminal.app" />
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
           {latest ? <Pill>v{latest.version}</Pill> : null}
           {latest ? <Pill>macOS {latest.minSystem}+</Pill> : null}
