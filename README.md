@@ -1,22 +1,33 @@
 # Terminal
 
-A native terminal workspace for macOS.
+A native macOS terminal workspace built for supervising coding agents: the shell
+stays primary, and the project's files, Git state, and a full diff and compare
+view are one pane away.
+
+Terminal is a fork of [Kero](https://kero.sh/). It builds from source only —
+there is no `brew install`, tap, or prebuilt download for this fork.
 
 ![preview](web/public/terminal-screenshot.png)
 
 ## Features
 
-- Swift + libghostty by default, with an optional Alacritty backend
-- Native design
-- Split panes
-- Git integration
-- Group by projects
-- File tree
+- **Terminal first** — libghostty by default, with an optional Alacritty
+  backend, split panes, tabs, and a command palette.
+- **The project alongside it** — a file tree, an editor with syntax
+  highlighting and find, and a diff viewer, in panes beside the shell instead
+  of in a second app.
+- **Git in the sidebar** — working-tree status, per-file diffs, and per-line
+  blame, without dropping to a Git GUI.
+- **The session, at a glance** — the focused shell's working directory, the
+  processes it is running, and the ports they are listening on.
+- **Grouped by project** — shells, panes, and tabs stay with the repository
+  they belong to, and come back with it.
+- **Native and localized** — macOS appearance and keyboard conventions, in
+  English, Simplified Chinese, and Japanese.
 
 ## Beyond Kero
 
-Terminal is a fork of [Kero](https://github.com/egoist/kero). What this fork
-adds on top of it:
+What this fork adds on top of [Kero](https://github.com/egoist/kero):
 
 - **Compare against any branch or commit** — ⇧⌘C opens a Compare panel: pick a
   target by searching branches and recent commits, or type any revision Git
@@ -44,14 +55,21 @@ adds on top of it:
 
 ## Install
 
-No prebuilt downloads yet — this fork has no release host, Homebrew tap, or
-update-signing key of its own. Build it from source:
+No `brew install` and no prebuilt downloads for now — this fork has no release
+host, Homebrew tap, or update-signing key of its own. Build it from source:
 
 ```sh
 git clone --recurse-submodules https://github.com/tigercosmos/terminal.git
+cd terminal
+make run
 ```
 
-Then follow [CONTRIBUTING.md](CONTRIBUTING.md).
+Building needs **Xcode 27** — the project uses the macOS 27 SDK and a file
+format earlier versions refuse to open — plus a Rust toolchain for the
+Alacritty backend's bridge. The built app itself runs on macOS 15.6 or later.
+`make install` puts a Release build in `/Applications`, and `make` on its own
+lists the rest. [CONTRIBUTING.md](CONTRIBUTING.md) covers the details,
+including how to point builds at a beta Xcode.
 
 ## Contributing
 
@@ -60,5 +78,5 @@ Then follow [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 GPLv3 — see [LICENSE](LICENSE). Terminal is forked from
-[Kero](https://github.com/egoist/kero), and the copyright on the inherited work
-remains with EGOIST.
+[Kero](https://kero.sh/), and the copyright on the inherited work remains with
+EGOIST.
