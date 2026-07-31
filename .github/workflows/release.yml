@@ -17,7 +17,12 @@ permissions:
 
 jobs:
   dmg:
-    runs-on: macos-latest
+    # Not macos-latest: that image's newest Xcode is 26.6, and the project is
+    # saved in a format only Xcode 27 opens (CONTRIBUTING.md). `xcode-27` is
+    # GitHub's preview image — macOS 26 with Xcode 27 beta as the default —
+    # and is the only hosted runner that can build this. Move to macos-latest
+    # once Xcode 27 ships in it.
+    runs-on: xcode-27
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
@@ -26,9 +31,9 @@ jobs:
           submodules: recursive
 
       - name: Select Xcode 27 or newer
-        # The project is saved in a format earlier Xcode versions refuse to open
-        # (see CONTRIBUTING.md), so fail with the runner's inventory rather than
-        # a confusing parse error from xcodebuild.
+        # Xcode 27 is already the default on this image, but the image is a
+        # preview and its contents move. Fail with the runner's inventory
+        # rather than with a confusing parse error from xcodebuild.
         run: |
           newest=""
           for app in /Applications/Xcode*.app; do
@@ -57,56 +62,17 @@ jobs:
         # exist before xcodebuild starts.
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-      - name: Build the app (Release, unsigned)
-        # Unsigned, not ad-hoc: an ad-hoc signature plus ENABLE_HARDENED_RUNTIME
-        # trips Library Validation on the embedded Sparkle.framework and the app
-        # dies at launch. Same reasoning as the Makefile.
-        run: |
-          xcodebuild \
-            -project terminal.xcodeproj \
-            -scheme terminal \
-            -configuration Release \
-            -destination 'generic/platform=macOS' \
-            -derivedDataPath build/dd \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            build
-
-      - name: Check the tag against the version in the build
-        id: version
-        run: |
-          app="build/dd/Build/Products/Release/Terminal.app"
-          [ -d "$app" ] || { echo "::error::No app at $app"; exit 1; }
-          version=$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$version" != "$tag" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match MARKETING_VERSION $version — bump the project or retag."
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "app=$app" >> "$GITHUB_OUTPUT"
-
-      - name: Package the .dmg
-        # hdiutil rather than create-dmg: the pretty window layout create-dmg
-        # produces needs Finder scripting, which is unreliable on a headless
-        # runner. A folder with the app and an Applications symlink installs the
-        # same way, just without the arranged icons.
-        id: dmg
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          APP: ${{ steps.version.outputs.app }}
-        run: |
-          staging=build/dmg
-          rm -rf "$staging" && mkdir -p "$staging"
-          ditto "$APP" "$staging/Terminal.app"
-          ln -s /Applications "$staging/Applications"
-          dmg="build/terminal-$VERSION.dmg"
-          hdiutil create -volname "Terminal $VERSION" -srcfolder "$staging" \
-            -fs HFS+ -format UDZO -ov "$dmg"
-          echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Build and package the .dmg
+        # The same script a maintainer runs when this image is unavailable, so
+        # a hand-attached .dmg is the one CI would have built. `--expect` makes
+        # a tag that disagrees with MARKETING_VERSION fail the run rather than
+        # publish a release whose version isn't the one inside the app.
+        id: dmg
+        run: bun scripts/build-dmg.ts --expect "${GITHUB_REF_NAME#v}"
 
       - name: Publish the release
         # The release may already exist (created by hand when tagging), in which
@@ -114,7 +80,7 @@ jobs:
         # version's CHANGELOG section as its notes.
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.dmg.outputs.version }}
           DMG: ${{ steps.dmg.outputs.dmg }}
         run: |
           bun scripts/changelog.ts "$VERSION" > build/notes.md

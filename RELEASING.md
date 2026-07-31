@@ -18,7 +18,8 @@ There are two release paths, and they are independent:
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on a
 `v*` tag push and:
 
-1. builds the app universal (arm64 + x86_64) in Release, **unsigned** —
+1. runs [`scripts/build-dmg.ts`](scripts/build-dmg.ts), which builds the app
+   universal (arm64 + x86_64) in Release, **unsigned** —
    `CODE_SIGNING_ALLOWED=NO`, the same reasoning as the
    [Makefile](Makefile): an ad-hoc signature plus Hardened Runtime trips
    Library Validation on the embedded `Sparkle.framework` and the app dies at
@@ -38,6 +39,16 @@ Cutting one:
 # bump MARKETING_VERSION + CURRENT_PROJECT_VERSION, retitle the CHANGELOG
 # section, commit, then:
 git tag v1.1 && git push origin v1.1
+```
+
+It runs on `xcode-27`, GitHub's preview image, because that is the only hosted
+runner carrying an Xcode that can open this project — `macos-latest` stops at
+26.6. Preview images can queue for a while or go missing; if the job can't
+start, build the same `.dmg` on your own Mac and attach it by hand:
+
+```sh
+bun scripts/build-dmg.ts            # the same script the workflow runs
+gh release upload v1.1 build/terminal-1.1.dmg
 ```
 
 Because the build is unsigned, macOS quarantines the download and refuses to
