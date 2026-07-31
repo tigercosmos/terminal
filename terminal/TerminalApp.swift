@@ -386,7 +386,7 @@ private struct TerminalCommands: Commands {
                 Button(tab.displayTitle ?? String(localized: "Tab \(index + 1)")) {
                     manager?.selectTab(index: index)
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.control, .shift])
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control)
             }
         }
     }

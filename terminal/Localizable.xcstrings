@@ -3033,6 +3033,22 @@
         }
       }
     },
+    "Ignored" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無視"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已忽略"
+          }
+        }
+      }
+    },
     "Image rendering" : {
       "localizations" : {
         "ja" : {

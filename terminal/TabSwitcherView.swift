@@ -15,6 +15,9 @@ final class TabSwitcherController: ObservableObject {
     @Published private(set) var isPresented = false
     @Published private(set) var highlightedTabID: UUID?
     @Published private(set) var terminalPreviews: [UUID: String] = [:]
+    /// Recency order captured when the switcher opened, frozen for the whole
+    /// gesture so cards never reshuffle under the highlight.
+    @Published private(set) var orderedTabIDs: [UUID] = []
 
     private weak var activeProject: Project?
     private var originalTabID: UUID?
@@ -125,6 +128,14 @@ final class TabSwitcherController: ObservableObject {
         highlightedTabID = tabID
     }
 
+    /// The tabs the overlay draws, in the order this gesture walks them.
+    func orderedTabs(in project: Project) -> [PaneTab] {
+        let ordered = orderedTabIDs.compactMap { id in
+            project.tabs.first { $0.id == id }
+        }
+        return ordered.isEmpty ? project.tabs : ordered
+    }
+
     private func cycle(in manager: TerminalManager, reverse: Bool) -> Bool {
         guard let project = manager.selectedProject,
               project.tabs.count > 1,
@@ -135,7 +146,10 @@ final class TabSwitcherController: ObservableObject {
             previewTask?.cancel()
             activeProject = project
             originalTabID = selectedID
-            highlightedTabID = selectedID
+            orderedTabIDs = project.tabsByRecency.map(\.id)
+            // Open already pointing at the previously used tab, so one
+            // Ctrl-Tab toggles between the last two tabs like Cmd-Tab does.
+            highlightedTabID = orderedTabIDs[reverse ? orderedTabIDs.count - 1 : 1]
             acceptsPointerHighlight = false
             let validContentIDs = Set(project.tabs.flatMap(\.allContents).map(\.id))
             terminalPreviews = terminalPreviews.filter {
@@ -148,18 +162,15 @@ final class TabSwitcherController: ObservableObject {
             return true
         }
 
+        let order = orderedTabs(in: project).map(\.id)
         guard let currentHighlightedTabID = highlightedTabID,
-              let currentIndex = project.tabs.firstIndex(
-                where: { $0.id == currentHighlightedTabID }
-              )
+              let currentIndex = order.firstIndex(of: currentHighlightedTabID)
         else {
             cancel()
             return false
         }
         let offset = reverse ? -1 : 1
-        let nextIndex = (currentIndex + offset + project.tabs.count) % project.tabs.count
-        let nextTab = project.tabs[nextIndex]
-        highlightedTabID = nextTab.id
+        highlightedTabID = order[(currentIndex + offset + order.count) % order.count]
         return true
     }
 
@@ -324,7 +335,8 @@ struct TabSwitcherOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let columnCount = columnsPerRow(available: geometry.size.width)
+            let tabs = controller.orderedTabs(in: project)
+            let columnCount = columnsPerRow(count: tabs.count, available: geometry.size.width)
 
             ZStack {
                 Color.clear
@@ -338,11 +350,10 @@ struct TabSwitcherOverlay: View {
                             alignment: .leading,
                             spacing: TabSwitcherLayout.gridSpacing
                         ) {
-                            ForEach(Array(project.tabs.enumerated()), id: \.element.id) {
-                                index, tab in
+                            ForEach(tabs, id: \.id) { tab in
                                 TabSwitcherCard(
                                     tab: tab,
-                                    index: index,
+                                    index: project.tabs.firstIndex { $0.id == tab.id } ?? 0,
                                     isHighlighted: tab.id == controller.highlightedTabID,
                                     terminalPreviews: controller.terminalPreviews,
                                     highlight: {
@@ -360,6 +371,7 @@ struct TabSwitcherOverlay: View {
                     .frame(
                         width: overlayWidth(columns: columnCount),
                         height: gridHeight(
+                            count: tabs.count,
                             columns: columnCount,
                             available: geometry.size.height
                         )
@@ -423,14 +435,14 @@ struct TabSwitcherOverlay: View {
             : .primary.opacity(0.18)
     }
 
-    private func columnsPerRow(available: CGFloat) -> Int {
+    private func columnsPerRow(count: Int, available: CGFloat) -> Int {
         let horizontalInsets = 44 + TabSwitcherLayout.gridInset * 2
         let usable = max(
             TabSwitcherLayout.cardWidth,
             available - horizontalInsets
         )
         let fitting = Int(usable / TabSwitcherLayout.cardWidth)
-        return min(5, max(1, min(project.tabs.count, fitting)))
+        return min(5, max(1, min(count, fitting)))
     }
 
     private func gridColumns(count: Int) -> [GridItem] {
@@ -448,8 +460,8 @@ struct TabSwitcherOverlay: View {
             + TabSwitcherLayout.gridInset * 2
     }
 
-    private func gridHeight(columns: Int, available: CGFloat) -> CGFloat {
-        let rows = (project.tabs.count + columns - 1) / columns
+    private func gridHeight(count: Int, columns: Int, available: CGFloat) -> CGFloat {
+        let rows = (count + columns - 1) / columns
         let contentHeight = CGFloat(rows) * TabSwitcherLayout.cardHeight
             + TabSwitcherLayout.gridInset * 2
         return min(
@@ -621,8 +633,8 @@ private final class TabSwitcherInteractionNSView: NSView {
     }
 }
 
-/// A small but structurally faithful rendering of a tab. Split column and row
-/// weights are preserved; each pane supplies a backend-independent preview.
+/// A small but structurally faithful rendering of a tab. The recursive split
+/// geometry is preserved; each pane supplies a backend-independent preview.
 private struct TabThumbnail: View {
     @ObservedObject var tab: PaneTab
     let terminalPreviews: [UUID: String]
@@ -631,52 +643,36 @@ private struct TabThumbnail: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let columns = tab.isZoomed ? zoomedColumns : tab.columns
-            let widths = sizes(
-                for: columns.map(\.weight),
-                available: geometry.size.width,
-                gaps: columns.count
-            )
-
-            HStack(spacing: gap) {
-                ForEach(Array(columns.enumerated()), id: \.element.id) { columnIndex, column in
-                    let heights = sizes(
-                        for: column.panes.map(\.weight),
-                        available: geometry.size.height,
-                        gaps: column.panes.count
-                    )
-                    VStack(spacing: gap) {
-                        ForEach(Array(column.panes.enumerated()), id: \.element.id) {
-                            paneIndex, pane in
-                            TabPaneThumbnail(
-                                content: pane.content,
-                                terminalPreview: terminalPreviews[pane.content.id]
-                            )
-                            .frame(height: heights[paneIndex])
-                        }
+            if tab.isZoomed, let pane = tab.focusedPane {
+                TabPaneThumbnail(
+                    content: pane.content,
+                    terminalPreview: terminalPreviews[pane.content.id]
+                )
+            } else {
+                let placements = tab.layout.geometry(
+                    in: CGRect(origin: .zero, size: geometry.size), gap: gap
+                ).panes
+                ZStack(alignment: .topLeading) {
+                    ForEach(placements) { placement in
+                        TabPaneThumbnail(
+                            content: placement.pane.content,
+                            terminalPreview: terminalPreviews[
+                                placement.pane.content.id
+                            ]
+                        )
+                        .frame(
+                            width: placement.frame.width,
+                            height: placement.frame.height
+                        )
+                        .offset(
+                            x: placement.frame.minX,
+                            y: placement.frame.minY
+                        )
                     }
-                    .frame(width: widths[columnIndex])
                 }
             }
         }
         .background(Color(nsColor: Theme.background))
-    }
-
-    private var zoomedColumns: [PaneColumn] {
-        guard let pane = tab.focusedPane else { return tab.columns }
-        return [PaneColumn(panes: [pane])]
-    }
-
-    private func sizes(
-        for weights: [CGFloat], available: CGFloat, gaps count: Int
-    ) -> [CGFloat] {
-        let usable = max(0, available - gap * CGFloat(max(0, count - 1)))
-        let total = weights.reduce(0, +)
-        guard total > 0 else {
-            let each = weights.isEmpty ? 0 : usable / CGFloat(weights.count)
-            return weights.map { _ in each }
-        }
-        return weights.map { usable * $0 / total }
     }
 }
 

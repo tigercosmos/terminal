@@ -792,30 +792,16 @@ final class TerminalManager: nonisolated ObservableObject {
             projects: projects.compactMap { project in
                 guard !project.tabs.isEmpty else { return nil }
                 let tabs = project.tabs.map { tab -> ProjectSnapshot.TabSnapshot in
-                    let columns = tab.columns.map { column in
-                        ProjectSnapshot.ColumnSnapshot(
-                            panes: column.panes.map { pane in
-                                var historyKey: String?
-                                if case .session(let session) = pane.content,
-                                   let history = session.serializedHistory(
-                                       captureLive: captureTerminalHistory
-                                   ), !history.isEmpty {
-                                    let key = UUID().uuidString
-                                    histories[key] = history
-                                    historyKey = key
-                                }
-                                return ProjectSnapshot.PaneSnapshot(
-                                    content: Self.contentSnapshot(pane.content),
-                                    weight: Double(pane.weight),
-                                    historyKey: historyKey
-                                )
-                            },
-                            weight: Double(column.weight)
-                        )
-                    }
-                    let (col, row) = tab.focusedLocation() ?? (0, 0)
+                    let layout = Self.layoutSnapshot(
+                        tab.layout,
+                        captureTerminalHistory: captureTerminalHistory,
+                        histories: &histories
+                    )
+                    let focusedPaneIndex = tab.allPanes.firstIndex {
+                        $0.id == tab.focusedPaneID
+                    } ?? 0
                     return ProjectSnapshot.TabSnapshot(
-                        columns: columns, focusedColumn: col, focusedRow: row,
+                        layout: layout, focusedPaneIndex: focusedPaneIndex,
                         customName: tab.customName
                     )
                 }
@@ -832,6 +818,46 @@ final class TerminalManager: nonisolated ObservableObject {
             rightPanelTab: panelTab
         )
         return (snapshot, histories)
+    }
+
+    private static func layoutSnapshot(
+        _ layout: PaneNode,
+        captureTerminalHistory: Bool,
+        histories: inout [String: String]
+    ) -> SessionSnapshot.ProjectSnapshot.LayoutSnapshot {
+        typealias ProjectSnapshot = SessionSnapshot.ProjectSnapshot
+        switch layout {
+        case .pane(let pane):
+            var historyKey: String?
+            if case .session(let session) = pane.content,
+               let history = session.serializedHistory(
+                   captureLive: captureTerminalHistory
+               ), !history.isEmpty {
+                let key = UUID().uuidString
+                histories[key] = history
+                historyKey = key
+            }
+            return .pane(ProjectSnapshot.PaneSnapshot(
+                content: contentSnapshot(pane.content),
+                weight: 1,
+                historyKey: historyKey
+            ))
+        case .split(let split):
+            return .split(
+                axis: split.axis,
+                fraction: Double(split.fraction),
+                first: layoutSnapshot(
+                    split.first,
+                    captureTerminalHistory: captureTerminalHistory,
+                    histories: &histories
+                ),
+                second: layoutSnapshot(
+                    split.second,
+                    captureTerminalHistory: captureTerminalHistory,
+                    histories: &histories
+                )
+            )
+        }
     }
 
     private static func contentSnapshot(
@@ -879,6 +905,7 @@ final class TerminalManager: nonisolated ObservableObject {
             if let index = saved.selectedTabIndex, project.tabs.indices.contains(index) {
                 project.selectedTabID = project.tabs[index].id
             }
+            project.resetRecency()
             projects.append(project)
         }
         guard !projects.isEmpty else { return false }

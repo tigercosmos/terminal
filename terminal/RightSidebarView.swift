@@ -64,12 +64,14 @@ struct RightSidebarView: View {
                     case .files:
                         FileTreePanel(
                             model: fileTree,
+                            git: git,
                             session: manager.selectedSession,
                             rootBadge: rootBadge,
                             currentFilePath: openFilePath,
                             openFile: { manager.openFile($0) },
                             openToSide: { manager.openFileToSide($0) },
-                            onRename: { manager.fileRenamed(from: $0, to: $1) }
+                            onRename: { manager.fileRenamed(from: $0, to: $1) },
+                            refreshGitStatus: { git.refresh() }
                         )
                     case .git:
                         GitPanel(
@@ -120,7 +122,7 @@ struct RightSidebarView: View {
                 )
             }
         }
-        .onAppear(perform: syncModels)
+        .onAppear { syncModels() }
         // Files and process information remain live while visible. Git is
         // event-driven: terminal/Git command completion and app activation
         // refresh it without a repeating main-run-loop source.
@@ -132,7 +134,7 @@ struct RightSidebarView: View {
                 } catch {
                     return
                 }
-                syncModels()
+                syncModels(refreshGitStatus: false)
             }
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -146,8 +148,10 @@ struct RightSidebarView: View {
         )) { _ in
             applicationIsActive = false
         }
+        // Every panel now moves when a command finishes: Git and Compare list
+        // what changed, Files carries the same status decorations, and Info
+        // lists the processes that just came and went.
         .onChange(of: commandCompletionSequences) {
-            guard manager.panelTab == .git || manager.panelTab == .compare else { return }
             syncModels()
         }
         .onChange(of: manager.isPanelVisible) { syncModels() }
@@ -226,7 +230,7 @@ struct RightSidebarView: View {
         .accessibilityValue(isActive ? "Selected" : "Not selected")
     }
 
-    private func syncModels() {
+    private func syncModels(refreshGitStatus: Bool = true) {
         guard manager.isPanelVisible,
               let project = manager.selectedProject,
               let session = project.selectedSession
@@ -243,7 +247,9 @@ struct RightSidebarView: View {
         )
         if rootSource != source { rootSource = source }
         switch manager.panelTab {
-        case .files: fileTree.sync(root: root)
+        case .files:
+            fileTree.sync(root: root)
+            if refreshGitStatus { git.sync(root: root) }
         case .git: git.sync(root: root)
         case .compare: compare.sync(root: root)
         case .info:
@@ -307,6 +313,7 @@ struct PanelHeader: View {
 
 private struct FileTreePanel: View {
     @ObservedObject var model: FileTreeModel
+    @ObservedObject var git: GitStatusModel
     let session: TerminalSession?
     /// Set while the tree follows the terminal's foreground job into another
     /// checkout, so the header says why the root moved.
@@ -315,6 +322,7 @@ private struct FileTreePanel: View {
     let openFile: (String) -> Void
     let openToSide: (String) -> Void
     let onRename: (_ oldPath: String, _ newPath: String) -> Void
+    let refreshGitStatus: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -350,9 +358,10 @@ private struct FileTreePanel: View {
                 LazyVStack(spacing: 1) {
                     ForEach(model.items) { item in
                         FileTreeRow(
-                            model: model, item: item, session: session,
+                            model: model, git: git, item: item, session: session,
                             currentFilePath: currentFilePath,
-                            openFile: openFile, openToSide: openToSide, onRename: onRename
+                            openFile: openFile, openToSide: openToSide, onRename: onRename,
+                            refreshGitStatus: refreshGitStatus
                         )
                     }
                 }
@@ -365,6 +374,7 @@ private struct FileTreePanel: View {
 
 private struct FileTreeRow: View {
     @ObservedObject var model: FileTreeModel
+    @ObservedObject var git: GitStatusModel
     @ObservedObject private var themeChanges = Theme.changes
     let item: FileTreeModel.Item
     let session: TerminalSession?
@@ -372,6 +382,7 @@ private struct FileTreeRow: View {
     let openFile: (String) -> Void
     let openToSide: (String) -> Void
     let onRename: (_ oldPath: String, _ newPath: String) -> Void
+    let refreshGitStatus: () -> Void
 
     @State private var isHovering = false
     @State private var editingName = ""
@@ -381,6 +392,10 @@ private struct FileTreeRow: View {
 
     /// The file open in the active tab, so it reads as selected in the tree.
     private var isCurrent: Bool { !item.isDirectory && item.path == currentFilePath }
+
+    private var gitDecoration: GitStatusModel.FileDecoration? {
+        git.fileDecoration(for: item.path, isDirectory: item.isDirectory)
+    }
 
     var body: some View {
         if item.isDraft {
@@ -439,6 +454,7 @@ private struct FileTreeRow: View {
         }
         Button("Move to Trash", role: .destructive) {
             model.moveToTrash(item)
+            refreshGitStatus()
         }
     }
 
@@ -450,6 +466,7 @@ private struct FileTreeRow: View {
         let oldPath = item.path
         if let newPath = model.rename(item, to: editingName) {
             onRename(oldPath, newPath)
+            refreshGitStatus()
         }
     }
 
@@ -460,6 +477,7 @@ private struct FileTreeRow: View {
         if let created = model.commitDraft(name: editingName) {
             openFile(created)
         }
+        refreshGitStatus()
     }
 
     @ViewBuilder
@@ -483,9 +501,15 @@ private struct FileTreeRow: View {
                 leadingGlyphs
                 Text(item.name)
                     .sidebarFont(size: 11.5)
-                    .foregroundStyle(item.name.hasPrefix(".") ? .tertiary : .secondary)
+                    .foregroundStyle(fileNameColor)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if let gitDecoration {
+                    Text(gitDecoration.badge)
+                        .sidebarFont(size: 9, weight: .semibold, design: .monospaced)
+                        .foregroundStyle(gitDecoration.color)
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.leading, CGFloat(item.depth) * 12 + 6)
             .padding(.trailing, 6)
@@ -493,12 +517,23 @@ private struct FileTreeRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(fileAccessibilityLabel)
         // Drag a row out as a file URL: onto the terminal (which inserts its
         // path) or into Finder and other apps. A click still opens/toggles;
         // the drag only begins once the pointer moves.
         .onDrag {
             NSItemProvider(object: URL(fileURLWithPath: item.path) as NSURL)
         }
+    }
+
+    private var fileNameColor: Color {
+        if let gitDecoration { return gitDecoration.color }
+        return item.name.hasPrefix(".") ? Color.secondary.opacity(0.55) : .secondary
+    }
+
+    private var fileAccessibilityLabel: String {
+        guard let gitDecoration else { return item.name }
+        return item.name + ", " + gitDecoration.accessibilityName
     }
 
     private var renameRow: some View {
@@ -583,6 +618,45 @@ private struct FileTreeRow: View {
                 .sidebarFont(size: 10)
                 .foregroundStyle(item.isDirectory ? Color(nsColor: Theme.accent).opacity(0.8) : Color.secondary)
                 .frame(width: 14)
+        }
+    }
+}
+
+private extension GitStatusModel.FileDecoration {
+    var badge: String {
+        switch self {
+        case .modified: "M"
+        case .added: "A"
+        case .untracked: "U"
+        case .deleted: "D"
+        case .renamed: "R"
+        case .copied: "C"
+        case .conflict: "!"
+        case .ignored: "I"
+        }
+    }
+
+    var accessibilityName: String {
+        switch self {
+        case .modified: String(localized: "Modified")
+        case .added: String(localized: "Added")
+        case .untracked: String(localized: "Untracked")
+        case .deleted: String(localized: "Deleted")
+        case .renamed: String(localized: "Renamed")
+        case .copied: String(localized: "Copied")
+        case .conflict: String(localized: "Conflict")
+        case .ignored: String(localized: "Ignored")
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .modified: Color(red: 0.82, green: 0.60, blue: 0.13)
+        case .added, .untracked: Color(red: 0.25, green: 0.73, blue: 0.31)
+        case .deleted: Color(red: 1.0, green: 0.48, blue: 0.45)
+        case .renamed, .copied: Color(red: 0.35, green: 0.65, blue: 1.0)
+        case .conflict: Color(red: 0.74, green: 0.55, blue: 1.0)
+        case .ignored: Color.secondary.opacity(0.55)
         }
     }
 }

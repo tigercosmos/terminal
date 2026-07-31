@@ -181,7 +181,7 @@ const SHORTCUTS: Row[] = [
   { name: 'Cmd+T', detail: 'new session' },
   { name: 'Cmd+W', detail: 'close the focused pane' },
   { name: 'Cmd+1–9', detail: 'switch project' },
-  { name: 'Ctrl+Shift+1–9', detail: 'switch tab' },
+  { name: 'Ctrl+1–9', detail: 'switch tab' },
   { name: 'Ctrl+Tab', detail: 'open the tab switcher' },
   { name: 'Cmd+P', detail: 'command palette' },
   { name: 'Cmd+D / Cmd+Shift+D', detail: 'split right / split down' },
