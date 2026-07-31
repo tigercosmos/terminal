@@ -60,7 +60,6 @@ Xcode project — lands with upstream's spelling and has to be translated by han
 releases on its own schedule, and [RELEASING.md](RELEASING.md) is
 maintainer-only, so **revert both bumps out of the merge** and fold the
 upstream release's notes into this fork's `## [unrelease]` section instead.
-`.claude/hooks/check-version-bump.sh` will block the commit if you forget.
 
 **The changelog.** Both sides edit the top of the file. Upstream's entries
 describe upstream's releases; here they are all still unreleased, so they go

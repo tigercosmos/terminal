@@ -41,7 +41,5 @@ into `.claude/`.
   `create-pr`, `worktree`.
 - `.claude/hooks/check-source.sh` — reports rustfmt findings on an edited
   `.rs` file. Advisory; the bridge has a few pre-existing diffs.
-- `.claude/hooks/check-version-bump.sh` — blocks a `git commit` that stages
-  `MARKETING_VERSION` or a numbered `CHANGELOG.md` heading.
 - `.claude/settings.json` — permissions, hooks, status line. Machine-local
   overrides go in the git-ignored `settings.local.json`.

@@ -64,10 +64,10 @@ These contradict common defaults, so apply them deliberately:
 - **Topic branch only.** Never commit directly on `main`; branch first (the
   `worktree` skill isolates the work when the main checkout should stay
   clean).
-- **Never bump the version.** `MARKETING_VERSION` and numbered `CHANGELOG.md`
-  headings belong to `scripts/release.ts` and are maintainer-only
-  (`RELEASING.md`). The `check-version-bump` hook blocks a commit that stages
-  either.
+- **Never bump the version** unless the task is cutting a release.
+  `MARKETING_VERSION` and numbered `CHANGELOG.md` headings are maintainer-only
+  (`RELEASING.md`) — ordinary work writes under `## [unrelease]` and leaves the
+  version alone. A release commits the bump on its own, ahead of the tag.
 - **CHANGELOG.md is a product changelog, not a development log.** Only add an
   entry when the change alters what a user experiences, and write it as the
   final shipped outcome. Fold refinements into the existing bullet of an
