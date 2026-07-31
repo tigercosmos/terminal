@@ -51,6 +51,27 @@ evidence that a feature works. Also run the Rust bridge's tests when you touch
 make test        # cargo test for the bridge, plus the website's type-check
 ```
 
+## Website
+
+The site at [tigercosmos.github.io/terminal](https://tigercosmos.github.io/terminal/)
+is built from `web/` and deploys on every push to `main` that touches it. It is
+hand-written, not generated, so it goes stale unless a change updates it.
+
+When a change adds, removes, or renames something a user can see, update
+`web/src/routes/index.tsx` in the same pull request:
+
+- `FEATURES` — the feature rows, grouped. Work the fork adds on top of Kero
+  goes in the `beyond kero` group, and should match the "Beyond Kero" section
+  of [README.md](README.md).
+- `SHORTCUTS` — every binding, spelled out (`Cmd+Shift+C`, not `⇧⌘C`; the
+  comment above the list says why).
+- `FAQ` — when the answer to one of them stops being true.
+
+The changelog page needs nothing: it reads [CHANGELOG.md](CHANGELOG.md) at
+build time. `bun run typecheck` in `web/`, or `make test-web`, catches the
+mechanical mistakes; [web/README.md](web/README.md) covers running and
+deploying the site.
+
 ## Code style
 
 [STYLE.md](STYLE.md) is the style guide: naming, comments, Swift concurrency

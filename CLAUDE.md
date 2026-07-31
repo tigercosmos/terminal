@@ -26,6 +26,10 @@ you touch the Rust bridge. Requires Xcode 27; see
   ship. Never add or revise release notes for incremental fixes, refactors,
   implementation details, or regressions introduced and resolved while a
   feature is still in progress on an unreleased branch.
+- The website in `web/` is hand-written and goes stale on its own. A change to
+  a feature, a shortcut, or anything a user can see updates
+  `web/src/routes/index.tsx` in the same PR — see "Website" in
+  [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Agent tooling
 
