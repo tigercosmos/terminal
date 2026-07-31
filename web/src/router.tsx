@@ -4,6 +4,9 @@ import { routeTree } from './routeTree.gen'
 export function getRouter() {
   return createRouter({
     routeTree,
+    // Matches Vite's `base`, so links and history resolve under the subpath a
+    // GitHub Pages project site is served from. '/' everywhere else.
+    basepath: import.meta.env.BASE_URL,
     scrollRestoration: true,
     defaultPreload: 'intent',
     defaultNotFoundComponent: () => (

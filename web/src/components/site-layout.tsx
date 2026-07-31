@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { SiteFooter } from '@/components/site-footer'
+import { asset } from '@/lib/utils'
 
 export function SiteLayout({
   children,
@@ -15,7 +16,7 @@ export function SiteLayout({
         <h1 className="text-2xl font-bold tracking-[0.02em]">
           <Link to="/" className="flex items-center gap-2.5">
             <img
-              src="/terminal-icon.png"
+              src={asset('terminal-icon.png')}
               alt=""
               width={100}
               height={100}

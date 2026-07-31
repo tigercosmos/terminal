@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { SiteLayout } from '@/components/site-layout'
-import { cn } from '@/lib/utils'
+import { asset, cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -284,7 +284,7 @@ function Home() {
 
       <figure className="m-0 flex flex-col gap-2">
         <img
-          src="/terminal-screenshot.png"
+          src={asset('terminal-screenshot.png')}
           alt="terminal showing a project's terminal session with the git panel open"
           width={2286}
           height={1568}

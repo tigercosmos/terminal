@@ -1,0 +1,64 @@
+# Publishes web/ to GitHub Pages at https://tigercosmos.github.io/terminal.
+#
+# The same source also deploys to Cloudflare Workers (see web/README.md). The
+# only difference is SITE_BASE: a Pages project site is served from a subpath,
+# so every asset and route URL needs the `/terminal/` prefix baked in at build
+# time. Unset, the build is byte-for-byte the Worker's.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "bun.lock"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a run finish rather than cancelling it: a half-deployed site is worse
+# than a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Build the site
+        working-directory: web
+        env:
+          SITE_BASE: /terminal/
+        run: bun run build
+      - name: Prepare the artifact
+        working-directory: web/dist/client
+        run: |
+          # Pages hands unknown paths to 404.html; serving the app there lets
+          # the router render its own not-found instead of GitHub's.
+          cp index.html 404.html
+          # Without this, Pages runs the output through Jekyll, which drops
+          # files and directories beginning with an underscore.
+          touch .nojekyll
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/dist/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
