@@ -25,6 +25,8 @@ extern "C" {
 #define TERMINAL_EVENT_EXIT 3u
 #define TERMINAL_EVENT_CLIPBOARD_STORE 4u
 #define TERMINAL_EVENT_CLIPBOARD_LOAD 5u
+/// UTF-8 path, or `host\0path` when OSC 7 named a machine — which the host
+/// must compare against its own before treating the path as one it can open.
 #define TERMINAL_EVENT_WORKING_DIRECTORY 6u
 /// Three bytes: state (0-4), percent (0-100), and whether percent is present.
 #define TERMINAL_EVENT_PROGRESS 7u

@@ -68,8 +68,10 @@ struct RightSidebarView: View {
                             session: manager.selectedSession,
                             rootBadge: rootBadge,
                             currentFilePath: openFilePath,
-                            openFile: { manager.openFile($0) },
-                            openToSide: { manager.openFileToSide($0) },
+                            openFile: { manager.openFile($0, remote: fileTree.remoteDestination) },
+                            openToSide: {
+                                manager.openFileToSide($0, remote: fileTree.remoteDestination)
+                            },
                             onRename: { manager.fileRenamed(from: $0, to: $1) },
                             refreshGitStatus: { git.refresh() }
                         )
@@ -248,8 +250,19 @@ struct RightSidebarView: View {
         if rootSource != source { rootSource = source }
         switch manager.panelTab {
         case .files:
-            fileTree.sync(root: root)
-            if refreshGitStatus { git.sync(root: root) }
+            // Only the file tree can follow the terminal onto another machine,
+            // and only when the user has not pinned a directory for the
+            // project — a pin is an explicit choice about what these panels
+            // are for. Asking costs three syscalls, so it is asked for the one
+            // panel that acts on the answer rather than on every tick.
+            guard source != .pinned, let remote = session.remoteDestination else {
+                fileTree.sync(root: root)
+                if refreshGitStatus { git.sync(root: root) }
+                return
+            }
+            fileTree.sync(
+                remote: remote, reportedPath: session.remoteWorkingDirectory(on: remote)
+            )
         case .git: git.sync(root: root)
         case .compare: compare.sync(root: root)
         case .info:
@@ -260,12 +273,24 @@ struct RightSidebarView: View {
         }
     }
 
-    /// Text badge for the Files header while the panels follow the foreground
-    /// job instead of the shell — the agent's worktree in the common case, a
-    /// plain "job" when it moved somewhere that isn't a linked worktree.
-    /// The label and its spoken description travel together so neither is
-    /// assembled from translated fragments.
+    /// Text badge for the Files header while the tree is not simply showing
+    /// the shell's own directory: the host it has ssh'd into, the agent's
+    /// worktree, or a plain "job" when the foreground process moved somewhere
+    /// that isn't a linked worktree. The label and its spoken description
+    /// travel together so neither is assembled from translated fragments.
     private var rootBadge: (text: String, description: String)? {
+        // Where the tree is pointed is the tree's own business — `rootSource`
+        // describes the project directory, which stays on this machine even
+        // while the file panel is showing another one.
+        if fileTree.remoteHost != nil {
+            return (
+                String(
+                    localized: "ssh",
+                    comment: "Files header badge: the file tree is showing the host the terminal has connected to."
+                ),
+                String(localized: "Showing files on the host this terminal is connected to")
+            )
+        }
         guard case .foreground(let isWorktree) = rootSource else { return nil }
         if isWorktree {
             return (
@@ -324,10 +349,18 @@ private struct FileTreePanel: View {
     let onRename: (_ oldPath: String, _ newPath: String) -> Void
     let refreshGitStatus: () -> Void
 
+    /// The path under the folder name, prefixed with the host when the tree is
+    /// not describing this machine — the same `host:/path` shape scp uses, so
+    /// there is no reading a remote path as a local one.
+    private var subtitle: String {
+        guard let host = model.remoteHost else { return model.rootPath }
+        return "\(host):\(model.rootPath)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                PanelHeader(title: model.rootName, subtitle: model.rootPath)
+                PanelHeader(title: model.rootName, subtitle: subtitle)
                 if let rootBadge {
                     Text(verbatim: rootBadge.text)
                         .font(.system(size: 9, weight: .medium))
@@ -340,35 +373,73 @@ private struct FileTreePanel: View {
                         )
                         .accessibilityLabel(rootBadge.description)
                 }
-                Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: model.rootPath)])
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                        .sidebarFont(size: 11)
-                        .foregroundStyle(.secondary)
+                if model.isEditable {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: model.rootPath)])
+                    } label: {
+                        Image(systemName: "arrow.up.forward.app")
+                            .sidebarFont(size: 11)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reveal in Finder")
                 }
-                .buttonStyle(.plain)
-                .help("Reveal in Finder")
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 8)
 
-            ScrollView {
-                LazyVStack(spacing: 1) {
-                    ForEach(model.items) { item in
-                        FileTreeRow(
-                            model: model, git: git, item: item, session: session,
-                            currentFilePath: currentFilePath,
-                            openFile: openFile, openToSide: openToSide, onRename: onRename,
-                            refreshGitStatus: refreshGitStatus
-                        )
+            switch model.status {
+            case .loading:
+                statusMessage(Text("Connecting…"))
+            case .unreachable(let reason):
+                unreachable(reason)
+            case .ready:
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(model.items) { item in
+                            FileTreeRow(
+                                model: model, git: git, item: item, session: session,
+                                currentFilePath: currentFilePath,
+                                openFile: openFile, openToSide: openToSide, onRename: onRename,
+                                refreshGitStatus: refreshGitStatus
+                            )
+                        }
                     }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 8)
             }
         }
+    }
+
+    private func statusMessage(_ text: Text) -> some View {
+        text
+            .sidebarFont(size: 11)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 12)
+    }
+
+    /// ssh's own diagnostic is shown verbatim rather than paraphrased: "no
+    /// such identity" and "host key verification failed" each need a different
+    /// thing done about them, and only ssh knows which one happened.
+    private func unreachable(_ reason: String) -> some View {
+        VStack(spacing: 8) {
+            Text("Terminal couldn’t read files on this host.")
+                .sidebarFont(size: 11)
+                .foregroundStyle(.secondary)
+            Text(verbatim: reason)
+                .sidebarFont(size: 10, design: .monospaced)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            Button("Try Again") { model.retry() }
+                .sidebarFont(size: 11)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.horizontal, 12)
     }
 }
 
@@ -393,8 +464,12 @@ private struct FileTreeRow: View {
     /// The file open in the active tab, so it reads as selected in the tree.
     private var isCurrent: Bool { !item.isDirectory && item.path == currentFilePath }
 
+    /// Git status belongs to the checkout on this machine. A remote row's path
+    /// could collide with one in it, and a badge from the wrong repository is
+    /// worse than none.
     private var gitDecoration: GitStatusModel.FileDecoration? {
-        git.fileDecoration(for: item.path, isDirectory: item.isDirectory)
+        guard model.isEditable else { return nil }
+        return git.fileDecoration(for: item.path, isDirectory: item.isDirectory)
     }
 
     var body: some View {
@@ -416,6 +491,9 @@ private struct FileTreeRow: View {
         }
     }
 
+    /// A remote row's path names a file on the other machine, so everything
+    /// that would hand it to macOS or to the file system is left out. `cd`
+    /// stays: the terminal it would be typed into is already on that host.
     @ViewBuilder
     private var rowMenu: some View {
         if !item.isDirectory {
@@ -426,11 +504,13 @@ private struct FileTreeRow: View {
                 openToSide(item.path)
             }
         }
-        Button("Open in Default App") {
-            NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
-        }
-        Button("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+        if model.isEditable {
+            Button("Open in Default App") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+            }
         }
         Button("Copy Path") {
             NSPasteboard.general.clearContents()
@@ -440,21 +520,25 @@ private struct FileTreeRow: View {
             Button("cd Here") {
                 session?.sendCommand("cd " + shellQuote(item.path) + "\n")
             }
+            if model.isEditable {
+                Divider()
+                Button("New File…") {
+                    model.beginNewFile(in: item.path)
+                }
+                Button("New Folder…") {
+                    model.beginNewFolder(in: item.path)
+                }
+            }
+        }
+        if model.isEditable {
             Divider()
-            Button("New File…") {
-                model.beginNewFile(in: item.path)
+            Button("Rename") {
+                model.beginRename(item)
             }
-            Button("New Folder…") {
-                model.beginNewFolder(in: item.path)
+            Button("Move to Trash", role: .destructive) {
+                model.moveToTrash(item)
+                refreshGitStatus()
             }
-        }
-        Divider()
-        Button("Rename") {
-            model.beginRename(item)
-        }
-        Button("Move to Trash", role: .destructive) {
-            model.moveToTrash(item)
-            refreshGitStatus()
         }
     }
 
@@ -521,8 +605,14 @@ private struct FileTreeRow: View {
         // Drag a row out as a file URL: onto the terminal (which inserts its
         // path) or into Finder and other apps. A click still opens/toggles;
         // the drag only begins once the pointer moves.
+        //
         .onDrag {
-            NSItemProvider(object: URL(fileURLWithPath: item.path) as NSURL)
+            // Only for a row that is a file on this machine. A remote row's
+            // path names nothing here, and handing another application a
+            // `file://` URL built from it would offer up whatever happens to
+            // sit at that path locally as though it were the file on screen.
+            guard model.isEditable else { return NSItemProvider() }
+            return NSItemProvider(object: URL(fileURLWithPath: item.path) as NSURL)
         }
     }
 

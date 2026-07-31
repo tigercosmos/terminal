@@ -92,6 +92,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'Cmd+Shift+C puts a branch, a commit, or any revision git understands beside your working tree — read the diff, keep editing your side, blame a line, revert a file',
       },
       {
+        name: 'Files follow you over ssh',
+        detail:
+          "connect to another machine and the Files panel shows that machine's files — folders expand and files open read-only over the connection you already have, and a host that would need a password says so instead of hanging",
+      },
+      {
         name: 'Files that open instantly',
         detail:
           'switching back to an open file keeps its undo history instead of rebuilding the editor, and a large one no longer stalls as you scroll',
@@ -247,7 +252,9 @@ const FAQ: { q: string; a: ReactNode }[] = [
         </a>{' '}
         that leans harder on reviewing what coding agents write. The Compare
         panel is the main addition: any branch or commit beside your working
-        tree, editable, with blame and revert. Opening files got faster, the
+        tree, editable, with blame and revert. The Files panel also follows a
+        terminal over ssh, showing the host you connected to. Opening files got
+        faster, the
         paths that handle a repository's own data were hardened against
         untrusted input, and a Makefile replaced the build incantations. It
         tracks Kero and merges upstream work back in, so everything Kero does is

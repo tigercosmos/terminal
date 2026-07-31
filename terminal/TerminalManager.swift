@@ -573,14 +573,16 @@ final class TerminalManager: nonisolated ObservableObject {
 
     // MARK: - Files
 
-    /// Opens `path` as a file tab in the current project.
-    func openFile(_ path: String) {
-        selectedProject?.openFile(path)
+    /// Opens `path` as a file tab in the current project. `remote` is set when
+    /// the path is on a host a terminal has connected to rather than on this
+    /// machine, and the tab reads it back over that same connection.
+    func openFile(_ path: String, remote: RemoteShellDestination? = nil) {
+        selectedProject?.openFile(path, remote: remote)
     }
 
     /// Opens `path` as a pane beside the focused one in the current tab.
-    func openFileToSide(_ path: String) {
-        selectedProject?.openFileToSide(path)
+    func openFileToSide(_ path: String, remote: RemoteShellDestination? = nil) {
+        selectedProject?.openFileToSide(path, remote: remote)
     }
 
     /// Opens a git diff tab in the current project.
@@ -870,7 +872,9 @@ final class TerminalManager: nonisolated ObservableObject {
         case .session(let session):
             return .session(workingDirectory: session.currentDirectoryPath)
         case .file(let file):
-            return .file(path: file.path, editorState: file.editorState)
+            return .file(
+                path: file.path, editorState: file.editorState, remoteHost: file.remoteHost
+            )
         case .browser(let browser):
             return .browser(url: browser.snapshotURL)
         case .diff(let diff):

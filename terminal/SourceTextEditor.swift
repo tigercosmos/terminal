@@ -119,6 +119,9 @@ struct SourceTextEditor: NSViewRepresentable {
         // used to leave stale layout fragments that broke gutter numbering.
         textView.showsLineNumbers = true
         textView.highlightSelectedLine = true
+        // A file fetched from another host is shown, not edited: there is no
+        // way to write it back that keeps the guarantees a local save makes.
+        textView.isEditable = !file.isReadOnly
         // Highlight every match as the query is typed in the find bar, the way
         // the terminal's find bar searches as you type. Off by default in
         // STTextView.

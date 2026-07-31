@@ -1392,6 +1392,22 @@
         }
       }
     },
+    "Connecting…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接…"
+          }
+        }
+      }
+    },
     "Copied" : {
       "localizations" : {
         "ja" : {
@@ -3210,8 +3226,57 @@
         }
       }
     },
+    "ssh" : {
+      "comment" : "Files header badge: the file tree is showing the host the terminal has connected to.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ssh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ssh"
+          }
+        }
+      }
+    },
     "terminal" : {
       "shouldTranslate" : false
+    },
+    "Terminal couldn’t connect to this host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal はこのホストに接続できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 无法连接到此主机。"
+          }
+        }
+      }
+    },
+    "Terminal couldn’t read files on this host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal はこのホストのファイルを読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 无法读取此主机上的文件。"
+          }
+        }
+      }
     },
     "Terminal did not provide any %@ themes." : {
       "localizations" : {
@@ -3306,6 +3371,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "浅色主题"
+          }
+        }
+      }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込み中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载…"
           }
         }
       }
@@ -5665,6 +5746,22 @@
         }
       }
     },
+    "Showing files on the host this terminal is connected to" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このターミナルが接続しているホストのファイルを表示しています"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示此终端所连接主机上的文件"
+          }
+        }
+      }
+    },
     "Show Git Output" : {
       "localizations" : {
         "ja" : {
@@ -6309,6 +6406,38 @@
         }
       }
     },
+    "That path couldn’t be read on the remote host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートホスト上でそのパスを読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在远程主机上读取该路径。"
+          }
+        }
+      }
+    },
+    "The remote shell did not report a directory." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートシェルはディレクトリを報告しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程 Shell 未报告目录。"
+          }
+        }
+      }
+    },
     "The selected Git remote is no longer available" : {
       "localizations" : {
         "ja" : {
@@ -6433,6 +6562,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此文件在你打开后已在磁盘上被更改。"
+          }
+        }
+      }
+    },
+    "This file is on %@. Connect to it in a terminal to open the file." : {
+      "comment" : "Shown in place of a restored file that lives on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルは %@ にあります。ターミナルで接続するとファイルを開けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件位于 %@。请在终端中连接该主机以打开文件。"
+          }
+        }
+      }
+    },
+    "This file is on another host, so Terminal can’t save it from here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このファイルは別のホストにあるため、Terminal はここから保存できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件位于另一台主机上，Terminal 无法从这里保存它。"
           }
         }
       }

@@ -82,20 +82,86 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         let imageFingerprint: Int?
     }
 
-    init(path: String) {
+    /// Which machine the file is on.
+    ///
+    /// Anything but `.local` is read-only. Terminal can fetch the bytes over
+    /// the connection the terminal already has, but writing them back is a
+    /// different problem — no atomic replace, no conflict check, no way to
+    /// preserve ownership or mode — and a save that quietly did less than a
+    /// local one would be worse than no save at all.
+    enum Location: Equatable {
+        case local
+        /// On the host a terminal is connected to, readable over that
+        /// connection.
+        case remote(RemoteShellDestination)
+        /// On a host Terminal is no longer connected to, which is how a
+        /// restored tab starts. The path is not one on this machine, so the
+        /// pane says where the file is instead of opening whatever happens to
+        /// sit at the same path here.
+        case disconnected(host: String)
+
+        /// Where a file opened from the Files panel lives: the tree hands over
+        /// the connection its rows came from, or nothing for this machine.
+        init(reachedBy remote: RemoteShellDestination?) {
+            self = remote.map(Location.remote) ?? .local
+        }
+    }
+
+    let location: Location
+
+    var isReadOnly: Bool { location != .local }
+
+    /// The host this file is on, for the session snapshot. Nil for a local file.
+    var remoteHost: String? {
+        switch location {
+        case .local: nil
+        case .remote(let destination): destination.host
+        case .disconnected(let host): host
+        }
+    }
+
+    init(path: String, remote: RemoteShellDestination? = nil) {
         self.path = path
-        let loaded = Self.load(path: path)
-        content = loaded.content
-        text = loaded.text
-        savedText = loaded.text
-        imageFingerprint = loaded.imageFingerprint
-        savedModificationDate = Self.modificationDate(
-            of: URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        location = Location(reachedBy: remote)
+        guard let remote else {
+            let loaded = Self.load(path: path)
+            content = loaded.content
+            text = loaded.text
+            savedText = loaded.text
+            imageFingerprint = loaded.imageFingerprint
+            savedModificationDate = Self.modificationDate(
+                of: URL(fileURLWithPath: path).resolvingSymlinksInPath()
+            )
+            return
+        }
+        content = .unavailable(String(localized: "Loading…"))
+        text = ""
+        loadFromRemote(remote)
+    }
+
+    /// A tab restored from a saved session, for a file that was on another
+    /// host. Terminal does not go and open an ssh connection at launch to
+    /// fetch it: connecting somewhere is something the user does.
+    init(path: String, disconnectedFrom host: String) {
+        self.path = path
+        location = .disconnected(host: host)
+        content = .unavailable(
+            String(
+                localized: "This file is on \(host). Connect to it in a terminal to open the file.",
+                comment: "Shown in place of a restored file that lives on a remote host. The placeholder is a hostname."
+            )
         )
+        text = ""
     }
 
     var name: String {
         (path as NSString).lastPathComponent
+    }
+
+    /// Whether this tab is already showing that file — which means the same
+    /// path *on the same machine*.
+    func matches(path: String, remote: RemoteShellDestination?) -> Bool {
+        self.path == path && location == Location(reachedBy: remote)
     }
 
     /// Re-points this tab at a new location after the file (or a directory
@@ -153,6 +219,14 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     private func write(overwritingExternalChanges: Bool) {
         guard case .text = content, isDirty else { return }
+        // The editor is not editable for a file on another host, so this is a
+        // backstop rather than a path the interface offers.
+        guard location == .local else {
+            saveError = String(
+                localized: "This file is on another host, so Terminal can’t save it from here."
+            )
+            return
+        }
 
         // Writing atomically replaces the file at `path`, which would turn a
         // symlink into a regular file and strand whatever it pointed at — a
@@ -209,6 +283,17 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// winning over a rename, save, or edit performed while it was in flight.
     func reloadFromDiskIfClean() {
         guard !isDirty else { return }
+        switch location {
+        case .remote(let destination):
+            loadFromRemote(destination)
+            return
+        // Nothing to re-read: the connection that could have fetched it is
+        // gone, and the path does not describe anything on this machine.
+        case .disconnected:
+            return
+        case .local:
+            break
+        }
         reloadTask?.cancel()
         reloadGeneration &+= 1
         let generation = reloadGeneration
@@ -242,6 +327,60 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
             self.saveConflict = false
             self.saveError = nil
             self.reloadRevision &+= 1
+        }
+    }
+
+    /// Fetches the file over the same ssh connection the terminal is using.
+    ///
+    /// Guarded exactly like the local read: a round trip is slower than a disk
+    /// read by orders of magnitude, so the chance of the tab being renamed or
+    /// pointed elsewhere before the bytes land is correspondingly higher.
+    private func loadFromRemote(_ remote: RemoteShellDestination) {
+        reloadTask?.cancel()
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
+        let expectedPath = path
+        let ceiling = Self.maxTextBytes
+
+        reloadTask = Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                RemoteFileService.attempt {
+                    try RemoteFileService.contents(
+                        of: expectedPath, on: remote, maxBytes: ceiling
+                    )
+                }
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  self.reloadGeneration == generation,
+                  self.path == expectedPath,
+                  !self.isDirty
+            else { return }
+
+            let loaded = Self.remotelyLoadedContent(path: expectedPath, result: result)
+            guard !self.matches(loaded) else { return }
+            self.content = loaded.content
+            self.text = loaded.text
+            self.savedText = loaded.text
+            self.imageFingerprint = loaded.imageFingerprint
+            self.saveError = nil
+            self.reloadRevision &+= 1
+        }
+    }
+
+    private static func remotelyLoadedContent(
+        path: String, result: Result<(data: Data, isTruncated: Bool), RemoteFileService.Failure>
+    ) -> LoadedContent {
+        func unavailable(_ message: String) -> LoadedContent {
+            LoadedContent(content: .unavailable(message), text: "", imageFingerprint: nil)
+        }
+        switch result {
+        case .success(let read) where read.isTruncated:
+            return unavailable(String(localized: "File is too large to open"))
+        case .success(let read):
+            return loadedContent(path: path, data: read.data)
+        case .failure(.unreachable(let message)), .failure(.pathUnavailable(let message)):
+            return unavailable(message)
         }
     }
 

@@ -462,15 +462,33 @@ impl SyncUpdateTracker {
     }
 }
 
+/// Parses an OSC 7 report into the payload the host expects: the path alone
+/// for a shell on this machine, or `host\0path` for one that named another.
+///
+/// The hostname is kept rather than discarded because it is the only thing in
+/// the report that says whether the path exists here at all. A shell on the
+/// far side of an ssh connection reports a path that is perfectly plausible
+/// locally, and a host that quietly dropped it would have the app open the
+/// wrong directory, or an empty one, and believe it. Neither part can contain
+/// a NUL: `clean_terminal_text` rejects any control character.
 fn working_directory_from_osc7(value: &str) -> Option<String> {
-    let path = if let Some(rest) = value.strip_prefix("file://") {
-        let slash = rest.find('/')?;
-        &rest[slash..]
-    } else {
-        value
+    let (host, path) = match value.strip_prefix("file://") {
+        Some(rest) => {
+            let slash = rest.find('/')?;
+            (&rest[..slash], &rest[slash..])
+        }
+        None => ("", value),
     };
-    let decoded = percent_decode(path);
-    clean_terminal_text(&decoded, 4096)
+    let path = clean_terminal_text(&percent_decode(path), 4096)?;
+    if host.is_empty() {
+        return Some(path);
+    }
+    // A host that fails the same check the path gets — a control character in
+    // it, or an absurd length — drops the whole report rather than the host
+    // alone. Reporting the path by itself would be indistinguishable from a
+    // local shell, which is the one thing the host is here to rule out.
+    let host = clean_terminal_text(&percent_decode(host), 256)?;
+    Some(format!("{host}\0{path}"))
 }
 
 fn parse_progress(value: &str) -> Option<OscEvent> {
@@ -2089,7 +2107,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                OscEvent::WorkingDirectory("/Users/example/My Project".to_owned()),
+                OscEvent::WorkingDirectory("host\0/Users/example/My Project".to_owned()),
                 OscEvent::Progress {
                     state: 1,
                     percent: Some(100),
@@ -2163,6 +2181,29 @@ mod tests {
 
         assert!(output.is_empty());
         assert!(events.is_empty());
+    }
+
+    /// The host is what tells the app whether the reported path is one it can
+    /// open. A shell inside ssh reports a path that looks perfectly local, so
+    /// dropping the host would send the file panel to the wrong machine.
+    #[test]
+    fn osc7_keeps_a_host_that_is_not_this_machine() {
+        assert_eq!(
+            working_directory_from_osc7("file://build-box/srv/app"),
+            Some("build-box\0/srv/app".to_owned())
+        );
+        assert_eq!(
+            working_directory_from_osc7("file:///Users/example"),
+            Some("/Users/example".to_owned())
+        );
+        assert_eq!(
+            working_directory_from_osc7("/Users/example"),
+            Some("/Users/example".to_owned())
+        );
+        assert_eq!(working_directory_from_osc7("file://host/tmp/a\nb"), None);
+        // A host the app cannot read must not decay into "no host at all":
+        // that is how a shell on another machine passes for a local one.
+        assert_eq!(working_directory_from_osc7("file://ho%00st/tmp/x"), None);
     }
 }
 

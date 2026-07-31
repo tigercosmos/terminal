@@ -18,7 +18,11 @@ struct SessionSnapshot: Codable {
         /// saved tabs still decode; see `TabSnapshot`.
         enum PaneContentSnapshot: Codable {
             case session(workingDirectory: String)
-            case file(path: String, editorState: EditorState?)
+            /// `remoteHost` is set when the path was on a host a terminal had
+            /// connected to. Without it a restored tab would open whatever
+            /// sits at that path on this machine and look like the same file.
+            /// Optional so snapshots written before this feature still decode.
+            case file(path: String, editorState: EditorState?, remoteHost: String? = nil)
             case browser(url: String?)
             case diff(repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?)
             /// The target commit is saved rather than the branch it came from:

@@ -22,6 +22,15 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
 
     @Published var title: String
     @Published var workingDirectory: String?
+    /// The host a shell named in its OSC 7 report, when that host is not this
+    /// machine. Set only by the Alacritty backend: libghostty drops a report
+    /// from another host before Terminal ever sees it, which is why a remote
+    /// session is recognized from the process tree instead — see
+    /// ``remoteDestination``.
+    @Published private(set) var remoteHost: String?
+    /// The directory that remote shell last reported, paired with
+    /// ``remoteHost``. Never a path on this machine.
+    @Published private(set) var remoteWorkingDirectory: String?
     @Published var hasExited = false
     @Published private(set) var commandLifecycle = TerminalCommandLifecycle()
 
@@ -217,6 +226,29 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
               foreground != shellPid
         else { return nil }
         return processWorkingDirectory(pid: foreground)
+    }
+
+    /// The ssh connection this terminal's foreground job *is*, when it is one.
+    ///
+    /// Read from the process every time rather than remembered: the user can
+    /// leave a remote host at any moment, and a remembered destination would
+    /// leave the Files panel describing a machine the terminal is no longer on.
+    var remoteDestination: RemoteShellDestination? {
+        guard let foreground = surface.foregroundPid, foreground > 0, foreground != shellPid
+        else { return nil }
+        return remoteShellDestination(foregroundPid: foreground)
+    }
+
+    /// Where the remote shell says it is, when that report came from the host
+    /// `destination` reaches. A shell on some *other* host is not this
+    /// connection's business — an ssh from inside an ssh, say.
+    ///
+    /// A destination the user spelled as an `ssh_config` alias will not match
+    /// the name the far side calls itself, and the tree falls back to the
+    /// login directory rather than trusting a path it cannot place.
+    func remoteWorkingDirectory(on destination: RemoteShellDestination) -> String? {
+        guard let remoteHost, destination.matches(reportedHost: remoteHost) else { return nil }
+        return remoteWorkingDirectory
     }
 
     func sendCommand(_ text: String) {
@@ -421,10 +453,36 @@ extension TerminalSession: TerminalBackendEvents {
         self.title = title
     }
 
+    /// A backend reports `host\0path` when OSC 7 named a machine, and the bare
+    /// path otherwise.
+    ///
+    /// A path from another machine must not become this session's working
+    /// directory. That value is where a new tab opens, what a restored session
+    /// reopens, and what the Git and Compare panels root at — all of which are
+    /// local, and all of which would land on whatever happens to sit at the
+    /// same path here. It is kept separately instead, for the Files panel to
+    /// follow the terminal onto the host it is really working on.
     func terminalDidChangeWorkingDirectory(_ path: String) {
         guard !path.isEmpty else { return }
-        workingDirectory = path.hasPrefix("/")
-            ? URL(fileURLWithPath: path).absoluteString : path
+        let fields = path.split(separator: "\0", maxSplits: 1, omittingEmptySubsequences: false)
+        let reported = fields.count == 2 ? String(fields[1]) : path
+        // A name that is not this machine's is not enough on its own to
+        // believe the shell is elsewhere. A shell captures its own hostname
+        // when it starts and macOS renames a machine out from under it — on a
+        // new network, or from System Settings — so a mismatch is at least as
+        // likely to be this Mac under a name it no longer uses. Taking that
+        // for a remote report would leave a perfectly local terminal's
+        // directory frozen at wherever it was when the machine was renamed.
+        // Being inside ssh is the fact that settles it.
+        if fields.count == 2, !isLocalHostname(String(fields[0])), remoteDestination != nil {
+            remoteHost = String(fields[0])
+            remoteWorkingDirectory = reported
+            return
+        }
+        remoteHost = nil
+        remoteWorkingDirectory = nil
+        workingDirectory = reported.hasPrefix("/")
+            ? URL(fileURLWithPath: reported).absoluteString : reported
     }
 
     func terminalDidRingBell() {

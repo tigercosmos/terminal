@@ -312,8 +312,10 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
     /// Opens `path` as a new file tab, reusing an existing tab/pane for the
     /// same path. `editorState` seeds scroll/cursor state when restoring.
-    func openFile(_ path: String, editorState: EditorState? = nil) {
-        if let (tab, paneID) = findFilePane(path: path) {
+    func openFile(
+        _ path: String, remote: RemoteShellDestination? = nil, editorState: EditorState? = nil
+    ) {
+        if let (tab, paneID) = findFilePane(path: path, remote: remote) {
             selectedTabID = tab.id
             tab.focusedPaneID = paneID
             return
@@ -321,7 +323,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         // Capture the current directory context *before* selection moves to the
         // new tab, so its panels track the tab the file was opened from.
         let context = selectedSession
-        let file = FileTab(path: path)
+        let file = FileTab(path: path, remote: remote)
         if let editorState {
             file.editorState = editorState
         }
@@ -334,25 +336,30 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// Opens `path` as a new pane beside the focused one in the current tab
     /// ("Open to the Side"). Falls back to a fresh tab when the current tab
     /// can't take a split (e.g. it's a diff) or none is selected.
-    func openFileToSide(_ path: String) {
+    func openFileToSide(_ path: String, remote: RemoteShellDestination? = nil) {
         guard let tab = selectedTab, tab.canSplit else {
-            openFile(path)
+            openFile(path, remote: remote)
             return
         }
         if let existing = tab.allPanes.first(where: {
-            if case .file(let file) = $0.content { return file.path == path }
+            if case .file(let file) = $0.content { return file.matches(path: path, remote: remote) }
             return false
         }) {
             tab.focusedPaneID = existing.id
             return
         }
-        tab.split(Pane(content: .file(FileTab(path: path))), toward: .right)
+        tab.split(Pane(content: .file(FileTab(path: path, remote: remote))), toward: .right)
     }
 
-    private func findFilePane(path: String) -> (tab: PaneTab, paneID: UUID)? {
+    /// A path only identifies a tab together with the host it is on: `/etc/hosts`
+    /// here and `/etc/hosts` on a build machine are different files that happen
+    /// to be spelled the same.
+    private func findFilePane(
+        path: String, remote: RemoteShellDestination?
+    ) -> (tab: PaneTab, paneID: UUID)? {
         for tab in tabs {
             if let pane = tab.allPanes.first(where: {
-                if case .file(let file) = $0.content { return file.path == path }
+                if case .file(let file) = $0.content { return file.matches(path: path, remote: remote) }
                 return false
             }) {
                 return (tab, pane.id)
@@ -802,8 +809,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         switch snap {
         case .session(let workingDirectory):
             return .session(makeSession(directory: workingDirectory, restoredHistory: restoredHistory))
-        case .file(let path, let editorState):
-            let file = FileTab(path: path)
+        case .file(let path, let editorState, let remoteHost):
+            let file = remoteHost.map { FileTab(path: path, disconnectedFrom: $0) }
+                ?? FileTab(path: path)
             if let editorState { file.editorState = editorState }
             return .file(file)
         case .browser(let url):

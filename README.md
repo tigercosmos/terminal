@@ -38,6 +38,12 @@ What this fork adds on top of [Kero](https://github.com/egoist/kero):
   target on the left, read-only, and your live file on the right, still
   editable and saveable. Each line shows who last changed it, and any file can
   be reverted to the target.
+- **Files follow you over ssh** — connect to another machine in a terminal and
+  the Files panel shows *that* machine's files rather than a stale local tree.
+  Folders expand and files open read-only over the connection you already have,
+  multiplexed onto it so browsing costs a round trip rather than a second login;
+  a host that would need a password says so instead of hanging. Git and Compare
+  stay with your Mac, which is where your checkout is.
 - **Faster files** — switching back to an already-open file is instant and
   keeps its undo history, instead of rebuilding and reparsing the editor. Large
   files no longer stall while scrolled away from the top: the gutter numbers

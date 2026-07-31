@@ -7,7 +7,8 @@ import AppKit
 import Combine
 import Foundation
 
-/// Flattened, lazily-expanded view of a directory tree.
+/// Flattened, lazily-expanded view of a directory tree, on this machine or on
+/// the host a terminal has ssh'd into.
 @MainActor
 final class FileTreeModel: nonisolated ObservableObject {
     struct Item: Identifiable, Equatable {
@@ -28,33 +29,159 @@ final class FileTreeModel: nonisolated ObservableObject {
         let isDirectory: Bool
     }
 
+    /// Which machine the rows describe.
+    ///
+    /// A local tree is read straight off the file system while the panel is
+    /// being laid out: `contentsOfDirectory` on a warm directory is
+    /// microseconds, and the panel already re-reads on a two-second timer. A
+    /// remote tree cannot work that way — every listing is an ssh round trip —
+    /// so its rows come from a cache that fills in behind the view.
+    enum Source: Equatable {
+        case local
+        case remote(RemoteShellDestination)
+    }
+
+    /// What the panel has to say beyond its rows.
+    enum Status: Equatable {
+        case ready
+        /// A remote listing is in flight and there is nothing to show yet.
+        case loading
+        /// The host could not be reached. The tree stays as it is and the
+        /// panel shows this instead, until the user retries or the terminal
+        /// moves somewhere else.
+        case unreachable(String)
+    }
+
     @Published private(set) var rootPath = ""
     @Published private(set) var items: [Item] = []
+    @Published private(set) var source = Source.local
+    @Published private(set) var status = Status.ready
     /// Path of the row currently being renamed inline, if any.
     @Published private(set) var renamingPath: String?
     /// The pending new-file/folder input row, if any.
     @Published private(set) var draft: Draft?
     private var expanded: Set<String> = []
 
+    /// Listings fetched from a remote host, with when they arrived. Cleared
+    /// whenever the tree changes host.
+    private var remoteListings: [String: (entries: [Entry], loadedAt: Date)] = [:]
+    private var pendingDirectories: Set<String> = []
+    /// Where an ssh login lands, learned from the first listing, so the tree
+    /// has somewhere to root when the remote shell has never reported where it
+    /// is. Cleared with the listings when the tree changes host.
+    private var loginDirectory: String?
+    /// Bumped whenever the host or root changes, so a listing that arrives
+    /// after the terminal moved on is discarded rather than shown.
+    private var generation: UInt = 0
+
+    /// How long a remote listing is trusted before the panel's next tick
+    /// re-fetches it. Long enough that sitting on an expanded tree is not a
+    /// steady stream of commands, short enough that a build dropping files
+    /// into a folder shows up while the user is still looking at it.
+    private static let remoteRefreshInterval: TimeInterval = 10
+
+    /// A directory's contents, from either machine — the remote service's shape
+    /// is exactly what the local read produces, so there is nothing to convert.
+    private typealias Entry = RemoteFileService.Entry
+
     var rootName: String {
         (rootPath as NSString).lastPathComponent
     }
+
+    /// The connection the rows come from, when they do not come from this
+    /// machine. Passed along when a row is opened so the tab reads the file
+    /// over the same connection.
+    var remoteDestination: RemoteShellDestination? {
+        guard case .remote(let destination) = source else { return nil }
+        return destination
+    }
+
+    /// The host whose files are shown, when they are not this machine's.
+    var remoteHost: String? { remoteDestination?.host }
+
+    /// Whether the tree can be edited. Terminal only creates, renames, and
+    /// trashes files it can reach through the file system.
+    var isEditable: Bool { source == .local }
 
     func isExpanded(_ item: Item) -> Bool {
         expanded.contains(item.path)
     }
 
-    /// Points the tree at `root` (collapsing everything if it moved) and
-    /// re-reads visible directories. Cheap when nothing changed.
+    /// Points the tree at `root` on this machine (collapsing everything if it
+    /// moved) and re-reads visible directories. Cheap when nothing changed.
     func sync(root: String) {
-        if root != rootPath {
-            rootPath = root
-            expanded = []
-            // Any in-progress inline edit belonged to the old tree.
-            renamingPath = nil
-            draft = nil
-        }
+        leaveHost(unless: .local)
+        move(to: root, source: .local)
         rebuild()
+    }
+
+    /// Points the tree at a directory on the host a terminal has ssh'd into.
+    ///
+    /// `reportedPath` is where the remote shell last said it was, which only a
+    /// shell with OSC 7 integration ever says. Without one the tree roots at
+    /// the directory an ssh login lands in — the far side of the connection is
+    /// still browsable, it just does not follow the remote `cd`.
+    func sync(remote destination: RemoteShellDestination, reportedPath: String?) {
+        leaveHost(unless: .remote(destination))
+        guard let root = reportedPath ?? loginDirectory else {
+            move(to: "", source: .remote(destination))
+            if status == .ready { status = .loading }
+            // The listing reports the directory it ran in, so asking for the
+            // login directory by name first would be a round trip spent
+            // learning something the next one says anyway.
+            requestRemoteListing(of: Self.loginDirectoryRequest, from: destination)
+            rebuild()
+            return
+        }
+        move(to: root, source: .remote(destination))
+        rebuild()
+    }
+
+    /// Hangs up on the host the tree is leaving, if it is leaving one.
+    ///
+    /// Closing the master here rather than letting it lapse keeps a connection
+    /// from outliving the reason it existed by the whole `ControlPersist`
+    /// window — the user exited ssh, or the panel followed another session.
+    private func leaveHost(unless next: Source) {
+        guard source != next, case .remote(let previous) = source else { return }
+        Task.detached(priority: .utility) { RemoteFileService.disconnect(from: previous) }
+        remoteListings = [:]
+        loginDirectory = nil
+        status = .ready
+    }
+
+    /// Tries the host again after a failure. The tree is otherwise left alone
+    /// once a connection fails, so a host that is down does not become an ssh
+    /// attempt every two seconds for as long as the panel is open.
+    func retry() {
+        guard case .unreachable = status else { return }
+        status = .ready
+        remoteListings = [:]
+        // The first connection to a host fails before the tree has a root, and
+        // `rebuild` has no tree to walk in that state — so nothing would be
+        // asked for again. That is also the likeliest failure there is: a host
+        // that is down, or one that wanted a password.
+        guard case .remote(let destination) = source, rootPath.isEmpty else {
+            rebuild()
+            return
+        }
+        status = .loading
+        requestRemoteListing(of: Self.loginDirectoryRequest, from: destination)
+    }
+
+    private func move(to root: String, source newSource: Source) {
+        guard root != rootPath || newSource != source else { return }
+        rootPath = root
+        source = newSource
+        expanded = []
+        // Any in-progress inline edit belonged to the old tree.
+        renamingPath = nil
+        draft = nil
+        // Requests already in flight will be discarded on arrival, so their
+        // directories have to stop counting as pending or nothing would ever
+        // ask for them again.
+        pendingDirectories = []
+        generation &+= 1
     }
 
     func toggle(_ item: Item) {
@@ -66,7 +193,13 @@ final class FileTreeModel: nonisolated ObservableObject {
     }
 
     /// Moves `item` to the Trash, then rebuilds so it drops out of the tree.
+    ///
+    /// The editing operations all guard on ``isEditable`` rather than trusting
+    /// the panel to have hidden them: a remote row's path is an absolute path
+    /// on the *other* machine, and running one of these against it would
+    /// quietly rename or trash whatever happens to sit at the same path here.
     func moveToTrash(_ item: Item) {
+        guard isEditable else { return }
         do {
             try FileManager.default.trashItem(
                 at: URL(fileURLWithPath: item.path), resultingItemURL: nil
@@ -87,6 +220,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     // MARK: - Rename
 
     func beginRename(_ item: Item) {
+        guard isEditable else { return }
         renamingPath = item.path
     }
 
@@ -101,6 +235,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     @discardableResult
     func rename(_ item: Item, to newName: String) -> String? {
         renamingPath = nil
+        guard isEditable else { return nil }
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != item.name else { return nil }
         guard !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
@@ -161,6 +296,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     }
 
     private func startDraft(in directory: String, isDirectory: Bool) {
+        guard isEditable else { return }
         renamingPath = nil
         draft = Draft(parentDir: directory, isDirectory: isDirectory)
         // Reveal the folder's contents so the input row is visible.
@@ -181,6 +317,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     func commitDraft(name: String) -> String? {
         guard let draft else { return nil }
         self.draft = nil
+        guard isEditable else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { rebuild(); return nil }
         guard !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
@@ -229,7 +366,12 @@ final class FileTreeModel: nonisolated ObservableObject {
     }
 
     private func rebuild() {
-        guard !rootPath.isEmpty else { return }
+        // No root yet — a remote tree waiting to learn where it starts. The
+        // rows from wherever the tree was pointed before are not this host's.
+        guard !rootPath.isEmpty else {
+            items = []
+            return
+        }
         var out: [Item] = []
         appendChildren(of: rootPath, depth: 0, into: &out)
         if out != items {
@@ -249,16 +391,17 @@ final class FileTreeModel: nonisolated ObservableObject {
                 )
             )
         }
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return }
+        guard let entries = entries(in: dir) else { return }
 
-        let children = names
-            .filter { $0 != ".git" }
-            .map { name -> Item in
-                let path = (dir as NSString).appendingPathComponent(name)
-                var isDir: ObjCBool = false
-                fm.fileExists(atPath: path, isDirectory: &isDir)
-                return Item(name: name, path: path, isDirectory: isDir.boolValue, depth: depth)
+        let children = entries
+            .filter { $0.name != ".git" }
+            .map { entry in
+                Item(
+                    name: entry.name,
+                    path: (dir as NSString).appendingPathComponent(entry.name),
+                    isDirectory: entry.isDirectory,
+                    depth: depth
+                )
             }
             .sorted { a, b in
                 if a.isDirectory != b.isDirectory { return a.isDirectory }
@@ -271,5 +414,102 @@ final class FileTreeModel: nonisolated ObservableObject {
                 appendChildren(of: child.path, depth: depth + 1, into: &out)
             }
         }
+    }
+
+    /// The contents of `dir`, or nil when there are none to show yet — an
+    /// unreadable directory locally, a listing still in flight remotely.
+    private func entries(in dir: String) -> [Entry]? {
+        switch source {
+        case .local:
+            let fm = FileManager.default
+            guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
+            return names.map { name in
+                var isDirectory: ObjCBool = false
+                fm.fileExists(
+                    atPath: (dir as NSString).appendingPathComponent(name),
+                    isDirectory: &isDirectory
+                )
+                return Entry(name: name, isDirectory: isDirectory.boolValue)
+            }
+        case .remote(let destination):
+            guard let listing = remoteListings[dir] else {
+                requestRemoteListing(of: dir, from: destination)
+                return nil
+            }
+            if Date().timeIntervalSince(listing.loadedAt) > Self.remoteRefreshInterval {
+                requestRemoteListing(of: dir, from: destination)
+            }
+            return listing.entries
+        }
+    }
+
+    // MARK: - Remote listings
+
+    /// The directory an ssh login lands in, asked for by the only name that
+    /// works before its real one is known.
+    private static let loginDirectoryRequest = "."
+
+    private func requestRemoteListing(
+        of dir: String, from destination: RemoteShellDestination
+    ) {
+        // A host that just refused a connection would otherwise be asked again
+        // on the panel's next tick, and on every tick after that.
+        guard !isUnreachable, pendingDirectories.insert(dir).inserted else { return }
+        // An empty panel with no rows and no explanation reads as "this host
+        // has no files"; say the connection is still being made instead.
+        if items.isEmpty, status == .ready { status = .loading }
+        let generation = generation
+
+        Task { [weak self] in
+            let listing = await Task.detached(priority: .utility) {
+                // Nothing is watching for this any more; do not pay for the
+                // connection. Only what the caller can already cancel reaches
+                // here early enough for this to fire.
+                guard !Task.isCancelled else { return nil as Result<RemoteFileService.Listing, RemoteFileService.Failure>? }
+                return RemoteFileService.attempt { try RemoteFileService.entries(in: dir, on: destination) }
+            }.value
+            guard let self, let listing, self.generation == generation else { return }
+            self.pendingDirectories.remove(dir)
+            switch listing {
+            case .success(let contents):
+                self.remoteListings[contents.directory] = (contents.entries, Date())
+                if self.status == .loading { self.status = .ready }
+                // The listing names the directory it actually ran in, which is
+                // how the tree learns where an ssh login lands without having
+                // spent a round trip asking.
+                if dir == Self.loginDirectoryRequest {
+                    self.loginDirectory = contents.directory
+                    self.sync(remote: destination, reportedPath: nil)
+                    return
+                }
+            case .failure(let failure):
+                self.recordRemoteFailure(failure, atPath: dir)
+            }
+            self.rebuild()
+        }
+    }
+
+    /// A directory that is merely gone is remembered as empty, so the tree
+    /// stops asking for it. A host that cannot be reached stops the tree.
+    private func recordRemoteFailure(
+        _ failure: RemoteFileService.Failure, atPath dir: String
+    ) {
+        switch failure {
+        case .pathUnavailable(let message):
+            // The root itself being unreadable is not one folder failing —
+            // there is no tree left to show.
+            guard dir != Self.loginDirectoryRequest, dir != rootPath else {
+                status = .unreachable(message)
+                return
+            }
+            remoteListings[dir] = ([], Date())
+        case .unreachable(let message):
+            status = .unreachable(message)
+        }
+    }
+
+    private var isUnreachable: Bool {
+        if case .unreachable = status { return true }
+        return false
     }
 }
