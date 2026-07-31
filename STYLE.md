@@ -248,10 +248,11 @@ with Japanese and Simplified Chinese maintained in String Catalogs. See
 
 ## Untrusted input
 
-Terminal output, a repository's own Git configuration, and files another
-process or agent is writing are all untrusted — this is the project's stated
-security scope ([SECURITY.md](SECURITY.md)). Code on those paths carries
-obligations the type system cannot express:
+Terminal output, a repository's own Git configuration, files another process
+or agent is writing, and whatever a host reached over ssh sends back are all
+untrusted — this is the project's stated security scope
+([SECURITY.md](SECURITY.md)). Code on those paths carries obligations the
+type system cannot express:
 
 - **Never hand untrusted data to something that executes.** Read-only `git`
   invocations neutralize repository-supplied `core.fsmonitor` and
@@ -263,6 +264,11 @@ obligations the type system cannot express:
 - **Write through symlinks, not over them**, resolve a path once and use the
   resolved handle for both the check and the action, and give files holding
   session data restrictive permissions.
+- **Never let an answer from another machine name a path on this one.** A
+  remote host is free to reply with anything, whatever command it was sent —
+  including a name containing `/` or `..`. Validate entries where they arrive,
+  and keep a path that came from elsewhere away from everything that would
+  resolve it here: Finder, the Trash, a drag, the default application.
 
 When you change one of these paths, verify the hostile case fires — and
 confirm the fix by reverting it and watching the behavior come back.
