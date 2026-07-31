@@ -190,8 +190,9 @@ const FEATURES: { group: string; rows: Row[] }[] = [
         detail: 'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size',
       },
       {
-        name: 'Quiet updates',
-        detail: 'signed, notarized builds check in with Sparkle and install in the background',
+        name: 'No update checks',
+        detail:
+          'Sparkle is built in but never starts — this fork ships no update feed and no signing key, so nothing checks in; pull and rebuild to move up',
       },
     ],
   },
