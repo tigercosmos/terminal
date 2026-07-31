@@ -80,7 +80,34 @@ async function fetchLatestRelease(): Promise<Release | null> {
 
 type Row = { name: string; detail: string }
 
+// Keep this list in step with the "Beyond Kero" section of the repository
+// README — the two are the only places the fork's own work is written down.
 const FEATURES: { group: string; rows: Row[] }[] = [
+  {
+    group: 'beyond kero',
+    rows: [
+      {
+        name: 'Compare any revision',
+        detail:
+          'Cmd+Shift+C puts a branch, a commit, or any revision git understands beside your working tree — read the diff, keep editing your side, blame a line, revert a file',
+      },
+      {
+        name: 'Files that open instantly',
+        detail:
+          'switching back to an open file keeps its undo history instead of rebuilding the editor, and a large one no longer stalls as you scroll',
+      },
+      {
+        name: 'Hardened against untrusted input',
+        detail:
+          "a folder you open cannot make its own git config run commands, links that leave the browser ask first, and saved scrollback is yours to read alone",
+      },
+      {
+        name: 'Builds without ceremony',
+        detail:
+          'make build, run, test, install — unsigned by default, so it launches without a Developer ID',
+      },
+    ],
+  },
   {
     group: 'projects & sessions',
     rows: [
@@ -191,12 +218,38 @@ const SHORTCUTS: Row[] = [
   { name: 'Ctrl+Cmd+arrows / =', detail: 'resize / equalize panes' },
   { name: 'Cmd+B / Cmd+Shift+B', detail: 'toggle the left / right sidebar' },
   { name: 'Cmd+Shift+G / E / I', detail: 'git / files / info panel' },
+  { name: 'Cmd+Shift+C', detail: 'compare against a branch or commit' },
   { name: 'Cmd+F / Cmd+G', detail: 'find / find next' },
   { name: 'Cmd+K', detail: 'clear the terminal' },
   { name: 'Cmd+S', detail: 'save the open file' },
 ]
 
 const FAQ: { q: string; a: ReactNode }[] = [
+  {
+    q: 'How is this different from Kero?',
+    a: (
+      <>
+        Terminal is a fork of{' '}
+        <a
+          href="https://kero.sh"
+          target="_blank"
+          rel="noreferrer"
+          className="text-foreground underline underline-offset-4 hover:text-brand"
+        >
+          Kero
+        </a>{' '}
+        that leans harder on reviewing what coding agents write. The Compare
+        panel is the main addition: any branch or commit beside your working
+        tree, editable, with blame and revert. Opening files got faster, the
+        paths that handle a repository's own data were hardened against
+        untrusted input, and a Makefile replaced the build incantations. It
+        tracks Kero and merges upstream work back in, so everything Kero does is
+        still here. The practical difference is distribution — Kero ships
+        notarized builds and a Homebrew cask; this fork has no signing key and
+        builds from source only.
+      </>
+    ),
+  },
   {
     q: 'Is terminal free?',
     a: 'Yes. Free to download, no subscription, no account.',
