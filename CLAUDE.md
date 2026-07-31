@@ -9,6 +9,7 @@ panes, a file tree, a git panel, an editor, and a diff viewer. AppKit used over 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — build, verify, and what a PR must say. Read before opening one.
 - [STYLE.md](STYLE.md) — how the code is written. Canonical when this file only summarizes.
 - [RELEASING.md](RELEASING.md) — maintainer-only. Never bump the version in a PR.
+- [SYNC.md](SYNC.md) — how upstream Kero work is merged in, and a log of past syncs.
 
 ## Verify
 
