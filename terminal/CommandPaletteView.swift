@@ -267,6 +267,16 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "prev-project", title: "Previous Project", systemImage: "arrow.left.square", shortcut: "⌥⌘[") {
                 manager.selectPreviousProject()
             },
+            // ⌘= is the same command as ⌘+, and the one most people press.
+            PaletteCommand(id: "zoom-in", title: "Zoom In", systemImage: "textformat.size.larger", shortcut: "⌘+ ⌘=") {
+                ZoomCommand.zoomIn(manager)
+            },
+            PaletteCommand(id: "zoom-out", title: "Zoom Out", systemImage: "textformat.size.smaller", shortcut: "⌘-") {
+                ZoomCommand.zoomOut(manager)
+            },
+            PaletteCommand(id: "zoom-reset", title: "Actual Size", systemImage: "textformat.size", shortcut: "⌘0") {
+                ZoomCommand.actualSize(manager)
+            },
         ]
 
         if let project = manager.selectedProject {

@@ -311,6 +311,32 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
         webView.stopLoading()
     }
 
+    /// Page zoom steps, in the order ⌘+ and ⌘− walk them. Discrete stops
+    /// rather than a multiplier so repeated zooming lands back on 1.0 exactly,
+    /// and so each press is a visible change at both ends of the range.
+    private static let zoomSteps: [CGFloat] = [
+        0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3,
+    ]
+
+    /// Zooms the page rather than Terminal's font size: a zoom keystroke has
+    /// to land where the user is looking, and `pageZoom` is per web view, so
+    /// each browser pane keeps its own level.
+    func zoomIn() {
+        let current = webView.pageZoom
+        webView.pageZoom = Self.zoomSteps.first { $0 > current + 0.001 }
+            ?? Self.zoomSteps[Self.zoomSteps.count - 1]
+    }
+
+    func zoomOut() {
+        let current = webView.pageZoom
+        webView.pageZoom = Self.zoomSteps.last { $0 < current - 0.001 }
+            ?? Self.zoomSteps[0]
+    }
+
+    func resetZoom() {
+        webView.pageZoom = 1
+    }
+
     func openInDefaultBrowser() {
         guard let shareURL else { return }
         NSWorkspace.shared.open(shareURL)

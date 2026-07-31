@@ -268,6 +268,24 @@ final class AppSettings: nonisolated ObservableObject {
         NSApp?.appearance = theme.nsAppearance
     }
 
+    /// Steps the terminal font size by whole points, clamped to
+    /// `fontSizeRange`. Zooming moves the same setting the Settings slider
+    /// does, so it reaches every live terminal at once rather than one pane.
+    func adjustFontSize(by points: Double) {
+        // Step from the rounded size, not the raw one, so a hand-edited
+        // fractional config still moves a full point per press and lands on
+        // the whole-point values the slider offers.
+        let stepped = fontSize.rounded() + points
+        fontSize = min(
+            max(stepped, Self.fontSizeRange.lowerBound),
+            Self.fontSizeRange.upperBound
+        )
+    }
+
+    func resetFontSize() {
+        fontSize = Self.defaultFontSize
+    }
+
     func resetFont() {
         fontFamily = ""
         fontSize = Self.defaultFontSize

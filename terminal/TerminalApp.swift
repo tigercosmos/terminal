@@ -16,7 +16,42 @@ struct terminalApp: App {
     init() {
         TerminalFont.registerBundledFonts()
         TerminalNotificationService.shared.configure()
+        _ = Self.zoomInAliasMonitor
     }
+
+    /// Makes plain ⌘= zoom in, alongside the ⌘+ the View menu advertises.
+    ///
+    /// ⌘+ is ⌘⇧= on a US layout, and an `NSMenuItem` matches one chord only,
+    /// so the unshifted key — the one browsers and editors have trained people
+    /// to press — would otherwise do nothing. SwiftUI has no hidden alternate
+    /// menu item, and a second visible "Zoom In" row is worse than a monitor.
+    /// Layouts that type "+" with no Shift reach the menu item directly and
+    /// never need this, which is also why the match is on the character rather
+    /// than on the US key code. Lazily initialized rather than installed from
+    /// `init`, so re-creating the App value cannot stack a second monitor and
+    /// make one keypress zoom twice; it then lives for the life of the app.
+    private static let zoomInAliasMonitor: Any? =
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Command and no other chord key: ⌃⌘= is Equalize Panes, and ⌘⇧=
+            // is the menu item's own equivalent, so both pass through
+            // untouched. Caps Lock and the function/keypad bits ride along on
+            // ordinary key presses and are deliberately not part of the test.
+            let flags = event.modifierFlags
+                .intersection(.deviceIndependentFlagsMask)
+            let character = event.charactersIgnoringModifiers
+            guard event.window != nil,
+                  flags.contains(.command),
+                  flags.isDisjoint(with: [.control, .option, .shift]),
+                  // The keypad's own + is unshifted everywhere, so it belongs
+                  // to the alias rather than to the menu item's ⌘+.
+                  character == "=" || (flags.contains(.numericPad) && character == "+")
+            else { return event }
+            // AppKit runs local monitors synchronously on the main thread.
+            MainActor.assumeIsolated {
+                ZoomCommand.zoomIn(TerminalManager.keyWindowManager)
+            }
+            return nil
+        }
 
     var body: some Scene {
         WindowGroup("terminal", id: "main") {
@@ -58,6 +93,39 @@ private struct WindowRootView: View {
             .onDisappear {
                 manager.windowClosed()
             }
+    }
+}
+
+/// Where a zoom keystroke lands. A focused browser pane zooms its page, the
+/// way every browser behaves; anything else moves the app-wide terminal font
+/// size, which terminals, editors, and diffs all draw from.
+///
+/// `manager` is the focused window's when SwiftUI supplied one, and the key
+/// window's otherwise, so the menu items and the ⌘= monitor always agree.
+@MainActor
+enum ZoomCommand {
+    static func zoomIn(_ manager: TerminalManager?) {
+        if let browser = manager?.selectedBrowser {
+            browser.zoomIn()
+        } else {
+            AppSettings.shared.adjustFontSize(by: 1)
+        }
+    }
+
+    static func zoomOut(_ manager: TerminalManager?) {
+        if let browser = manager?.selectedBrowser {
+            browser.zoomOut()
+        } else {
+            AppSettings.shared.adjustFontSize(by: -1)
+        }
+    }
+
+    static func actualSize(_ manager: TerminalManager?) {
+        if let browser = manager?.selectedBrowser {
+            browser.resetZoom()
+        } else {
+            AppSettings.shared.resetFontSize()
+        }
     }
 }
 
@@ -214,6 +282,27 @@ private struct TerminalCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .disabled(manager?.selectedProject == nil)
+
+            Divider()
+
+            // Outside a browser pane, zoom moves the one app-wide font size
+            // that the Settings slider owns, so every terminal changes
+            // together and the size survives a relaunch. Never disabled: with
+            // no window in focus there is still a font size to change.
+            Button("Zoom In") {
+                ZoomCommand.zoomIn(manager)
+            }
+            .keyboardShortcut("+", modifiers: .command)
+
+            Button("Zoom Out") {
+                ZoomCommand.zoomOut(manager)
+            }
+            .keyboardShortcut("-", modifiers: .command)
+
+            Button("Actual Size") {
+                ZoomCommand.actualSize(manager)
+            }
+            .keyboardShortcut("0", modifiers: .command)
         }
 
         CommandMenu("Projects") {

@@ -217,14 +217,20 @@ final class TerminalManager: nonisolated ObservableObject {
         selectedProjectID = project.id
     }
 
+    /// The window a command should act on when it arrives from outside
+    /// SwiftUI's focused-scene plumbing — the Finder service, the CLI, or an
+    /// app-wide key monitor.
+    static var keyWindowManager: TerminalManager? {
+        registry.first { $0.window === NSApp.keyWindow }
+            ?? registry.first { $0.window === NSApp.mainWindow }
+            ?? registry.last { $0.window != nil }
+    }
+
     /// Routes folders from the Finder service into the active Terminal window.
     /// If no window exists yet, the next WindowGroup manager claims them.
     static func openDirectories(_ directories: [String]) {
         guard !directories.isEmpty else { return }
-        let manager = registry.first { $0.window === NSApp.keyWindow }
-            ?? registry.first { $0.window === NSApp.mainWindow }
-            ?? registry.last { $0.window != nil }
-        guard let manager else {
+        guard let manager = keyWindowManager else {
             pendingDirectories.append(contentsOf: directories)
             requestWindowForPendingDirectories()
             return
@@ -268,10 +274,7 @@ final class TerminalManager: nonisolated ObservableObject {
         directory: String,
         path: String?
     ) {
-        let manager = registry.first { $0.window === NSApp.keyWindow }
-            ?? registry.first { $0.window === NSApp.mainWindow }
-            ?? registry.last { $0.window != nil }
-        guard let manager else { return }
+        guard let manager = keyWindowManager else { return }
         manager.newProject(
             cliLaunch: CLIProjectLaunch(
                 arguments: arguments,
@@ -541,7 +544,7 @@ final class TerminalManager: nonisolated ObservableObject {
 
     // MARK: - Browser
 
-    private var selectedBrowser: BrowserTab? {
+    var selectedBrowser: BrowserTab? {
         if case .browser(let browser)? = selectedProject?.focusedContent {
             return browser
         }

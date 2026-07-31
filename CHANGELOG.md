@@ -28,6 +28,9 @@ the original feature bullet instead of adding separate entries for them.
   them
 - The Files panel now shows repository status with colored filenames and
   badges, including dimmed Git-ignored files
+- Zoom the terminal text with Cmd+Plus (or Cmd+=) and Cmd+Minus, or Cmd+0 for
+  the default size, without opening Settings — in a browser pane the same keys
+  zoom the page
 - Switch directly to tabs with Ctrl+1–9, without also holding Shift
 - The Ctrl-Tab switcher now lists tabs in the order you last used them and opens
   already pointing at the previous tab, so a quick Ctrl-Tab flips between the
