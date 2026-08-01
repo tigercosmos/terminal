@@ -117,6 +117,18 @@ typedef struct {
   size_t screen_lines;
 } TerminalSnapshot;
 
+/// The row immediately below the viewport, used to fill the strip smooth
+/// scrolling opens at the bottom edge when the grid slides part of a row.
+typedef struct {
+  /// `columns` cells owned by the handle and valid only until its next call.
+  const TerminalCell *cells;
+  size_t columns;
+  /// UTF-8 backing for cells with a non-zero `text_len`. Separate from the
+  /// snapshot's so fetching this row cannot invalidate a live snapshot.
+  const uint8_t *text;
+  size_t text_len;
+} TerminalOverscanRow;
+
 typedef struct {
   uint64_t placement_serial;
   uint32_t image_id;
@@ -191,6 +203,10 @@ void terminal_alacritty_resize(TerminalHandle *handle, uint16_t columns, uint16_
 void terminal_alacritty_scroll(TerminalHandle *handle, int32_t delta);
 /// Puts the viewport `offset` lines above the live prompt.
 void terminal_alacritty_scroll_to_offset(TerminalHandle *handle, size_t offset);
+
+/// How many lines the viewport sits above the live prompt. Cheaper than a
+/// snapshot, which rebuilds every visible cell.
+size_t terminal_alacritty_display_offset(TerminalHandle *handle);
 void terminal_alacritty_set_theme(TerminalHandle *handle, const AlacrittyPalette *theme);
 
 /// `kind`: 0 simple, 1 semantic (word), 2 line — single, double, triple click.
@@ -258,6 +274,11 @@ bool terminal_alacritty_synchronized_update(TerminalHandle *handle);
 
 /// Fills `out` with the visible grid.
 void terminal_alacritty_snapshot(TerminalHandle *handle, TerminalSnapshot *out);
+
+/// Fills `out` with the row directly below the viewport. Returns false,
+/// leaving `out` untouched, when the viewport already ends on the newest row
+/// and no such line exists.
+bool terminal_alacritty_overscan_row(TerminalHandle *handle, TerminalOverscanRow *out);
 
 /// Fills `out` with visible Kitty image placements.
 void terminal_alacritty_kitty_snapshot(TerminalHandle *handle, TerminalKittySnapshot *out);

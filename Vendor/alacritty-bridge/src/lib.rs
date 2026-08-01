@@ -157,6 +157,20 @@ pub struct TerminalSnapshot {
     pub screen_lines: usize,
 }
 
+/// The row immediately below the viewport. Smooth scrolling slides the grid up
+/// by a fraction of a row, and this is the row that fills the strip the shift
+/// opens at the bottom edge.
+#[repr(C)]
+pub struct TerminalOverscanRow {
+    /// `columns` cells, owned by the handle and valid only until its next call.
+    pub cells: *const TerminalCell,
+    pub columns: usize,
+    /// UTF-8 backing for cells whose `text_len` is non-zero. Separate from the
+    /// snapshot's so fetching this row cannot invalidate a live snapshot.
+    pub text: *const u8,
+    pub text_len: usize,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TerminalKittyPlacement {
@@ -871,6 +885,10 @@ pub struct TerminalHandle {
     cells: Vec<TerminalCell>,
     /// Variable-length UTF-8 cell contents for combining character clusters.
     cell_text: Vec<u8>,
+    /// The overscan row keeps its own buffers so asking for it never moves the
+    /// cells a snapshot handed out moments earlier.
+    overscan_cells: Vec<TerminalCell>,
+    overscan_text: Vec<u8>,
     child_pid: i32,
     /// Kept so the host can ask which process group is in the foreground —
     /// that is how Terminal tells a shell at its prompt from a running TUI.
@@ -941,6 +959,88 @@ fn resolve(color: Color, colors: &Colors, theme: &AlacrittyPalette) -> u32 {
                 .map(pack)
                 .unwrap_or_else(|| color_for_index(index, theme))
         }
+    }
+}
+
+/// The line one row past the bottom of the viewport, or `None` when the
+/// viewport already ends on the newest row.
+///
+/// Lines run top-down from `-display_offset`, so the viewport's last row is
+/// `screen_lines - display_offset - 1` and the one after it is one lower.
+fn overscan_line<T>(term: &Term<T>) -> Option<Line> {
+    let display_offset = term.grid().display_offset() as i32;
+    let line = Line(term.screen_lines() as i32 - display_offset);
+    (line <= term.bottommost_line()).then_some(line)
+}
+
+/// Flattens one grid cell into the host's representation. Combining marks are
+/// appended to `text`, which the caller exposes alongside the cells.
+fn convert_cell(
+    cell: &Cell,
+    selected: bool,
+    colors: &Colors,
+    theme: &AlacrittyPalette,
+    text: &mut Vec<u8>,
+) -> TerminalCell {
+    let mut flags = 0u16;
+    let source = cell.flags;
+    if source.contains(Flags::INVERSE) {
+        flags |= TERMINAL_CELL_INVERSE;
+    }
+    if source.contains(Flags::BOLD) {
+        flags |= TERMINAL_CELL_BOLD;
+    }
+    if source.contains(Flags::ITALIC) {
+        flags |= TERMINAL_CELL_ITALIC;
+    }
+    if source.intersects(Flags::ALL_UNDERLINES) {
+        flags |= TERMINAL_CELL_UNDERLINE;
+    }
+    if source.contains(Flags::STRIKEOUT) {
+        flags |= TERMINAL_CELL_STRIKEOUT;
+    }
+    if source.contains(Flags::DIM) {
+        flags |= TERMINAL_CELL_DIM;
+    }
+    if source.contains(Flags::HIDDEN) {
+        flags |= TERMINAL_CELL_HIDDEN;
+    }
+    if source.contains(Flags::WIDE_CHAR) {
+        flags |= TERMINAL_CELL_WIDE;
+    }
+    if source.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+        flags |= TERMINAL_CELL_WIDE_SPACER;
+    }
+    if selected {
+        flags |= TERMINAL_CELL_SELECTED;
+    }
+
+    let (text_offset, text_len) =
+        if let Some(marks) = cell.zerowidth().filter(|marks| !marks.is_empty()) {
+            let offset = text.len();
+            let mut encoded = [0; 4];
+            text.extend_from_slice(cell.c.encode_utf8(&mut encoded).as_bytes());
+            for mark in marks {
+                text.extend_from_slice(mark.encode_utf8(&mut encoded).as_bytes());
+            }
+            let len = text.len() - offset;
+            if offset <= u32::MAX as usize && len <= u16::MAX as usize {
+                (offset as u32, len as u16)
+            } else {
+                text.truncate(offset);
+                (0, 0)
+            }
+        } else {
+            (0, 0)
+        };
+
+    TerminalCell {
+        ch: u32::from(cell.c),
+        fg: resolve(cell.fg, colors, theme),
+        bg: resolve(cell.bg, colors, theme),
+        text_offset,
+        text_len,
+        flags,
     }
 }
 
@@ -1078,6 +1178,8 @@ pub unsafe extern "C" fn terminal_alacritty_new(
         kitty_graphics_size,
         cells: Vec::new(),
         cell_text: Vec::new(),
+        overscan_cells: Vec::new(),
+        overscan_text: Vec::new(),
         child_pid,
         master_fd,
         matches: Vec::new(),
@@ -1284,6 +1386,20 @@ pub unsafe extern "C" fn terminal_alacritty_scroll_to_offset(handle: *mut Termin
     let mut term = terminal.term.lock();
     let current = term.grid().display_offset() as i32;
     term.scroll_display(Scroll::Delta(offset as i32 - current));
+}
+
+/// How many lines the viewport sits above the live prompt. Separate from
+/// `terminal_alacritty_snapshot` because a scroll gesture needs this several
+/// times a frame and a snapshot rebuilds every visible cell.
+///
+/// # Safety
+/// `handle` must be live.
+#[no_mangle]
+pub unsafe extern "C" fn terminal_alacritty_display_offset(handle: *mut TerminalHandle) -> usize {
+    if handle.is_null() {
+        return 0;
+    }
+    (*handle).term.lock().grid().display_offset()
 }
 
 /// # Safety
@@ -2205,6 +2321,33 @@ mod tests {
         // that is how a shell on another machine passes for a local one.
         assert_eq!(working_directory_from_osc7("file://ho%00st/tmp/x"), None);
     }
+
+    fn row_text(term: &Term<VoidListener>, line: Line) -> String {
+        let row = &term.grid()[line];
+        (0..term.columns())
+            .map(|column| row[Column(column)].c)
+            .collect::<String>()
+            .trim_end()
+            .to_owned()
+    }
+
+    #[test]
+    fn overscan_line_is_the_row_below_the_viewport() {
+        // Six lines into a three-row screen leaves three in the scrollback,
+        // so the viewport shows four/five/six.
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+
+        // At the live bottom nothing follows the viewport's last row.
+        assert!(overscan_line(&term).is_none());
+
+        // Each row scrolled back pushes one more off the bottom, and it is
+        // that row — not one still showing — the overscan strip needs.
+        for expected in ["six", "five", "four"] {
+            term.scroll_display(Scroll::Delta(1));
+            let line = overscan_line(&term).expect("a row below the viewport");
+            assert_eq!(row_text(&term, line), expected);
+        }
+    }
 }
 
 /// Which viewport rows changed since the last call, resetting the emulator's
@@ -2317,71 +2460,13 @@ pub unsafe extern "C" fn terminal_alacritty_snapshot(
         if line < 0 || line as usize >= screen_lines || column >= columns {
             continue;
         }
-        let cell = item.cell;
-        let mut flags = 0u16;
-        let source = cell.flags;
-        if source.contains(Flags::INVERSE) {
-            flags |= TERMINAL_CELL_INVERSE;
-        }
-        if source.contains(Flags::BOLD) {
-            flags |= TERMINAL_CELL_BOLD;
-        }
-        if source.contains(Flags::ITALIC) {
-            flags |= TERMINAL_CELL_ITALIC;
-        }
-        if source.intersects(Flags::ALL_UNDERLINES) {
-            flags |= TERMINAL_CELL_UNDERLINE;
-        }
-        if source.contains(Flags::STRIKEOUT) {
-            flags |= TERMINAL_CELL_STRIKEOUT;
-        }
-        if source.contains(Flags::DIM) {
-            flags |= TERMINAL_CELL_DIM;
-        }
-        if source.contains(Flags::HIDDEN) {
-            flags |= TERMINAL_CELL_HIDDEN;
-        }
-        if source.contains(Flags::WIDE_CHAR) {
-            flags |= TERMINAL_CELL_WIDE;
-        }
-        if source.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-            flags |= TERMINAL_CELL_WIDE_SPACER;
-        }
-        if selection.is_some_and(|range| range.contains(item.point)) {
-            flags |= TERMINAL_CELL_SELECTED;
-        }
-
-        let (text_offset, text_len) =
-            if let Some(marks) = cell.zerowidth().filter(|marks| !marks.is_empty()) {
-                let offset = terminal.cell_text.len();
-                let mut encoded = [0; 4];
-                terminal
-                    .cell_text
-                    .extend_from_slice(cell.c.encode_utf8(&mut encoded).as_bytes());
-                for mark in marks {
-                    terminal
-                        .cell_text
-                        .extend_from_slice(mark.encode_utf8(&mut encoded).as_bytes());
-                }
-                let len = terminal.cell_text.len() - offset;
-                if offset <= u32::MAX as usize && len <= u16::MAX as usize {
-                    (offset as u32, len as u16)
-                } else {
-                    terminal.cell_text.truncate(offset);
-                    (0, 0)
-                }
-            } else {
-                (0, 0)
-            };
-
-        terminal.cells[line as usize * columns + column] = TerminalCell {
-            ch: u32::from(cell.c),
-            fg: resolve(cell.fg, colors, &theme),
-            bg: resolve(cell.bg, colors, &theme),
-            text_offset,
-            text_len,
-            flags,
-        };
+        terminal.cells[line as usize * columns + column] = convert_cell(
+            item.cell,
+            selection.is_some_and(|range| range.contains(item.point)),
+            colors,
+            &theme,
+            &mut terminal.cell_text,
+        );
     }
 
     let cursor = content.cursor;
@@ -2418,6 +2503,58 @@ pub unsafe extern "C" fn terminal_alacritty_snapshot(
         total_lines: term.total_lines(),
         screen_lines,
     };
+}
+
+/// Fills `out` with the row directly below the viewport, so a host scrolled a
+/// fraction of a row upward has something to draw in the strip that shift
+/// opens at the bottom edge. Returns false — leaving `out` untouched — when
+/// the viewport already ends on the newest row and no such line exists.
+///
+/// # Safety
+/// `handle` must be live and `out` must be a valid `TerminalOverscanRow`.
+#[no_mangle]
+pub unsafe extern "C" fn terminal_alacritty_overscan_row(
+    handle: *mut TerminalHandle,
+    out: *mut TerminalOverscanRow,
+) -> bool {
+    if handle.is_null() || out.is_null() {
+        return false;
+    }
+    let terminal = &mut *handle;
+    let theme = terminal.shared.lock().theme;
+    let term = terminal.term.lock();
+
+    let Some(line) = overscan_line(&term) else {
+        return false;
+    };
+
+    let columns = term.columns();
+    let colors = term.colors();
+    let selection = term.selection.as_ref().and_then(|s| s.to_range(&term));
+
+    terminal.overscan_cells.clear();
+    terminal.overscan_text.clear();
+    terminal.overscan_cells.reserve(columns);
+    let row = &term.grid()[line];
+    for column in 0..columns {
+        let point = Point::new(line, Column(column));
+        let cell = convert_cell(
+            &row[Column(column)],
+            selection.is_some_and(|range| range.contains(point)),
+            colors,
+            &theme,
+            &mut terminal.overscan_text,
+        );
+        terminal.overscan_cells.push(cell);
+    }
+
+    *out = TerminalOverscanRow {
+        cells: terminal.overscan_cells.as_ptr(),
+        columns,
+        text: terminal.overscan_text.as_ptr(),
+        text_len: terminal.overscan_text.len(),
+    };
+    true
 }
 
 /// Fills `out` with visible Kitty image placements. PNG pointers belong to the

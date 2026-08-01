@@ -14,6 +14,13 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unreleased]
+
+- Scrolling the scrollback with a trackpad follows your fingers by the pixel
+  instead of jumping a whole row at a time, and comes to rest wherever you let
+  go. Scrolling inside a full-screen program is unchanged — those still read
+  whole rows
+
 ## [0.2.0]
 
 - Terminal is now a download: every release attaches a `.dmg` you can drag to

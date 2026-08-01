@@ -62,8 +62,19 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     private let progressBar = GhosttyTerminalProgressBarView(frame: .zero)
 
     /// Fractional scroll accumulator, so a trackpad's sub-line deltas add up
-    /// to a row instead of being discarded.
+    /// to a row instead of being discarded. Only for scrolls forwarded to the
+    /// program as rows; scrollback keeps its own position in pixels below.
     private var scrollAccumulator: CGFloat = 0
+
+    /// How far the grid is drawn above its row-aligned position, in points,
+    /// within `0..<cellHeight`. The emulator only ever scrolls whole rows, so
+    /// this is what makes a trackpad glide instead of stepping row to row: the
+    /// remainder that has not yet added up to a row is paid out in pixels, and
+    /// the row below the viewport is drawn to fill the strip it opens.
+    ///
+    /// Measured from the row-aligned position toward newer output, so at the
+    /// live bottom — where there is no row below to reveal — it stays 0.
+    private var subrowScrollOffset: CGFloat = 0
     private var selectionAnchor: (line: Int, column: Int)?
     private let findState = AlacrittyFind()
     private var hoveredURL: URLHit?
@@ -92,6 +103,10 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// the emulator knows nothing about — a resize, a new theme or font, a
     /// selection drag, focus — since those move pixels without touching a cell.
     private var needsUnconditionalRedraw = true
+    /// Forces the next frame without rebuilding any row. A sub-row scroll
+    /// shift is a uniform the shader applies to instances that are otherwise
+    /// unchanged, so re-encoding the cached ones is the whole cost.
+    private var needsShiftedRedraw = false
     private var metalRenderer: TerminalMetalRenderer?
     private var kittyPlacements: [AlacrittyKittyPlacement] = []
     private var kittyImageData: [AlacrittyKittyImageKey: Data] = [:]
@@ -588,11 +603,14 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             dirtyRows = nil
         } else if damage.kind == TERMINAL_DAMAGE_PARTIAL, let rows = damage.rows {
             dirtyRows = (0..<damage.rows_len).map { Int(rows[$0]) }
+        } else if needsShiftedRedraw {
+            dirtyRows = []
         } else {
             AlacrittyRenderStats.shared.skipped()
             return true
         }
         needsUnconditionalRedraw = false
+        needsShiftedRedraw = false
         let renderStart = CFAbsoluteTimeGetCurrent()
         defer { AlacrittyRenderStats.shared.frame(seconds: CFAbsoluteTimeGetCurrent() - renderStart) }
 
@@ -611,6 +629,15 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
         var snapshot = TerminalSnapshot()
         terminal_alacritty_snapshot(handle, &snapshot)
+        // Anything that jumps the viewport to the live bottom — typing, a
+        // shortcut, the scrollbar — leaves no row below to reveal, so the
+        // sub-row shift cannot survive it.
+        if snapshot.display_offset == 0, subrowScrollOffset != 0 {
+            subrowScrollOffset = 0
+        }
+        var overscan = TerminalOverscanRow()
+        let hasOverscan = subrowScrollOffset != 0
+            && terminal_alacritty_overscan_row(handle, &overscan)
         applyHoveredURLUnderline(to: &snapshot)
         updateKittyGraphics(handle: handle)
         updateMarkedTextOverlay(snapshot: snapshot)
@@ -646,6 +673,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         }
         let submitted = renderer.render(
             snapshot: snapshot,
+            overscanRow: hasOverscan ? overscan : nil,
+            // The grid slides up to reveal the row below the viewport.
+            scrollOffset: -subrowScrollOffset,
             kittyPlacements: kittyPlacements,
             metrics: metrics,
             padding: Self.padding,
@@ -1022,6 +1052,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         // The scrollbar runs oldest-to-newest; display offset runs the other way.
         let fromTop = Int((Double(history) * fraction).rounded())
         terminal_alacritty_scroll_to_offset(handle, history - min(fromTop, history))
+        // Dragging the scrollbar picks a row, not a position between two.
+        subrowScrollOffset = 0
         scheduleRender(force: true)
     }
 
@@ -1212,17 +1244,22 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
                 let history = snapshot.total_lines > snapshot.screen_lines
                     ? snapshot.total_lines - snapshot.screen_lines : 0
                 terminal_alacritty_scroll_to_offset(handle, history)
+                // A keyboard jump lands on a row boundary, so a sub-row shift
+                // left over from a trackpad gesture is discarded with it.
+                subrowScrollOffset = 0
                 scheduleRender(force: true)
                 reportScroll()
                 return
             case 119: // Command-End
                 terminal_alacritty_scroll_to_offset(handle, 0)
+                subrowScrollOffset = 0
                 scheduleRender(force: true)
                 reportScroll()
                 return
             case 116, 121: // Command-Page Up / Page Down
                 let delta = Int32(max(gridSize.rows, 1)) * (event.keyCode == 116 ? 1 : -1)
                 terminal_alacritty_scroll(handle, delta)
+                subrowScrollOffset = 0
                 scheduleRender(force: true)
                 reportScroll()
                 return
@@ -1446,35 +1483,85 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
     override func scrollWheel(with event: NSEvent) {
         guard let handle else { return }
-        // Line-mode events already count rows; pixel-mode ones need the cell
-        // height applied before they mean anything.
-        let delta = event.hasPreciseScrollingDeltas
-            ? event.scrollingDeltaY / metrics.cellHeight
-            : event.scrollingDeltaY
-        scrollAccumulator += delta
-        let lines = Int(scrollAccumulator)
-        guard lines != 0 else { return }
-        scrollAccumulator -= CGFloat(lines)
+        let cellHeight = metrics.cellHeight
+        guard cellHeight > 0 else { return }
 
         let mode = terminalMode
-        if mode.contains(.mouseReporting) {
-            let code = lines > 0 ? 64 : 65
-            for _ in 0..<min(abs(lines), 50) {
-                sendMouse(code: code, event: event, released: false)
-            }
-            return
-        }
-        if mode.contains(.alternateScreen), mode.contains(.alternateScroll) {
-            let sequence = AlacrittyKeyMap.cursor(up: lines > 0, mode: mode)
-            for _ in 0..<min(abs(lines), 50) {
-                writeControl(sequence)
+        // A program reading the mouse, or a full-screen TUI being sent arrow
+        // keys, can only be told about whole rows — there is nothing to glide.
+        if mode.contains(.mouseReporting)
+            || (mode.contains(.alternateScreen) && mode.contains(.alternateScroll)) {
+            // Line-mode events already count rows; pixel-mode ones need the
+            // cell height applied before they mean anything.
+            let delta = event.hasPreciseScrollingDeltas
+                ? event.scrollingDeltaY / cellHeight
+                : event.scrollingDeltaY
+            scrollAccumulator += delta
+            let lines = Int(scrollAccumulator)
+            guard lines != 0 else { return }
+            scrollAccumulator -= CGFloat(lines)
+
+            if mode.contains(.mouseReporting) {
+                let code = lines > 0 ? 64 : 65
+                for _ in 0..<min(abs(lines), 50) {
+                    sendMouse(code: code, event: event, released: false)
+                }
+            } else {
+                let sequence = AlacrittyKeyMap.cursor(up: lines > 0, mode: mode)
+                for _ in 0..<min(abs(lines), 50) {
+                    writeControl(sequence)
+                }
             }
             return
         }
 
-        terminal_alacritty_scroll(handle, Int32(lines))
-        scheduleRender(force: true)
+        // Scrollback scrolls in pixels. Positive means toward older output,
+        // matching the emulator's scroll delta.
+        let pixels = event.hasPreciseScrollingDeltas
+            ? event.scrollingDeltaY
+            : event.scrollingDeltaY * cellHeight
+        guard pixels != 0 else { return }
+
+        // Where the viewport sits now, in pixels above the live bottom, and
+        // where this event wants it.
+        let displayOffset = terminal_alacritty_display_offset(handle)
+        let current = CGFloat(displayOffset) * cellHeight - subrowScrollOffset
+        let target = max(current + pixels, 0)
+        // Round the row up so the leftover is always a shift toward newer
+        // output, which is the direction the overscan row can cover.
+        let row = Int((target / cellHeight).rounded(.up))
+        let delta = row - Int(displayOffset)
+        if delta != 0 {
+            terminal_alacritty_scroll(handle, Int32(clamping: delta))
+        }
+
+        // The emulator clamps at both ends of the scrollback, so take the
+        // offset it settled on rather than the one that was asked for.
+        let settledOffset = terminal_alacritty_display_offset(handle)
+        let settled = CGFloat(settledOffset) * cellHeight
+        // At the live bottom there is no row below the viewport to reveal, so
+        // the grid has to stay row-aligned there.
+        let offset = settledOffset == 0 ? 0 : snappedSubrowOffset(settled - target)
+        guard delta != 0 || offset != subrowScrollOffset else { return }
+        subrowScrollOffset = offset
+        if delta != 0 {
+            scheduleRender(force: true)
+        } else {
+            // The rows themselves did not move; only the shift they are drawn
+            // with did, so the cached instances stand.
+            needsShiftedRedraw = true
+            scheduleRender()
+        }
         reportScroll()
+    }
+
+    /// Rounds a sub-row shift to a whole device pixel, within one row. Glyphs
+    /// are rasterized at whole pixels, so a fractional shift would resample
+    /// every one of them and the text would go soft while scrolling.
+    private func snappedSubrowOffset(_ offset: CGFloat) -> CGFloat {
+        let scale = window?.backingScaleFactor ?? 2
+        let clamped = min(max(offset, 0), metrics.cellHeight)
+        return (clamped * scale).rounded() / scale
     }
 
     private func gridPoint(for event: NSEvent) -> (line: Int, column: Int, rightHalf: Bool) {
@@ -1484,7 +1571,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     private func gridPoint(at local: NSPoint) -> (line: Int, column: Int, rightHalf: Bool) {
         let x = local.x - Self.padding.x
         // The view is unflipped, so row 0 is at the top of the content box.
-        let y = bounds.maxY - Self.padding.y - local.y
+        // Smooth scrolling draws the grid above that box, so undo the shift to
+        // land on the row the pointer is actually over.
+        let y = bounds.maxY - Self.padding.y - local.y + subrowScrollOffset
         let exactColumn = x / metrics.cellWidth
         let column = min(max(Int(exactColumn.rounded(.down)), 0), max(gridSize.columns - 1, 0))
         let line = min(max(Int((y / metrics.cellHeight).rounded(.down)), 0), max(gridSize.rows - 1, 0))

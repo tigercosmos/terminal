@@ -35,9 +35,23 @@ final class TerminalMetalRenderer {
         var padding: UInt32 = 0
     }
 
+    /// Mirrors `Uniforms` in the shader below.
+    private struct Uniforms {
+        var viewport: SIMD2<Float>
+        var translation: SIMD2<Float>
+    }
+
     private struct RowInstances {
         var instances: [Instance]
         var backgroundCount: Int
+    }
+
+    /// Which view edges a row's background runs out to, so the padding around
+    /// the grid takes the colour of the row beside it instead of the default.
+    private struct RowBleed: OptionSet {
+        let rawValue: Int
+        static let top = RowBleed(rawValue: 1 << 0)
+        static let bottom = RowBleed(rawValue: 1 << 1)
     }
 
     private let device: MTLDevice
@@ -61,6 +75,10 @@ final class TerminalMetalRenderer {
     /// Rebuilt rows are only valid for the geometry they were built at.
     private var cachedColumns = 0
     private var cachedRows = 0
+    /// The last viewport row bleeds into the bottom padding only when no
+    /// overscan row is drawn below it, so its cached instances go stale when
+    /// smooth scrolling starts or stops.
+    private var cachedHasOverscan = false
 
     init?(device: MTLDevice) {
         guard let queue = device.makeCommandQueue() else { return nil }
@@ -111,6 +129,8 @@ final class TerminalMetalRenderer {
     @discardableResult
     func render(
         snapshot: TerminalSnapshot,
+        overscanRow: TerminalOverscanRow? = nil,
+        scrollOffset: CGFloat = 0,
         kittyPlacements: [AlacrittyKittyPlacement],
         metrics: AlacrittyMetrics,
         padding: CGPoint,
@@ -131,7 +151,8 @@ final class TerminalMetalRenderer {
 
         let atlasGenerationBeforeBuild = atlas.generation
         build(
-            snapshot: snapshot, metrics: metrics, padding: padding,
+            snapshot: snapshot, overscanRow: overscanRow,
+            metrics: metrics, padding: padding,
             atlas: atlas,
             dirtyRows: resetAtlas ? nil : dirtyRows,
             viewportSize: viewportSize
@@ -141,10 +162,15 @@ final class TerminalMetalRenderer {
             // frame. Its old UVs are invalid, including those in cached clean
             // rows, so rebuild the complete grid once against the new atlas.
             build(
-                snapshot: snapshot, metrics: metrics, padding: padding,
+                snapshot: snapshot, overscanRow: overscanRow,
+                metrics: metrics, padding: padding,
                 atlas: atlas, dirtyRows: nil, viewportSize: viewportSize
             )
         }
+        var uniforms = Uniforms(
+            viewport: SIMD2(Float(viewportSize.width), Float(viewportSize.height)),
+            translation: SIMD2(0, Float(scrollOffset))
+        )
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
@@ -166,14 +192,13 @@ final class TerminalMetalRenderer {
             kittyPlacements.filter { $0.zIndex < 0 },
             metrics: metrics,
             padding: padding,
-            viewportSize: viewportSize,
+            uniforms: uniforms,
             with: encoder
         )
         if !instances.isEmpty, let buffer = uploadInstances() {
-            var viewport = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
             encoder.setRenderPipelineState(pipeline)
             encoder.setVertexBuffer(buffer, offset: 0, index: 0)
-            encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+            encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
             encoder.setFragmentTexture(atlas.texture, index: 0)
             encoder.setFragmentSamplerState(sampler, index: 0)
             encoder.drawPrimitives(
@@ -187,7 +212,7 @@ final class TerminalMetalRenderer {
             kittyPlacements.filter { $0.zIndex >= 0 },
             metrics: metrics,
             padding: padding,
-            viewportSize: viewportSize,
+            uniforms: uniforms,
             with: encoder
         )
         let activeImageKeys = Set(kittyPlacements.map(\.imageKey))
@@ -210,15 +235,15 @@ final class TerminalMetalRenderer {
         _ placements: [AlacrittyKittyPlacement],
         metrics: AlacrittyMetrics,
         padding: CGPoint,
-        viewportSize: CGSize,
+        uniforms: Uniforms,
         with encoder: MTLRenderCommandEncoder
     ) {
         guard !placements.isEmpty else { return }
-        var viewport = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
+        var uniforms = uniforms
         encoder.setRenderPipelineState(pipeline)
         encoder.setVertexBytes(
-            &viewport,
-            length: MemoryLayout<SIMD2<Float>>.stride,
+            &uniforms,
+            length: MemoryLayout<Uniforms>.stride,
             index: 1
         )
         encoder.setFragmentSamplerState(sampler, index: 0)
@@ -306,6 +331,7 @@ final class TerminalMetalRenderer {
 
     private func build(
         snapshot: TerminalSnapshot,
+        overscanRow: TerminalOverscanRow?,
         metrics: AlacrittyMetrics,
         padding: CGPoint,
         atlas: TerminalGlyphAtlas,
@@ -321,7 +347,9 @@ final class TerminalMetalRenderer {
         // A geometry change invalidates every cached row: positions are baked
         // into the instances. Rebuild every row even if the emulator only
         // reported partial damage for this frame.
+        let hasOverscan = overscanRow != nil
         let geometryChanged = cachedColumns != columns || cachedRows != rows
+            || cachedHasOverscan != hasOverscan
         if geometryChanged {
             rowInstances = Array(
                 repeating: RowInstances(instances: [], backgroundCount: 0),
@@ -329,6 +357,7 @@ final class TerminalMetalRenderer {
             )
             cachedColumns = columns
             cachedRows = rows
+            cachedHasOverscan = hasOverscan
         }
 
         // nil means rebuild everything — a full-damage frame, or a host-side
@@ -342,9 +371,22 @@ final class TerminalMetalRenderer {
             rowsToBuild = Array(0..<rows)
         }
         for row in rowsToBuild {
+            var bleed: RowBleed = []
+            if row == 0 { bleed.insert(.top) }
+            // With an overscan row below, that row owns the bottom padding.
+            if row + 1 == rows, overscanRow == nil { bleed.insert(.bottom) }
             rowInstances[row] = buildRow(
-                row: row, cells: cells, columns: columns,
-                snapshot: snapshot, metrics: metrics, padding: padding,
+                row: row,
+                top: Float(padding.y) + Float(row) * Float(metrics.cellHeight),
+                cells: cells,
+                columns: columns,
+                text: snapshot.text,
+                textLength: snapshot.text_len,
+                defaultBackground: snapshot.background,
+                blockCursorColumn: snapshot.cursor_line == row && snapshot.cursor_shape == 0
+                    ? snapshot.cursor_column : nil,
+                bleed: bleed,
+                metrics: metrics, padding: padding,
                 atlas: atlas, viewportSize: viewportSize
             )
         }
@@ -361,13 +403,35 @@ final class TerminalMetalRenderer {
             padding: padding,
             blockInsertionIndex: blockCursorInsertionIndex(snapshot: snapshot)
         )
+        // Appended last so it cannot disturb the cursor's insertion index,
+        // which counts instances across the cached viewport rows only.
+        if let overscanRow, let overscanCells = overscanRow.cells, overscanRow.columns == columns {
+            instances.append(contentsOf: buildRow(
+                row: 0,
+                top: Float(padding.y) + Float(rows) * Float(metrics.cellHeight),
+                cells: overscanCells,
+                columns: columns,
+                text: overscanRow.text,
+                textLength: overscanRow.text_len,
+                defaultBackground: snapshot.background,
+                blockCursorColumn: nil,
+                bleed: .bottom,
+                metrics: metrics, padding: padding,
+                atlas: atlas, viewportSize: viewportSize
+            ).instances)
+        }
     }
 
     private func buildRow(
         row: Int,
+        top: Float,
         cells: UnsafePointer<TerminalCell>,
         columns: Int,
-        snapshot: TerminalSnapshot,
+        text: UnsafePointer<UInt8>?,
+        textLength: Int,
+        defaultBackground: UInt32,
+        blockCursorColumn: Int?,
+        bleed: RowBleed,
         metrics: AlacrittyMetrics,
         padding: CGPoint,
         atlas: TerminalGlyphAtlas,
@@ -377,10 +441,7 @@ final class TerminalMetalRenderer {
         let cellWidth = Float(metrics.cellWidth)
         let cellHeight = Float(metrics.cellHeight)
         let originX = Float(padding.x)
-        let originY = Float(padding.y)
-        let defaultBackground = snapshot.background
 
-        let top = originY + Float(row) * cellHeight
         var column = 0
 
         // Backgrounds first, coalescing equal-coloured runs into one quad.
@@ -397,16 +458,19 @@ final class TerminalMetalRenderer {
             if background != defaultBackground {
                 let reachesLeftEdge = column == 0
                 let reachesRightEdge = column + span == columns
-                let reachesTopEdge = row == 0
-                let reachesBottomEdge = row + 1 == snapshot.rows
+                let reachesTopEdge = bleed.contains(.top)
+                let reachesBottomEdge = bleed.contains(.bottom)
                 let left = reachesLeftEdge
                     ? 0 : originX + Float(column) * cellWidth
                 let right = reachesRightEdge
                     ? Float(viewportSize.width)
                     : originX + Float(column + span) * cellWidth
-                let runTop = reachesTopEdge ? 0 : top
+                // A bleeding edge overshoots the view by a row: smooth
+                // scrolling shifts the whole grid by up to a row, and the
+                // padding must stay covered at either extreme.
+                let runTop = reachesTopEdge ? -cellHeight : top
                 let bottom = reachesBottomEdge
-                    ? Float(viewportSize.height) : top + cellHeight
+                    ? Float(viewportSize.height) + cellHeight : top + cellHeight
                 instances.append(Instance(
                     origin: SIMD2(left, runTop),
                     size: SIMD2(max(right - left, 0), max(bottom - runTop, 0)),
@@ -427,10 +491,7 @@ final class TerminalMetalRenderer {
             else { continue }
 
             var foreground = AlacrittyRenderer.foreground(of: cell, default: defaultBackground)
-            let isCursorCell = snapshot.cursor_line == row
-                && snapshot.cursor_column == column
-                && snapshot.cursor_shape == 0
-            if isCursorCell {
+            if blockCursorColumn == column {
                 foreground = AlacrittyRenderer.background(of: cell, default: defaultBackground)
             }
             let color = Self.color(foreground)
@@ -442,9 +503,9 @@ final class TerminalMetalRenderer {
                 let offset = Int(cell.text_offset)
                 let length = Int(cell.text_len)
                 if length > 0,
-                   let text = snapshot.text,
+                   let text,
                    offset >= 0,
-                   offset + length <= snapshot.text_len {
+                   offset + length <= textLength {
                     content = .cluster(Data(bytes: text.advanced(by: offset), count: length))
                 } else {
                     content = .scalar(cell.ch)
@@ -606,18 +667,25 @@ final class TerminalMetalRenderer {
         float2(0, 1), float2(1, 0), float2(1, 1)
     };
 
+    struct Uniforms {
+        float2 viewport;
+        // Whole-grid shift in points, y-down. Smooth scrolling lives here so
+        // a sub-row offset never invalidates the cached per-row instances.
+        float2 translation;
+    };
+
     vertex VertexOut terminal_terminal_vertex(
         uint vertexID [[vertex_id]],
         uint instanceID [[instance_id]],
         const device Instance *instances [[buffer(0)]],
-        constant float2 &viewport [[buffer(1)]]
+        constant Uniforms &uniforms [[buffer(1)]]
     ) {
         Instance instance = instances[instanceID];
         float2 corner = corners[vertexID];
-        float2 point = instance.origin + corner * instance.size;
+        float2 point = instance.origin + corner * instance.size + uniforms.translation;
 
         // Points, y-down from the top-left, into clip space.
-        float2 normalized = point / viewport;
+        float2 normalized = point / uniforms.viewport;
         float2 clip = float2(normalized.x * 2.0 - 1.0, 1.0 - normalized.y * 2.0);
 
         VertexOut out;

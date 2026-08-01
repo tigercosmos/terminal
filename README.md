@@ -49,6 +49,10 @@ What this fork adds on top of [Kero](https://github.com/egoist/kero):
   keeps its undo history, instead of rebuilding and reparsing the editor. Large
   files no longer stall while scrolled away from the top: the gutter numbers
   what is on screen rather than walking the whole document on every scroll tick.
+- **Scrollback that glides** — on the Alacritty backend a trackpad scrolls the
+  scrollback by the pixel instead of a row at a time, tracking your fingers and
+  coming to rest wherever you let go. The Ghostty backend still steps row to
+  row.
 - **Hardened against untrusted input** — opening a folder no longer lets that
   repository's own Git configuration run commands on your machine. Terminal
   links that would leave your browser and launch an application ask first,
