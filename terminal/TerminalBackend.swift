@@ -22,7 +22,11 @@ enum TerminalBackend: String, CaseIterable, Identifiable, Sendable {
 
     /// The backend Terminal uses when the config names none, or names one this
     /// build cannot create.
-    static let fallback = TerminalBackend.libghostty
+    ///
+    /// Alacritty, because Terminal draws that grid itself and so can do things
+    /// libghostty's fused emulator and renderer give a host no way to ask for
+    /// — scrolling the scrollback by the pixel is the first of them.
+    static let fallback = TerminalBackend.alacritty
 
     var id: String { rawValue }
 

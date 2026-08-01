@@ -214,8 +214,14 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'zsh, fish, or bash exactly as you configured it — prompt, aliases, dotfiles and all, so any agent CLI runs the way it does today',
       },
       {
-        name: 'Built on libghostty',
-        detail: "Ghostty's terminal core, embedded and hosted natively by terminal",
+        name: 'Built on Alacritty, or Ghostty',
+        detail:
+          "Alacritty's emulator core by default, drawn by terminal's own Metal renderer; libghostty is a switch away in Settings",
+      },
+      {
+        name: 'Scrollback that glides',
+        detail:
+          'a trackpad scrolls the scrollback by the pixel, not a row at a time — it tracks your fingers and stops where you let go',
       },
       {
         name: 'Desktop notifications',
@@ -315,7 +321,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'Does it replace my shell?',
-    a: 'No. terminal hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. The terminal underneath is libghostty, the same core as Ghostty.',
+    a: "No. terminal hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. The terminal underneath is Alacritty's emulator core, drawn by terminal's own renderer; you can switch to libghostty, the same core as Ghostty, in Settings.",
   },
   {
     q: 'Does it collect any data?',

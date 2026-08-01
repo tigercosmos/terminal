@@ -31,9 +31,9 @@ the full feature list, every keyboard shortcut, and the changelog.
 - **Watch what they started** — the focused shell's working directory, the
   processes running under it, and the ports they are listening on; long
   commands and bells reach Notification Center when the pane is unfocused.
-- **Terminal first** — libghostty by default, with an optional Alacritty
-  backend, a command palette, and a file tree and editor in panes beside the
-  shell rather than in a separate window.
+- **Terminal first** — the Alacritty emulator core by default, with libghostty
+  a switch away, a command palette, and a file tree and editor in panes beside
+  the shell rather than in a separate window.
 - **Native and localized** — macOS appearance and keyboard conventions, in
   English, Simplified Chinese, and Japanese.
 
@@ -57,10 +57,12 @@ What this fork adds on top of [Kero](https://github.com/egoist/kero):
   keeps its undo history, instead of rebuilding and reparsing the editor. Large
   files no longer stall while scrolled away from the top: the gutter numbers
   what is on screen rather than walking the whole document on every scroll tick.
-- **Scrollback that glides** — on the Alacritty backend a trackpad scrolls the
-  scrollback by the pixel instead of a row at a time, tracking your fingers and
-  coming to rest wherever you let go. The Ghostty backend still steps row to
-  row.
+- **Scrollback that glides** — a trackpad scrolls the scrollback by the pixel
+  instead of a row at a time, tracking your fingers and coming to rest wherever
+  you let go. This is why Alacritty is the default backend: Terminal draws that
+  grid itself, so it can scroll between rows, which libghostty's fused emulator
+  and renderer give a host no way to ask for. Switch backends in Settings →
+  Terminal if you would rather have Ghostty's.
 - **Hardened against untrusted input** — opening a folder no longer lets that
   repository's own Git configuration run commands on your machine. Terminal
   links that would leave your browser and launch an application ask first,
