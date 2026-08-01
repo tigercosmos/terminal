@@ -158,7 +158,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Sessions per project',
         detail:
-          'open as many terminal tabs as a project needs with Cmd+T, each with its own directory and scrollback',
+          'open as many terminal tabs as a project needs with Cmd+T, each with its own directory and scrollback — one per agent run, kept apart',
       },
       {
         name: 'Split panes',
@@ -177,7 +177,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
     ],
   },
   {
-    group: 'review & ship',
+    group: 'review what the agent wrote',
     rows: [
       {
         name: 'Git panel',
@@ -210,7 +210,8 @@ const FEATURES: { group: string; rows: Row[] }[] = [
     rows: [
       {
         name: 'Your shell, unchanged',
-        detail: 'zsh, fish, or bash exactly as you configured it — prompt, aliases, dotfiles and all',
+        detail:
+          'zsh, fish, or bash exactly as you configured it — prompt, aliases, dotfiles and all, so any agent CLI runs the way it does today',
       },
       {
         name: 'Built on libghostty',
@@ -301,6 +302,14 @@ const FAQ: { q: string; a: ReactNode }[] = [
     ),
   },
   {
+    q: 'What makes it "for AI-driven development"?',
+    a: 'Where the work lands. Agents run in the shell, and everything that follows — reading the diff, checking git state, comparing against the branch you started from, opening the file it changed — is a pane away instead of a window away. There is no model, no API key, and no agent built in: you run Claude Code, Codex, Cursor, or your own script, and Terminal is the workspace around it.',
+  },
+  {
+    q: 'Does it run the agent for me?',
+    a: 'No. Terminal never wraps, proxies, or rewrites what you type — the agent CLI you install is the one that runs, with your shell and its config untouched. Nothing is sent anywhere on your behalf.',
+  },
+  {
     q: 'Is terminal free?',
     a: 'Yes. Free to download, no subscription, no account.',
   },
@@ -318,7 +327,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'Is this an IDE?',
-    a: 'No — the terminal stays the center of gravity. The git and files panels exist so you can review and ship what happens in the terminal without switching to an editor.',
+    a: 'No — the terminal stays the center of gravity. The git, files, and compare panels exist so you can review and ship what an agent did in the terminal without switching to an editor.',
   },
 ]
 
@@ -331,16 +340,16 @@ function Home() {
       headerContent={
         <>
           <p className="text-foreground/70">
-            Your terminal, with the{' '}
-            <span className="text-brand">whole project</span> around it.
+            A macOS-native terminal workspace for{' '}
+            <span className="text-brand">AI-driven development</span>.
             <span
               aria-hidden
               className="ml-[5px] inline-block h-[1.05em] w-[7px] animate-caret rounded-[1px] bg-brand align-[-0.15em] motion-reduce:animate-none"
             />
           </p>
           <p className="mt-3.5 text-muted-foreground">
-            A native macOS workspace built around the terminal — projects, persistent
-            sessions, files, and git in one window.
+            Run your coding agents in the shell you already use — and read the
+            diff, the git state, and the files they touched without leaving it.
             <br />
             Free, no telemetry, no subscription.
           </p>

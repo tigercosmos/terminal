@@ -13,11 +13,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Terminal — A native terminal workspace for macOS" },
+      {
+        title:
+          "Terminal — A macOS-native terminal workspace for AI-driven development",
+      },
       {
         name: "description",
         content:
-          "Terminal is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
+          "Run your coding agents in the shell you already use, and review what they wrote without leaving it. Projects, persistent sessions, inline git diffs, and compare against any revision — in one native macOS window.",
       },
       { name: "theme-color", content: "#0d1117" },
     ],

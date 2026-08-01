@@ -1,8 +1,10 @@
 # Terminal
 
-A native macOS terminal workspace built for supervising coding agents: the shell
-stays primary, and the project's files, Git state, and a full diff and compare
-view are one pane away.
+A macOS-native terminal workspace designed for AI-driven development. You run
+your coding agents in the shell exactly as you already do — Claude Code, Codex,
+Cursor, whatever you have — and the workspace gives you what agent work
+actually needs around it: the files they touched, the Git state they left, and
+a full diff and compare view, all one pane away from the shell that made them.
 
 Terminal is a fork of [Kero](https://kero.sh/). Download the latest `.dmg` from
 [Releases](https://github.com/tigercosmos/terminal/releases/latest) or build it
@@ -15,17 +17,23 @@ the full feature list, every keyboard shortcut, and the changelog.
 
 ## Features
 
+- **Your agents, in your shell** — Terminal hosts the shell you already run,
+  so any agent CLI works unchanged, with your prompt, aliases, and dotfiles
+  intact. Nothing is wrapped, proxied, or rewritten on its way through.
+- **Read what the agent wrote** — working-tree status, per-file diffs, and
+  per-line blame in the sidebar, so a change gets reviewed where it was made
+  instead of in a Git GUI or a second app.
+- **Compare before you trust it** — ⇧⌘C puts any branch or commit beside your
+  working tree, editable on your side, with blame and per-file revert.
+- **Run several at once** — each repository is a project with its own tabs and
+  split panes, so parallel agent runs stay separated and come back on
+  relaunch.
+- **Watch what they started** — the focused shell's working directory, the
+  processes running under it, and the ports they are listening on; long
+  commands and bells reach Notification Center when the pane is unfocused.
 - **Terminal first** — libghostty by default, with an optional Alacritty
-  backend, split panes, tabs, and a command palette.
-- **The project alongside it** — a file tree, an editor with syntax
-  highlighting and find, and a diff viewer, in panes beside the shell instead
-  of in a second app.
-- **Git in the sidebar** — working-tree status, per-file diffs, and per-line
-  blame, without dropping to a Git GUI.
-- **The session, at a glance** — the focused shell's working directory, the
-  processes it is running, and the ports they are listening on.
-- **Grouped by project** — shells, panes, and tabs stay with the repository
-  they belong to, and come back with it.
+  backend, a command palette, and a file tree and editor in panes beside the
+  shell rather than in a separate window.
 - **Native and localized** — macOS appearance and keyboard conventions, in
   English, Simplified Chinese, and Japanese.
 
