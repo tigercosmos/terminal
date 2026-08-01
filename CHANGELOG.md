@@ -14,12 +14,17 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
-## [unreleased]
+## [0.3.0]
 
 - Scrolling the scrollback with a trackpad follows your fingers by the pixel
   instead of jumping a whole row at a time, and comes to rest wherever you let
   go. Scrolling inside a full-screen program is unchanged — those still read
   whole rows
+- Terminal panes now use the Alacritty emulator core by default, drawn by
+  Terminal's own renderer. That is what makes the scrolling above possible, and
+  it uses less memory. If you prefer Ghostty's, Settings → Terminal → Backend
+  switches back and remembers the choice. Sessions you have already opened keep
+  their scrollback; the backend applies to panes opened after the switch
 
 ## [0.2.0]
 

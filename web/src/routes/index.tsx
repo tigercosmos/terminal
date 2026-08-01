@@ -24,9 +24,9 @@ const BREW_COMMAND = ''
 
 // Shown only if the release can't be looked up; kept current so downloads still work.
 const FALLBACK: Release = {
-  version: '0.2.0',
+  version: '0.3.0',
   minSystem: '15.6',
-  dmg: `${GITHUB_URL}/releases/download/v0.2.0/terminal-0.2.0.dmg`,
+  dmg: `${GITHUB_URL}/releases/download/v0.3.0/terminal-0.3.0.dmg`,
 }
 
 /**
