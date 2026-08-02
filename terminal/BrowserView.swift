@@ -42,6 +42,12 @@ private final class BrowserContextMenuBridge: NSObject, WKScriptMessageHandler {
 /// WebKit's actual first responder is a private descendant view, so observing
 /// the outer SwiftUI host is not enough to keep pane focus in sync.
 final class BrowserWebView: WKWebView {
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { PointerRegionTracker.shared.contentTookFocus() }
+        return became
+    }
+
     var onFocused: (() -> Void)?
     var onNewBrowserTab: ((String?) -> Void)?
     var onNewBrowserPane: ((String?) -> Void)?
@@ -1050,6 +1056,12 @@ struct BrowserView: View {
 /// and select through the native editor; subsequent clicks can place the caret.
 private final class BrowserAddressTextField: NSTextField {
     var isActivelyEditing = false
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { PointerRegionTracker.shared.contentTookFocus() }
+        return became
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard isActivelyEditing else {

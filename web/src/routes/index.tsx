@@ -235,7 +235,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Fonts',
         detail:
-          'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size, or zoom with Cmd+Plus and Cmd+Minus',
+          'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size, or zoom with Cmd+Plus and Cmd+Minus — which resizes the sidebars instead when that is what you last clicked into',
       },
       {
         name: 'No update checks',
@@ -273,7 +273,7 @@ const SHORTCUTS: Row[] = [
   {
     name: 'Cmd+Plus (or Cmd+=) / Cmd+Minus / Cmd+0',
     detail:
-      'zoom the terminal text in, out, or back to its default size — the page, in a browser pane',
+      'zoom in, out, or back to the default size — whatever you last clicked into: the terminal text, the page in a browser pane, or the sidebars and panels',
   },
   { name: 'Cmd+S', detail: 'save the open file' },
 ]

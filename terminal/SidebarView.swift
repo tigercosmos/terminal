@@ -93,6 +93,8 @@ struct SidebarView: View {
             }
         }
         .frame(width: width)
+        // Tells zoom that clicks landing here are aimed at the interface.
+        .background(InterfaceRegionReporter())
         .background {
             // Terminal's built-in Default themes keep the native translucent
             // sidebar material; every other theme — including the GitHub
@@ -343,7 +345,9 @@ private struct SidebarProjectRow: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .frame(width: 24, height: 16, alignment: .trailing)
+            // Sized for the ⌘1–9 label it holds, which follows the sidebar
+            // font: a fixed box clips the number once the text outgrows it.
+            .frame(width: 24 * badgeScale, height: 16 * badgeScale, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -377,6 +381,15 @@ private struct SidebarProjectRow: View {
 
     private var supportingFontSize: Double {
         max(fontSize - 2, AppSettings.sidebarFontSizeRange.lowerBound - 1)
+    }
+
+    /// Tracks the ⌘1–9 label's own size rather than the row's, since that is
+    /// what has to fit: scaling by the base font instead leaves the box short
+    /// of its text at the top of the range. Never below 1 — the box was laid
+    /// out at the default size and shrinking it would clip small fonts too.
+    private var badgeScale: Double {
+        let designedSupportingSize = AppSettings.defaultSidebarFontSize - 2
+        return max(supportingFontSize / designedSupportingSize, 1)
     }
 }
 

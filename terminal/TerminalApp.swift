@@ -17,6 +17,7 @@ struct terminalApp: App {
         TerminalFont.registerBundledFonts()
         TerminalNotificationService.shared.configure()
         _ = Self.zoomInAliasMonitor
+        PointerRegionTracker.shared.start()
     }
 
     /// Makes plain ⌘= zoom in, alongside the ⌘+ the View menu advertises.
@@ -96,35 +97,57 @@ private struct WindowRootView: View {
     }
 }
 
-/// Where a zoom keystroke lands. A focused browser pane zooms its page, the
-/// way every browser behaves; anything else moves the app-wide terminal font
+/// Where a zoom keystroke lands: on whatever the user last clicked into.
+///
+/// A click in Terminal's own interface — a sidebar, a panel, the tab bar —
+/// moves the sidebar font size. A click in a browser pane zooms its page, the
+/// way every browser behaves. Anything else moves the app-wide terminal font
 /// size, which terminals, editors, and diffs all draw from.
+///
+/// The click, rather than the keyboard, because the sidebars are SwiftUI
+/// buttons and those never take first responder: a terminal keeps the keyboard
+/// the whole time the user is working in the file tree, so asking who is
+/// focused answers "a terminal" throughout. See ``PointerRegionTracker``.
+/// It is also why interface is tested before the browser — a browser pane
+/// stays *selected* while the user clicks into the panel beside it.
 ///
 /// `manager` is the focused window's when SwiftUI supplied one, and the key
 /// window's otherwise, so the menu items and the ⌘= monitor always agree.
 @MainActor
 enum ZoomCommand {
+    private enum Target {
+        case interface
+        case browser(BrowserTab)
+        case terminalFont
+    }
+
+    private static func target(_ manager: TerminalManager?) -> Target {
+        if PointerRegionTracker.shared.region == .interface { return .interface }
+        if let browser = manager?.selectedBrowser { return .browser(browser) }
+        return .terminalFont
+    }
+
     static func zoomIn(_ manager: TerminalManager?) {
-        if let browser = manager?.selectedBrowser {
-            browser.zoomIn()
-        } else {
-            AppSettings.shared.adjustFontSize(by: 1)
+        switch target(manager) {
+        case .interface: AppSettings.shared.adjustSidebarFontSize(by: 1)
+        case .browser(let browser): browser.zoomIn()
+        case .terminalFont: AppSettings.shared.adjustFontSize(by: 1)
         }
     }
 
     static func zoomOut(_ manager: TerminalManager?) {
-        if let browser = manager?.selectedBrowser {
-            browser.zoomOut()
-        } else {
-            AppSettings.shared.adjustFontSize(by: -1)
+        switch target(manager) {
+        case .interface: AppSettings.shared.adjustSidebarFontSize(by: -1)
+        case .browser(let browser): browser.zoomOut()
+        case .terminalFont: AppSettings.shared.adjustFontSize(by: -1)
         }
     }
 
     static func actualSize(_ manager: TerminalManager?) {
-        if let browser = manager?.selectedBrowser {
-            browser.resetZoom()
-        } else {
-            AppSettings.shared.resetFontSize()
+        switch target(manager) {
+        case .interface: AppSettings.shared.resetSidebarFontSize()
+        case .browser(let browser): browser.resetZoom()
+        case .terminalFont: AppSettings.shared.resetFontSize()
         }
     }
 }
@@ -285,10 +308,13 @@ private struct TerminalCommands: Commands {
 
             Divider()
 
-            // Outside a browser pane, zoom moves the one app-wide font size
-            // that the Settings slider owns, so every terminal changes
-            // together and the size survives a relaunch. Never disabled: with
-            // no window in focus there is still a font size to change.
+            // Zoom follows the last click: the sidebar font size in a sidebar
+            // or panel, the page in a browser pane, the terminal font size
+            // otherwise. The two font sizes are the ones the Settings sliders
+            // own, so either change reaches every window at once and survives
+            // a relaunch; page zoom belongs to its own tab, as in a browser.
+            // Never disabled: with no window in focus there is still a font
+            // size to change.
             Button("Zoom In") {
                 ZoomCommand.zoomIn(manager)
             }

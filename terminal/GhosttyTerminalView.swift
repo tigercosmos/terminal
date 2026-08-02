@@ -130,7 +130,10 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { onBecomeFirstResponder?() }
+        if accepted {
+            PointerRegionTracker.shared.contentTookFocus()
+            onBecomeFirstResponder?()
+        }
         return accepted
     }
 

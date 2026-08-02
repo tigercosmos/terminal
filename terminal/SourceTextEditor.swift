@@ -315,7 +315,10 @@ class FocusReportingTextView: STTextView {
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
-        if became { onBecomeFirstResponder?() }
+        if became {
+            PointerRegionTracker.shared.contentTookFocus()
+            onBecomeFirstResponder?()
+        }
         return became
     }
 

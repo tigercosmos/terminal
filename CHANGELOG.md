@@ -14,6 +14,13 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- Cmd+Plus, Cmd+Minus, and Cmd+0 now resize whatever you last clicked into: the
+  sidebars and panels when you are working there, the terminal text when you
+  are in a pane, a web page in a browser pane. The interface and terminal sizes
+  are remembered separately, and the interface now goes up to 24 pt
+
 ## [0.3.0]
 
 - Scrolling the scrollback with a trackpad follows your fingers by the pixel

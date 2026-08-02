@@ -112,6 +112,8 @@ struct RightSidebarView: View {
                 }
                 .frame(width: width)
                 .background(Color(nsColor: Theme.sidebar))
+                // Tells zoom that clicks landing here are aimed at the interface.
+                .background(InterfaceRegionReporter())
             }
         }
         .overlay(alignment: .leading) {

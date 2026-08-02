@@ -105,7 +105,13 @@ final class AppSettings: nonisolated ObservableObject {
     static let defaultFontSize: Double = 13
     static let fontSizeRange: ClosedRange<Double> = 8...32
     static let defaultSidebarFontSize: Double = 13
-    static let sidebarFontSizeRange: ClosedRange<Double> = 9...18
+
+    /// Wider at the top than the sidebars were first designed for, so ⌘+ keeps
+    /// giving something back to anyone who wants them large. Both sidebars are
+    /// user-resizable, so the text has somewhere to go; the cap is where the
+    /// chrome around it — traffic-light strip, hover controls — stops looking
+    /// deliberate beside the text.
+    static let sidebarFontSizeRange: ClosedRange<Double> = 9...24
 
     /// The language this process launched with, kept separate from the pending
     /// selection so Settings can explain when a relaunch is required.
@@ -284,6 +290,23 @@ final class AppSettings: nonisolated ObservableObject {
 
     func resetFontSize() {
         fontSize = Self.defaultFontSize
+    }
+
+    /// Steps the sidebar font size by whole points, clamped to
+    /// `sidebarFontSizeRange`. Deliberately a different setting from
+    /// `fontSize`: zooming the sidebars while reading a file tree should not
+    /// resize the terminals behind them, and the two have different useful
+    /// ranges.
+    func adjustSidebarFontSize(by points: Double) {
+        let stepped = sidebarFontSize.rounded() + points
+        sidebarFontSize = min(
+            max(stepped, Self.sidebarFontSizeRange.lowerBound),
+            Self.sidebarFontSizeRange.upperBound
+        )
+    }
+
+    func resetSidebarFontSize() {
+        sidebarFontSize = Self.defaultSidebarFontSize
     }
 
     func resetFont() {

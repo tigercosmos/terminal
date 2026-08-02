@@ -1164,6 +1164,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         if accepted {
+            PointerRegionTracker.shared.contentTookFocus()
             onBecomeFirstResponder?()
             updateActiveTimers()
             scheduleRender(force: true)

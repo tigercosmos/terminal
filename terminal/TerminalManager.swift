@@ -217,6 +217,20 @@ final class TerminalManager: nonisolated ObservableObject {
         selectedProjectID = project.id
     }
 
+    /// Whether `window` is one of Terminal's workspace windows rather than
+    /// Settings, the About panel, or any other auxiliary window.
+    static func isWorkspaceWindow(_ window: NSWindow) -> Bool {
+        registry.contains { $0.window === window }
+    }
+
+    /// Whether `window` is showing the command palette. It is an overlay in
+    /// the workspace window, so a click in it is not a click on the workspace.
+    /// Asked per window: a palette open in one window must not freeze the
+    /// zoom target in another the user is still clicking around in.
+    static func isCommandPaletteVisible(in window: NSWindow) -> Bool {
+        registry.contains { $0.window === window && $0.isCommandPaletteVisible }
+    }
+
     /// The window a command should act on when it arrives from outside
     /// SwiftUI's focused-scene plumbing — the Finder service, the CLI, or an
     /// app-wide key monitor.
