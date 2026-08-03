@@ -9,6 +9,19 @@ description: Verify a Terminal change the way the project requires -- build, lau
 successful build says nothing about whether the change works. Verification
 means the behavior was exercised, not that the compiler was satisfied.
 
+Which layer exercises it follows from what changed:
+
+| What changed | How it is verified |
+| --- | --- |
+| Logic that needs no window | `make test-swift` -- a test in `TerminalCore` |
+| Grid content, reflow, selection | `make test-rust` -- a test in the bridge |
+| A feature flow through the real app | `make e2e` -- a check in `scripts/e2e.sh` |
+| Rendering, layout, chrome, feel | Build, run, and look (steps 1 and 2) |
+
+A behavior one of the first three could cover is expected to arrive with the
+test. Reporting "I ran it and it worked" for something a suite could have
+pinned down is the gap this table closes.
+
 ## 1. Build
 
 ```sh

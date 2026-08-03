@@ -1,0 +1,47 @@
+# Runs the suites that need no GUI session on every pull request.
+#
+# `make e2e` is deliberately absent: it launches the app and drives it, so it
+# needs a logged-in window server. It runs locally, and on a runner that has
+# one. Everything here is headless by construction — that is the whole reason
+# the logic was moved somewhere it could be.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift:
+    name: TerminalCore
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # No submodules and no Xcode project: the package is a package, which is
+      # what keeps this job to a few seconds.
+      - run: swift test --package-path TerminalCore
+
+  rust:
+    name: Alacritty bridge
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --locked --manifest-path Vendor/alacritty-bridge/Cargo.toml
+      - run: cargo clippy --locked --manifest-path Vendor/alacritty-bridge/Cargo.toml --all-targets -- -D warnings
+        # The bridge carries a couple of long-standing findings; report them
+        # without failing the run until they are cleared.
+        continue-on-error: true
+
+  web:
+    name: Website
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: cd web && bun run build && bun run typecheck

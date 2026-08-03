@@ -15,12 +15,12 @@ AppKit used over SwiftUI where performance matters.
 
 ## Verify
 
-Build, run the app, and exercise the change — a successful build says nothing
-about whether the change works. `make test-swift` for logic in the
-`TerminalCore` package (headless, seconds, no Xcode) and `cargo test` in
-`Vendor/alacritty-bridge` when you touch the Rust bridge. `make e2e` drives a
-running Debug build over the CLI channel for a feature flow. Requires Xcode 27;
-see [CONTRIBUTING.md](CONTRIBUTING.md).
+A change is verified when the layer covering it has run: `make test-swift` for
+logic that needs no window, `make test-rust` for grid content and reflow,
+`make e2e` for a feature flow through the running app, and building and looking
+for rendering and layout. Build and run either way — a green suite says the
+logic holds, not that the feature works. Requires Xcode 27; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Conventions
 

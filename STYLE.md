@@ -291,9 +291,20 @@ confirm the fix by reverting it and watching the behavior come back.
 
 ## Testing
 
-Swift changes are verified by building, running the app, and exercising the
-behavior; that is not a shortcut but the actual requirement, and a change
-described as "verified" must have been run.
+A change is verified when the layer that covers it has run. Which layer that is
+follows from what changed, and "run the app and look" is the last of them
+rather than the first:
+
+| What changed | How it is verified |
+| --- | --- |
+| Logic that needs no window | `make test-swift` — a test in `TerminalCore` |
+| Grid content, reflow, selection | `make test-rust` — a test in the bridge |
+| A feature flow through the real app | `make e2e` — a check in `scripts/e2e.sh` |
+| Rendering, layout, chrome, feel | Build, run, and look |
+
+Every change still gets built and run — a green suite says the logic holds, not
+that the feature works — but a behavior that a suite *could* cover is expected
+to arrive with the test rather than with a description of what was clicked.
 
 What needs no window does not need the app. The `TerminalCore` package holds
 the app's logic that compiles against Foundation alone, and `swift test
@@ -314,7 +325,9 @@ when a change adds a flow rather than a rendering.
 
 The Rust bridge has `cargo test` suites colocated with the code in
 `#[cfg(test)]` modules (`make test-rust`), and `web/` is type-checked
-(`make test-web`). Add a Rust test whenever the bridge gains behavior that can
+(`make test-web`). Content-level terminal behavior belongs there rather than in
+the app: what the grid holds after a sequence, what a resize does to it, what a
+selection copies. Add a Rust test whenever the bridge gains behavior that can
 be exercised without a live PTY.
 
 A test should encode why a behavior matters, not merely what it does. A test

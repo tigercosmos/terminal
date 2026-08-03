@@ -43,8 +43,19 @@ xcodebuild -project terminal.xcodeproj -scheme terminal -configuration Debug -de
 
 ## Verifying a change
 
-Build, run the app, and exercise the change itself — a green build is not
-evidence that a feature works. Run the suite that covers what you touched:
+A change is verified when the layer that covers it has run, and most changes
+have one that is not "launch it and look":
+
+| What changed | How it is verified |
+| --- | --- |
+| Logic that needs no window | `make test-swift` — a test in `TerminalCore` |
+| Grid content, reflow, selection | `make test-rust` — a test in the bridge |
+| A feature flow through the real app | `make e2e` — a check in `scripts/e2e.sh` |
+| Rendering, layout, chrome, feel | Build, run, and look |
+
+Build and run the app either way — a green suite says the logic holds, not that
+the feature works. But a behavior a suite could cover should arrive with the
+test rather than with a description of what was clicked.
 
 ```sh
 make test        # every suite below
