@@ -289,9 +289,17 @@ confirm the fix by reverting it and watching the behavior come back.
 
 ## Testing
 
-There is no Swift test suite. Swift changes are verified by building, running
-the app, and exercising the behavior; that is not a shortcut but the actual
-requirement, and a change described as "verified" must have been run.
+Swift changes are verified by building, running the app, and exercising the
+behavior; that is not a shortcut but the actual requirement, and a change
+described as "verified" must have been run.
+
+What needs no window does not need the app. The `TerminalCore` package holds
+the app's logic that compiles against Foundation alone, and `swift test
+--package-path TerminalCore` (`make test-swift`) runs it headless — no Xcode,
+no signing, no launch. Prefer a test there over a manual pass whenever the
+behavior can be reached without a window: a diff alignment, a glob, a signed
+request. Code that reaches AppKit stays in the app target until the AppKit part
+can be lifted out of it.
 
 The Rust bridge has `cargo test` suites colocated with the code in
 `#[cfg(test)]` modules (`make test-rust`), and `web/` is type-checked

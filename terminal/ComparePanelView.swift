@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TerminalCore
 
 /// Compare panel: pick a branch or commit, see every file in the working tree
 /// that differs from it, and open any of them side by side with the file still

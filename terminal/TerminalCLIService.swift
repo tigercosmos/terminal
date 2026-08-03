@@ -7,6 +7,7 @@ import AppKit
 import Darwin
 import Foundation
 import GhosttyTheme
+import TerminalCore
 
 /// Bridges the bundled `terminal` executable back to its owning app process.
 ///

@@ -1,6 +1,7 @@
 import Darwin
 import Darwin.ncurses
 import Foundation
+import TerminalCore
 
 private struct CLITheme: Codable {
     let name: String

@@ -1,6 +1,6 @@
 //
 //  CompareFilter.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
@@ -11,31 +11,33 @@ import Foundation
 /// The syntax deliberately mirrors a search panel's "files to include" /
 /// "files to exclude" fields, because that is the syntax someone reaching for
 /// this filter already knows.
-struct CompareFilter: Equatable {
-    var query = ""
-    var matchCase = false
-    var wholeWord = false
-    var useRegex = false
-    var include = ""
-    var exclude = ""
+public struct CompareFilter: Equatable {
+    public var query = ""
+    public var matchCase = false
+    public var wholeWord = false
+    public var useRegex = false
+    public var include = ""
+    public var exclude = ""
 
-    var isActive: Bool {
+    public init() {}
+
+    public var isActive: Bool {
         !query.isEmpty || !include.isEmpty || !exclude.isEmpty
     }
 
-    var hasQuery: Bool {
+    public var hasQuery: Bool {
         !query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }
 
 /// Compiles a filter's glob and search inputs into matchers.
-enum CompareFilterCompiler {
+public enum CompareFilterCompiler {
     /// A compiled include/exclude list. Nil means "no filter", so a caller can
     /// skip the test entirely.
-    struct GlobMatcher {
+    public struct GlobMatcher {
         private let expressions: [NSRegularExpression]
 
-        init?(_ input: String) {
+        public init?(_ input: String) {
             let patterns = CompareFilterCompiler.splitTopLevelCommas(input)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -53,7 +55,7 @@ enum CompareFilterCompiler {
             expressions = compiled
         }
 
-        func matches(_ path: String) -> Bool {
+        public func matches(_ path: String) -> Bool {
             let range = NSRange(path.startIndex..., in: path)
             return expressions.contains {
                 $0.firstMatch(in: path, options: [], range: range) != nil
@@ -61,7 +63,7 @@ enum CompareFilterCompiler {
         }
     }
 
-    enum SearchResult {
+    public enum SearchResult {
         case none
         case matcher(NSRegularExpression)
         case invalid(String)
@@ -70,7 +72,7 @@ enum CompareFilterCompiler {
     /// Compiles the query and its toggles the way a search panel does: literal
     /// text unless the regex toggle is on, wrapped in word boundaries when
     /// whole-word is on, case-insensitive unless match-case is on.
-    static func search(_ filter: CompareFilter) -> SearchResult {
+    public static func search(_ filter: CompareFilter) -> SearchResult {
         let query = filter.query
         guard !query.isEmpty else { return .none }
         var body = filter.useRegex ? query : NSRegularExpression.escapedPattern(for: query)
@@ -96,7 +98,7 @@ enum CompareFilterCompiler {
     /// alternation is part of the glob, not a separator. Without this,
     /// `*.{ts,tsx}` would split into `*.{ts` and `tsx}` and match nothing.
     /// A backslash escapes the character after it.
-    static func splitTopLevelCommas(_ input: String) -> [String] {
+    public static func splitTopLevelCommas(_ input: String) -> [String] {
         var out: [String] = []
         var current = ""
         var depth = 0
@@ -127,7 +129,7 @@ enum CompareFilterCompiler {
     }
 
     /// Applies the sugar a search panel's include/exclude fields have.
-    static func expand(_ pattern: String) -> String {
+    public static func expand(_ pattern: String) -> String {
         // `src/` — everything inside that folder.
         if pattern.hasSuffix("/") { return pattern + "**" }
         // A bare segment such as `node_modules` or `README.md` matches
@@ -145,7 +147,7 @@ enum CompareFilterCompiler {
     /// separator in it also matches against a path's last component, so `*.ts`
     /// and `**/*.ts` behave the same — otherwise a slashless wildcard would
     /// silently miss everything in a subdirectory.
-    static func regexSource(forGlob glob: String) -> String {
+    public static func regexSource(forGlob glob: String) -> String {
         let body = translate(glob)
         let hasSeparator = glob.contains("/")
         return hasSeparator ? "^(?:\(body))$" : "^(?:.*/)?(?:\(body))$"

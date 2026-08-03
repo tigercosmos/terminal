@@ -14,6 +14,7 @@
 		AA20000000000000000000A2 /* STTextView-Plugin-Neon in Frameworks */ = {isa = PBXBuildFile; productRef = AA20000000000000000000A1 /* STTextView-Plugin-Neon */; };
 		AA30000000000000000000A2 /* TreeSitterTSX in Frameworks */ = {isa = PBXBuildFile; productRef = AA30000000000000000000A1 /* TreeSitterTSX */; };
 		AA60000000000000000000A2 /* FuzzyMatch in Frameworks */ = {isa = PBXBuildFile; productRef = AA60000000000000000000A1 /* FuzzyMatch */; };
+		AA70000000000000000000A2 /* TerminalCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA70000000000000000000A1 /* TerminalCore */; };
 		FF519F43300BBE2100D8B982 /* PierreDiffsSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA10000000000000000000D1 /* PierreDiffsSwift */; };
 /* End PBXBuildFile section */
 
@@ -56,6 +57,7 @@
 				AA20000000000000000000A2 /* STTextView-Plugin-Neon in Frameworks */,
 				AA30000000000000000000A2 /* TreeSitterTSX in Frameworks */,
 				AA60000000000000000000A2 /* FuzzyMatch in Frameworks */,
+				AA70000000000000000000A2 /* TerminalCore in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -114,6 +116,7 @@
 				AA20000000000000000000A1 /* STTextView-Plugin-Neon */,
 				AA30000000000000000000A1 /* TreeSitterTSX */,
 				AA60000000000000000000A1 /* FuzzyMatch */,
+				AA70000000000000000000A1 /* TerminalCore */,
 			);
 			productName = terminal;
 			productReference = FF3FDD73300B6A7400112486 /* Terminal Debug.app */;
@@ -153,6 +156,7 @@
 				AA10000000000000000000E0 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				AA20000000000000000000A0 /* XCRemoteSwiftPackageReference "STTextView-Plugin-Neon" */,
 				AA60000000000000000000A0 /* XCRemoteSwiftPackageReference "FuzzyMatch" */,
+				AA70000000000000000000A0 /* XCLocalSwiftPackageReference "TerminalCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FF3FDD74300B6A7400112486 /* Products */;
@@ -452,6 +456,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/TreeSitterTSX;
 		};
+		AA70000000000000000000A0 /* XCLocalSwiftPackageReference "TerminalCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = TerminalCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -525,6 +533,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA60000000000000000000A0 /* XCRemoteSwiftPackageReference "FuzzyMatch" */;
 			productName = FuzzyMatch;
+		};
+		AA70000000000000000000A1 /* TerminalCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TerminalCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

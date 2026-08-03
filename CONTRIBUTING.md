@@ -44,12 +44,19 @@ xcodebuild -project terminal.xcodeproj -scheme terminal -configuration Debug -de
 ## Verifying a change
 
 Build, run the app, and exercise the change itself — a green build is not
-evidence that a feature works. Also run the Rust bridge's tests when you touch
-`Vendor/alacritty-bridge`:
+evidence that a feature works. Run the suite that covers what you touched:
 
 ```sh
-make test        # cargo test for the bridge, plus the website's type-check
+make test        # every suite below
+make test-swift  # TerminalCore, headless: no Xcode, no signing, seconds
+make test-rust   # cargo test for the Alacritty backend's bridge
+make test-web    # the website's type-check
 ```
+
+Logic that needs no window lives in the `TerminalCore` package and is covered
+by `make test-swift`. When a change belongs there, a test is the verification —
+and it keeps working after the next person changes something nearby, which
+driving the app by hand does not.
 
 ## Website
 

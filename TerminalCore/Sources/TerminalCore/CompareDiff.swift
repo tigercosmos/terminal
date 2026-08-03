@@ -1,6 +1,6 @@
 //
 //  CompareDiff.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
@@ -12,41 +12,43 @@ import Foundation
 /// editable column stays byte-for-byte the file on disk — the whole point of
 /// comparing while you edit. Rows are levelled with blank space drawn *before*
 /// a line instead, which is a styling attribute and never content.
-struct CompareAlignment: Equatable {
+public struct CompareAlignment: Equatable {
     /// Blank rows that must appear before a line for the two columns to stay
     /// level, keyed by zero-based line index. A line absent from the map has no
     /// gap. A key one past the last line is a gap at the end of the column,
     /// which has nothing after it to push down and is ignored when rendering.
-    var oldGaps: [Int: Int] = [:]
-    var newGaps: [Int: Int] = [:]
+    public var oldGaps: [Int: Int] = [:]
+    public var newGaps: [Int: Int] = [:]
     /// Zero-based indices of lines that exist only at the target.
-    var removedLines: [Int] = []
+    public var removedLines: [Int] = []
     /// Zero-based indices of lines that exist only in the working tree.
-    var addedLines: [Int] = []
+    public var addedLines: [Int] = []
     /// True when the two sides were too large to align and are shown
     /// unaligned. Surfaced in the UI so an unlevelled view is never mistaken
     /// for a wrong diff.
-    var isTruncated = false
+    public var isTruncated = false
 
-    var hasChanges: Bool { !removedLines.isEmpty || !addedLines.isEmpty }
+    public init() {}
+
+    public var hasChanges: Bool { !removedLines.isEmpty || !addedLines.isEmpty }
 }
 
-enum CompareDiff {
+public enum CompareDiff {
     /// Above this many lines on either side, the O(n·d) line diff stops being
     /// worth its latency and the columns are shown unaligned. A file this long
     /// is past the point where reading a side-by-side diff helps anyway.
-    static let maxAlignedLines = 20_000
+    public static let maxAlignedLines = 20_000
 
     /// Splits text into the lines a text view lays out, so a line index here is
     /// the same line index the gutter numbers. A trailing newline therefore
     /// yields a final empty line, exactly as the editor renders it.
-    static func lines(_ text: String) -> [String] {
+    public static func lines(_ text: String) -> [String] {
         text.components(separatedBy: "\n")
     }
 
     /// Byte offset where each line starts, used to map a layout position back
     /// to a line index while drawing.
-    static func lineStartOffsets(_ lines: [String]) -> [Int] {
+    public static func lineStartOffsets(_ lines: [String]) -> [Int] {
         var offsets: [Int] = []
         offsets.reserveCapacity(lines.count)
         var offset = 0
@@ -58,7 +60,7 @@ enum CompareDiff {
         return offsets
     }
 
-    static func align(old: [String], new: [String]) -> CompareAlignment {
+    public static func align(old: [String], new: [String]) -> CompareAlignment {
         var alignment = CompareAlignment()
         guard old.count <= maxAlignedLines, new.count <= maxAlignedLines else {
             alignment.isTruncated = true

@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import STTextKitPlus
 import SwiftUI
+import TerminalCore
 // `contentFrame` is where the layout actually places text inside the view, once
 // the gutter and the container inset are taken out. Row tinting is drawn in the
 // text view's own coordinate space and so needs that origin, and STTextView

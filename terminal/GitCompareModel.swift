@@ -6,6 +6,7 @@
 import Combine
 import Dispatch
 import Foundation
+import TerminalCore
 
 /// Compares the working tree against a branch or commit the user picks, rather
 /// than against HEAD and the index the way the Git panel does.

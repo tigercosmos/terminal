@@ -8,6 +8,7 @@
 PROJECT     := terminal.xcodeproj
 SCHEME      := terminal
 BRIDGE      := Vendor/alacritty-bridge/Cargo.toml
+CORE        := TerminalCore
 DESTINATION ?= platform=macOS,arch=$(shell uname -m)
 INSTALL_DIR ?= /Applications
 
@@ -47,7 +48,7 @@ endef
 
 .DEFAULT_GOAL := help
 .PHONY: help deps build build-release run install uninstall \
-        test test-rust test-web lint fmt fmt-check \
+        test test-swift test-rust test-web lint fmt fmt-check \
         web web-build dist clean
 
 help: ## Show this help
@@ -85,7 +86,12 @@ install: ## Build Release and install into /Applications
 uninstall: ## Remove the installed app from /Applications
 	rm -rf "$(INSTALL_DIR)/Terminal.app"
 
-test: test-rust test-web ## Run every test suite
+test: test-swift test-rust test-web ## Run every test suite
+
+# No Xcode, no signing, and no app launch: the package holds the app's logic
+# that needs no window, so this is the suite to reach for first.
+test-swift: ## Test the TerminalCore package
+	swift test --package-path $(CORE)
 
 test-rust: ## Test the Alacritty backend's Rust bridge
 	cargo test --locked --manifest-path $(BRIDGE)
