@@ -1,9 +1,39 @@
 //
 //  SessionStore.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
+
+/// Panels available in the right sidebar. Raw values are stable names
+/// persisted in `SessionSnapshot`.
+public enum RightPanel: String, Codable {
+    case files
+    case git
+    case info
+    case compare
+}
+
+/// Scroll offset and cursor position of a file tab's editor, kept on the
+/// `FileTab` so it survives tab switches, and in the session snapshot so it
+/// survives relaunches. Every field is optional so decoding tolerates
+/// snapshots written by earlier editor stacks.
+public struct EditorState: Codable, Equatable {
+    public var selectionLocation: Int?
+    public var selectionLength: Int?
+    public var scrollX: Double?
+    public var scrollY: Double?
+
+    public init(
+        selectionLocation: Int? = nil, selectionLength: Int? = nil,
+        scrollX: Double? = nil, scrollY: Double? = nil
+    ) {
+        self.selectionLocation = selectionLocation
+        self.selectionLength = selectionLength
+        self.scrollX = scrollX
+        self.scrollY = scrollY
+    }
+}
 
 /// Snapshot of open projects and tabs, saved so a relaunch restores the
 /// previous layout. Terminal sessions restore as fresh shells started in
@@ -11,12 +41,12 @@ import Foundation
 /// replayed above the prompt when the "Restore session history" setting is on
 /// (see `historyKey` and `TerminalHistoryStore`); file and diff panes reload
 /// from disk.
-struct SessionSnapshot: Codable {
-    struct ProjectSnapshot: Codable {
+public struct SessionSnapshot: Codable {
+    public struct ProjectSnapshot: Codable {
         /// A single pane's content — the terminal, file, browser, diff, or
         /// comparison it holds. The original case shapes stay unchanged, so old
         /// saved tabs still decode; see `TabSnapshot`.
-        enum PaneContentSnapshot: Codable {
+        public enum PaneContentSnapshot: Codable {
             case session(workingDirectory: String)
             /// `remoteHost` is set when the path was on a host a terminal had
             /// connected to. Without it a restored tab would open whatever
@@ -42,25 +72,34 @@ struct SessionSnapshot: Codable {
             )
         }
 
-        struct PaneSnapshot: Codable {
-            var content: PaneContentSnapshot
-            var weight: Double
+        public struct PaneSnapshot: Codable {
+            public var content: PaneContentSnapshot
+            public var weight: Double
             /// Key into the sidecar terminal-history store for a session pane;
             /// nil for files, browsers, diffs, comparisons, or when history
             /// restore is off.
             /// Optional so snapshots written before this feature still decode.
-            var historyKey: String?
+            public var historyKey: String?
+
+            public init(
+                content: PaneContentSnapshot, weight: Double,
+                historyKey: String? = nil
+            ) {
+                self.content = content
+                self.weight = weight
+                self.historyKey = historyKey
+            }
         }
 
-        struct ColumnSnapshot: Codable {
-            var panes: [PaneSnapshot]
-            var weight: Double
+        public struct ColumnSnapshot: Codable {
+            public var panes: [PaneSnapshot]
+            public var weight: Double
         }
 
         /// The persisted recursive pane tree. Fractions belong to individual
         /// splits, so a child can be divided on either axis without affecting
         /// its siblings.
-        indirect enum LayoutSnapshot: Codable {
+        public indirect enum LayoutSnapshot: Codable {
             case pane(PaneSnapshot)
             case split(
                 axis: PaneSplitAxis,
@@ -73,14 +112,14 @@ struct SessionSnapshot: Codable {
         /// One tab's recursive layout plus the focused leaf's tree-order
         /// position. Decodes both the former column/row format and the original
         /// pre-split single-content format.
-        struct TabSnapshot: Codable {
-            var layout: LayoutSnapshot
-            var focusedPaneIndex: Int
+        public struct TabSnapshot: Codable {
+            public var layout: LayoutSnapshot
+            public var focusedPaneIndex: Int
             /// User-assigned tab name; nil when the title is automatic.
             /// Optional so older snapshots still decode.
-            var customName: String?
+            public var customName: String?
 
-            init(
+            public init(
                 layout: LayoutSnapshot, focusedPaneIndex: Int,
                 customName: String? = nil
             ) {
@@ -94,7 +133,7 @@ struct SessionSnapshot: Codable {
                 case columns, focusedColumn, focusedRow
             }
 
-            init(from decoder: any Decoder) throws {
+            public init(from decoder: any Decoder) throws {
                 if let container = try? decoder.container(keyedBy: CodingKeys.self),
                    container.contains(.layout) {
                     layout = try container.decode(LayoutSnapshot.self, forKey: .layout)
@@ -138,7 +177,7 @@ struct SessionSnapshot: Codable {
                 customName = nil
             }
 
-            func encode(to encoder: any Encoder) throws {
+            public func encode(to encoder: any Encoder) throws {
                 var container = encoder.container(keyedBy: CodingKeys.self)
                 try container.encode(layout, forKey: .layout)
                 try container.encode(focusedPaneIndex, forKey: .focusedPaneIndex)
@@ -186,22 +225,44 @@ struct SessionSnapshot: Codable {
             }
         }
 
-        var customName: String?
+        public var customName: String?
         /// User-pinned project directory; nil when the directory is
         /// automatic (the closest git repository, never persisted).
         /// Optional so older snapshots still decode.
-        var customDirectory: String?
-        var tabs: [TabSnapshot]
-        var selectedTabIndex: Int?
+        public var customDirectory: String?
+        public var tabs: [TabSnapshot]
+        public var selectedTabIndex: Int?
+
+        public init(
+            customName: String? = nil, customDirectory: String? = nil,
+            tabs: [TabSnapshot], selectedTabIndex: Int? = nil
+        ) {
+            self.customName = customName
+            self.customDirectory = customDirectory
+            self.tabs = tabs
+            self.selectedTabIndex = selectedTabIndex
+        }
     }
 
-    var projects: [ProjectSnapshot]
-    var selectedProjectIndex: Int?
+    public var projects: [ProjectSnapshot]
+    public var selectedProjectIndex: Int?
     /// Sidebar layout. Optional so snapshots written before these were
     /// captured still decode; nil leaves the window at its defaults.
-    var isLeftSidebarVisible: Bool?
-    var isRightPanelVisible: Bool?
-    var rightPanelTab: RightPanel?
+    public var isLeftSidebarVisible: Bool?
+    public var isRightPanelVisible: Bool?
+    public var rightPanelTab: RightPanel?
+
+    public init(
+        projects: [ProjectSnapshot], selectedProjectIndex: Int? = nil,
+        isLeftSidebarVisible: Bool? = nil, isRightPanelVisible: Bool? = nil,
+        rightPanelTab: RightPanel? = nil
+    ) {
+        self.projects = projects
+        self.selectedProjectIndex = selectedProjectIndex
+        self.isLeftSidebarVisible = isLeftSidebarVisible
+        self.isRightPanelVisible = isRightPanelVisible
+        self.rightPanelTab = rightPanelTab
+    }
 }
 
 /// Persisted top level: one `SessionSnapshot` per open window, in
@@ -210,15 +271,15 @@ private struct AppSnapshot: Codable {
     var windows: [SessionSnapshot]
 }
 
-enum SessionStore {
+public enum SessionStore {
     private static let key = "sessionSnapshot"
 
-    static func save(_ windows: [SessionSnapshot]) {
+    public static func save(_ windows: [SessionSnapshot]) {
         guard let data = try? JSONEncoder().encode(AppSnapshot(windows: windows)) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }
 
-    static func load() -> [SessionSnapshot] {
+    public static func load() -> [SessionSnapshot] {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
         if let app = try? JSONDecoder().decode(AppSnapshot.self, from: data) {
             return app.windows

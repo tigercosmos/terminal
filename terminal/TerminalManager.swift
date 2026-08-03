@@ -7,16 +7,8 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
+import TerminalCore
 import WebKit
-
-/// Panels available in the right sidebar. Raw values are stable names
-/// persisted in `SessionSnapshot`.
-enum RightPanel: String, Codable {
-    case files
-    case git
-    case info
-    case compare
-}
 
 /// One Find menu command, routed from the menu bar to whichever find
 /// implementation the focused pane owns: Ghostty's own search in a terminal,

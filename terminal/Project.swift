@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import Foundation
+import TerminalCore
 
 /// A project groups tabs and appears as one row in the left sidebar. Each tab
 /// is a recursive split layout of terminal, file, browser, and diff panes; see

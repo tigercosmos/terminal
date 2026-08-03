@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TerminalCore
 
 /// Tiles a tab's recursive split tree. Every divider belongs to the pane
 /// rectangle that was split, so nested horizontal and vertical layouts can be

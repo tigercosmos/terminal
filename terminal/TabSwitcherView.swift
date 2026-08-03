@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TerminalCore
 
 /// Owns the press-and-hold Ctrl-Tab interaction for one window. Repeated Tab
 /// presses move only the highlighted card; the project's real selection stays

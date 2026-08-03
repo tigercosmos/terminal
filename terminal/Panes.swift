@@ -3,9 +3,10 @@
 //  terminal
 //
 
-import AppKit
 import Combine
+import CoreGraphics
 import Foundation
+import TerminalCore
 
 /// The leaf content of a pane: a terminal session, an open file, a browser, a
 /// git diff, or a file compared against a branch or commit. A project tab used
@@ -67,18 +68,6 @@ extension PaneContent {
     }
 }
 
-/// Which side of a target pane a dragged pane is dropped on, deciding where it
-/// lands relative to that pane.
-enum PaneDropEdge {
-    case left, right, top, bottom
-}
-
-/// The direction in which a split lays out its two children.
-enum PaneSplitAxis: String, Codable {
-    case horizontal
-    case vertical
-}
-
 /// One tile in a tab's layout. The content object is long-lived while the pane
 /// itself is a value inside the split tree.
 struct Pane: nonisolated Identifiable {
@@ -86,257 +75,14 @@ struct Pane: nonisolated Identifiable {
     var content: PaneContent
 }
 
-/// A binary split in the pane tree. `fraction` is the first child's share of
-/// the available axis after the divider gap is removed.
-struct PaneSplit: nonisolated Identifiable {
-    let id = UUID()
-    var axis: PaneSplitAxis
-    var fraction: CGFloat
-    var first: PaneNode
-    var second: PaneNode
-}
-
-/// Pane layouts are recursive so every split subdivides the focused pane's own
-/// rectangle. This is what lets a right split of the lower pane in a top/bottom
-/// layout stay beside that lower pane instead of spanning the full tab height.
-indirect enum PaneNode {
-    case pane(Pane)
-    case split(PaneSplit)
-
-    var allPanes: [Pane] {
-        switch self {
-        case .pane(let pane):
-            return [pane]
-        case .split(let split):
-            return split.first.allPanes + split.second.allPanes
-        }
-    }
-
-    func contains(_ paneID: UUID) -> Bool {
-        switch self {
-        case .pane(let pane):
-            return pane.id == paneID
-        case .split(let split):
-            return split.first.contains(paneID) || split.second.contains(paneID)
-        }
-    }
-
-    /// Replaces `target` with a split containing it and `pane`.
-    func inserting(_ pane: Pane, toward edge: PaneDropEdge, beside target: UUID) -> PaneNode {
-        switch self {
-        case .pane(let existing):
-            guard existing.id == target else { return self }
-            let axis: PaneSplitAxis = edge == .left || edge == .right
-                ? .horizontal : .vertical
-            let insertedFirst = edge == .left || edge == .top
-            return .split(PaneSplit(
-                axis: axis,
-                fraction: 0.5,
-                first: .pane(insertedFirst ? pane : existing),
-                second: .pane(insertedFirst ? existing : pane)
-            ))
-        case .split(var split):
-            if split.first.contains(target) {
-                split.first = split.first.inserting(pane, toward: edge, beside: target)
-            } else if split.second.contains(target) {
-                split.second = split.second.inserting(pane, toward: edge, beside: target)
-            }
-            return .split(split)
-        }
-    }
-
-    /// Removes a leaf and collapses its now-single-child parent.
-    func removingPane(_ paneID: UUID) -> (node: PaneNode?, pane: Pane?) {
-        switch self {
-        case .pane(let pane):
-            return pane.id == paneID ? (nil, pane) : (self, nil)
-        case .split(var split):
-            let firstResult = split.first.removingPane(paneID)
-            if let removed = firstResult.pane {
-                guard let first = firstResult.node else { return (split.second, removed) }
-                split.first = first
-                return (.split(split), removed)
-            }
-            let secondResult = split.second.removingPane(paneID)
-            if let removed = secondResult.pane {
-                guard let second = secondResult.node else { return (split.first, removed) }
-                split.second = second
-                return (.split(split), removed)
-            }
-            return (self, nil)
-        }
-    }
-
-    func settingFraction(of splitID: UUID, to fraction: CGFloat) -> PaneNode {
-        switch self {
-        case .pane:
-            return self
-        case .split(var split):
-            if split.id == splitID {
-                split.fraction = fraction
-            } else {
-                split.first = split.first.settingFraction(of: splitID, to: fraction)
-                split.second = split.second.settingFraction(of: splitID, to: fraction)
-            }
-            return .split(split)
-        }
-    }
-
-    func fraction(of splitID: UUID) -> CGFloat? {
-        switch self {
-        case .pane:
-            return nil
-        case .split(let split):
-            if split.id == splitID { return split.fraction }
-            return split.first.fraction(of: splitID) ?? split.second.fraction(of: splitID)
-        }
-    }
-
-    func equalized() -> PaneNode {
-        switch self {
-        case .pane:
-            return self
-        case .split(var split):
-            split.first = split.first.equalized()
-            split.second = split.second.equalized()
-            let firstSpan = split.first.spanCount(along: split.axis)
-            let secondSpan = split.second.spanCount(along: split.axis)
-            split.fraction = firstSpan / (firstSpan + secondSpan)
-            return .split(split)
-        }
-    }
-
-    /// Counts adjacent tiles along `axis`, treating a perpendicular subtree as
-    /// one tile. This preserves the old equalize behavior for both flat rows
-    /// and columns while leaving nested perpendicular groups evenly divided.
-    private func spanCount(along axis: PaneSplitAxis) -> CGFloat {
-        guard case .split(let split) = self, split.axis == axis else { return 1 }
-        return split.first.spanCount(along: axis)
-            + split.second.spanCount(along: axis)
-    }
-
-    func ancestors(of paneID: UUID) -> [PaneSplitAncestor]? {
-        switch self {
-        case .pane(let pane):
-            return pane.id == paneID ? [] : nil
-        case .split(let split):
-            if let descendants = split.first.ancestors(of: paneID) {
-                return [PaneSplitAncestor(
-                    id: split.id, axis: split.axis, paneIsInFirstChild: true
-                )] + descendants
-            }
-            if let descendants = split.second.ancestors(of: paneID) {
-                return [PaneSplitAncestor(
-                    id: split.id, axis: split.axis, paneIsInFirstChild: false
-                )] + descendants
-            }
-            return nil
-        }
-    }
-
-    /// Computes absolute pane and divider rectangles for both the live layout
-    /// and the tab-switcher thumbnail.
-    func geometry(in bounds: CGRect, gap: CGFloat) -> PaneLayoutGeometry {
-        var geometry = PaneLayoutGeometry()
-        appendGeometry(in: bounds, gap: gap, to: &geometry)
-        return geometry
-    }
-
-    private func appendGeometry(
-        in bounds: CGRect, gap: CGFloat, to geometry: inout PaneLayoutGeometry
-    ) {
-        switch self {
-        case .pane(let pane):
-            geometry.panes.append(PanePlacement(pane: pane, frame: bounds))
-        case .split(let split):
-            let fraction = min(max(split.fraction, 0), 1)
-            switch split.axis {
-            case .horizontal:
-                let available = max(0, bounds.width - gap)
-                let firstWidth = available * fraction
-                let dividerX = bounds.minX + firstWidth
-                split.first.appendGeometry(
-                    in: CGRect(
-                        x: bounds.minX, y: bounds.minY,
-                        width: firstWidth, height: bounds.height
-                    ),
-                    gap: gap,
-                    to: &geometry
-                )
-                geometry.dividers.append(PaneDividerPlacement(
-                    id: split.id,
-                    axis: split.axis,
-                    frame: CGRect(
-                        x: dividerX, y: bounds.minY,
-                        width: gap, height: bounds.height
-                    ),
-                    availableLength: available
-                ))
-                split.second.appendGeometry(
-                    in: CGRect(
-                        x: dividerX + gap, y: bounds.minY,
-                        width: available - firstWidth, height: bounds.height
-                    ),
-                    gap: gap,
-                    to: &geometry
-                )
-            case .vertical:
-                let available = max(0, bounds.height - gap)
-                let firstHeight = available * fraction
-                let dividerY = bounds.minY + firstHeight
-                split.first.appendGeometry(
-                    in: CGRect(
-                        x: bounds.minX, y: bounds.minY,
-                        width: bounds.width, height: firstHeight
-                    ),
-                    gap: gap,
-                    to: &geometry
-                )
-                geometry.dividers.append(PaneDividerPlacement(
-                    id: split.id,
-                    axis: split.axis,
-                    frame: CGRect(
-                        x: bounds.minX, y: dividerY,
-                        width: bounds.width, height: gap
-                    ),
-                    availableLength: available
-                ))
-                split.second.appendGeometry(
-                    in: CGRect(
-                        x: bounds.minX, y: dividerY + gap,
-                        width: bounds.width, height: available - firstHeight
-                    ),
-                    gap: gap,
-                    to: &geometry
-                )
-            }
-        }
-    }
-}
-
-struct PaneSplitAncestor {
-    let id: UUID
-    let axis: PaneSplitAxis
-    let paneIsInFirstChild: Bool
-}
-
-struct PanePlacement: Identifiable {
-    var id: UUID { pane.id }
-    let pane: Pane
-    let frame: CGRect
-}
-
-struct PaneDividerPlacement: Identifiable {
-    let id: UUID
-    let axis: PaneSplitAxis
-    let frame: CGRect
-    let availableLength: CGFloat
-}
-
-struct PaneLayoutGeometry {
-    var panes: [PanePlacement] = []
-    var dividers: [PaneDividerPlacement] = []
-}
+// The split tree, its geometry, and the value types that describe it are
+// `TerminalCore`'s and carry no notion of what a pane holds. These names keep
+// the app's spelling of them, since a layout here is always a tree of `Pane`.
+typealias PaneNode = PaneTree<Pane>
+typealias PaneSplit = PaneTreeSplit<Pane>
+typealias PanePlacement = PaneTreePlacement<Pane>
+typealias PaneDividerPlacement = PaneTreeDivider
+typealias PaneLayoutGeometry = PaneTreeGeometry<Pane>
 
 /// One entry in a project's tab strip. A plain tab is one leaf; every split
 /// replaces one leaf with a binary node while the long-lived content objects

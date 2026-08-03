@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TerminalCore
 
 struct terminalApp: App {
     @NSApplicationDelegateAdaptor(TerminalApplicationDelegate.self)

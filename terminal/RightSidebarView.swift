@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TerminalCore
 
 /// Right sidebar: hidden by default, toggled from the terminal's corner
 /// button or ⇧⌘B. Files/Git switch via tabs along its top, otty-style.

@@ -5,6 +5,7 @@
 
 import AppKit
 import GhosttyTerminal
+import TerminalCore
 
 /// Terminal's libghostty backend: Ghostty's Metal-backed terminal surface plus
 /// Terminal's pane focus, context menu, effective application focus, and

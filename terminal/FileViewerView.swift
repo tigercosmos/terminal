@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TerminalCore
 
 /// A file opened as a tab in a project. Text content lives here (not in the
 /// view) so edits survive tab switches.

@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import FuzzyMatch
 import SwiftUI
+import TerminalCore
 
 /// Groups palette rows under a header — built-in actions, project files, and
 /// open sessions.

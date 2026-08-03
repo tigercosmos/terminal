@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TerminalCore
 
 /// Hosts a session's long-lived terminal surface in SwiftUI, wrapped in a
 /// container that insets the terminal content while pinning the session's
