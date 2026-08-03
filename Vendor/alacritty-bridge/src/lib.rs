@@ -2331,6 +2331,190 @@ mod tests {
             .to_owned()
     }
 
+    /// The visible grid as plain rows, trailing blanks trimmed — what a
+    /// content assertion actually wants to look at.
+    fn screen_rows<T: EventListener>(term: &Term<T>) -> Vec<String> {
+        let grid = term.grid();
+        (0..grid.screen_lines())
+            .map(|line| {
+                let row: String = (0..grid.columns())
+                    .map(|column| grid[Line(line as i32)][Column(column)].c)
+                    .collect();
+                row.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    fn parse_sized(columns: usize, screen_lines: usize, input: &[u8]) -> Term<VoidListener> {
+        let size = TermSize {
+            columns,
+            screen_lines,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, input);
+        term
+    }
+
+    /// Erase-in-display clears what is on screen without disturbing what
+    /// scrolled off, which is what makes `clear` keep the scrollback.
+    #[test]
+    fn erase_in_display_leaves_the_scrollback_alone() {
+        let mut term = parse_sized(20, 2, b"first\r\nsecond\r\nthird\r\n");
+        assert!(term.grid().history_size() > 0);
+
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b[2J\x1b[H");
+        assert_eq!(screen_rows(&term), vec!["", ""]);
+        assert!(
+            term.grid().history_size() > 0,
+            "erase-in-display must not take the scrollback with it"
+        );
+    }
+
+    /// Erase-in-line takes the rest of the row and nothing else — a prompt
+    /// redrawing itself does this on every keystroke.
+    #[test]
+    fn erase_in_line_stops_at_the_end_of_the_row() {
+        let term = parse_sized(20, 2, b"keepdrop\r\nnext\x1b[1;5H\x1b[K");
+        assert_eq!(screen_rows(&term), vec!["keep", "next"]);
+    }
+
+    /// A double-width character occupies two cells, so the text after it lands
+    /// one column further along than its character count suggests.
+    #[test]
+    fn a_wide_character_takes_two_cells() {
+        let term = parse_sized(10, 1, "\u{4f60}x".as_bytes());
+        let grid = term.grid();
+        assert_eq!(grid[Line(0)][Column(0)].c, '\u{4f60}');
+        assert_eq!(grid[Line(0)][Column(2)].c, 'x');
+    }
+
+    /// Text past the last column wraps to the next row rather than being
+    /// dropped, and the row is marked as wrapped so a reflow can rejoin it.
+    #[test]
+    fn text_past_the_last_column_wraps_to_the_next_row() {
+        let term = parse_sized(5, 2, b"abcdefgh");
+        assert_eq!(screen_rows(&term), vec!["abcde", "fgh"]);
+    }
+
+    /// Narrowing the terminal rejoins a wrapped line and lays it out again, so
+    /// the text a user can see survives a window resize.
+    #[test]
+    fn narrowing_reflows_a_wrapped_line_without_losing_text() {
+        let mut term = parse_sized(12, 4, b"abcdefghijklmnop");
+        assert_eq!(screen_rows(&term), vec!["abcdefghijkl", "mnop", "", ""]);
+
+        term.resize(TermSize {
+            columns: 8,
+            screen_lines: 4,
+        });
+        let rows = screen_rows(&term);
+        assert_eq!(
+            rows.join("").trim_end(),
+            "abcdefghijklmnop",
+            "reflow changed the text, not only where it breaks"
+        );
+        assert_eq!(rows[0], "abcdefgh");
+    }
+
+    /// Widening puts a line that had been broken back onto one row.
+    #[test]
+    fn widening_rejoins_a_line_that_had_been_broken() {
+        let mut term = parse_sized(8, 4, b"abcdefghijklmnop");
+        assert_eq!(screen_rows(&term)[0], "abcdefgh");
+
+        term.resize(TermSize {
+            columns: 16,
+            screen_lines: 4,
+        });
+        assert_eq!(screen_rows(&term)[0], "abcdefghijklmnop");
+    }
+
+    /// Shrinking the height pushes the top rows into the scrollback rather
+    /// than discarding them.
+    #[test]
+    fn shrinking_the_height_pushes_rows_into_the_scrollback() {
+        let mut term = parse_sized(20, 4, b"one\r\ntwo\r\nthree\r\nfour");
+        assert_eq!(term.grid().history_size(), 0);
+
+        term.resize(TermSize {
+            columns: 20,
+            screen_lines: 2,
+        });
+        assert_eq!(screen_rows(&term), vec!["three", "four"]);
+        assert!(term.grid().history_size() > 0);
+    }
+
+    // MARK: - Selection
+
+    fn select_text(
+        term: &mut Term<VoidListener>,
+        ty: SelectionType,
+        from: Point,
+        to: Point,
+    ) -> String {
+        let mut selection = Selection::new(ty, from, Side::Left);
+        selection.update(to, Side::Right);
+        term.selection = Some(selection);
+        term.selection_to_string().unwrap_or_default()
+    }
+
+    #[test]
+    fn a_simple_selection_is_the_cells_it_covers() {
+        let mut term = parse_sized(20, 2, b"hello world");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(0), Column(4)),
+        );
+        assert_eq!(text, "hello");
+    }
+
+    /// A selection that runs off the end of a row picks up the newline the row
+    /// stands for — copying two lines has to paste as two lines.
+    #[test]
+    fn a_selection_across_rows_carries_the_line_break() {
+        let mut term = parse_sized(20, 2, b"one\r\ntwo");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(1), Column(2)),
+        );
+        assert_eq!(text, "one\ntwo");
+    }
+
+    /// A soft-wrapped line is one line: selecting across the break must not
+    /// insert a newline that was never typed, or pasting it runs the two
+    /// halves as separate commands.
+    #[test]
+    fn a_soft_wrapped_line_selects_without_a_line_break() {
+        let mut term = parse_sized(5, 2, b"abcdefgh");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(1), Column(2)),
+        );
+        assert_eq!(text, "abcdefgh");
+    }
+
+    /// A block selection takes the same columns from every row, which is the
+    /// whole reason to have one.
+    #[test]
+    fn a_block_selection_takes_a_column_range_from_every_row() {
+        let mut term = parse_sized(20, 2, b"abcdef\r\nghijkl");
+        let text = select_text(
+            &mut term,
+            SelectionType::Block,
+            Point::new(Line(0), Column(1)),
+            Point::new(Line(1), Column(3)),
+        );
+        assert_eq!(text, "bcd\nhij");
+    }
+
     #[test]
     fn overscan_line_is_the_row_below_the_viewport() {
         // Six lines into a three-row screen leaves three in the scrollback,
