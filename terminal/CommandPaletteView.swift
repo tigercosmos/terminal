@@ -96,6 +96,159 @@ private final class PalettePointerSelectionController: ObservableObject {
     }
 }
 
+/// The palette's built-in commands, as a function of the manager they act
+/// on.
+///
+/// Out here rather than inside the view so the debug automation surface can
+/// run one by identifier through the same table the palette shows — an
+/// automation action that drifted from the real command would be worse than
+/// no automation at all. `openSettings` is the one entry a view has and a
+/// CLI request does not; it is omitted when there is nothing to call.
+@MainActor
+func paletteCommands(
+    manager: TerminalManager, openSettings: (() -> Void)? = nil
+) -> [PaletteCommand] {
+    var items: [PaletteCommand] = [
+        PaletteCommand(id: "new-session", title: "New Session", systemImage: "terminal", shortcut: "⌘T") {
+            manager.newSession()
+        },
+        PaletteCommand(id: "new-browser-tab", title: "New Browser Tab", systemImage: "globe") {
+            manager.newBrowserTab()
+        },
+        PaletteCommand(id: "new-browser-pane", title: "New Browser Pane", systemImage: "globe") {
+            manager.newBrowserPane()
+        },
+        PaletteCommand(id: "clear-terminal", title: "Clear Terminal", systemImage: "eraser", shortcut: "⌘K") {
+            manager.clearActiveTerminal()
+        },
+        PaletteCommand(id: "split-right", title: "Split Right", systemImage: "rectangle.split.2x1", shortcut: "⌘D") {
+            manager.splitRight()
+        },
+        PaletteCommand(id: "split-left", title: "Split Left", systemImage: "rectangle.split.2x1") {
+            manager.splitLeft()
+        },
+        PaletteCommand(id: "split-down", title: "Split Down", systemImage: "rectangle.split.1x2", shortcut: "⇧⌘D") {
+            manager.splitDown()
+        },
+        PaletteCommand(id: "split-up", title: "Split Up", systemImage: "rectangle.split.1x2") {
+            manager.splitUp()
+        },
+        PaletteCommand(id: "focus-pane-left", title: "Focus Pane Left", systemImage: "arrow.left", shortcut: "⌥⌘←") {
+            manager.focusPaneLeft()
+        },
+        PaletteCommand(id: "focus-pane-right", title: "Focus Pane Right", systemImage: "arrow.right", shortcut: "⌥⌘→") {
+            manager.focusPaneRight()
+        },
+        PaletteCommand(id: "focus-pane-up", title: "Focus Pane Up", systemImage: "arrow.up", shortcut: "⌥⌘↑") {
+            manager.focusPaneUp()
+        },
+        PaletteCommand(id: "focus-pane-down", title: "Focus Pane Down", systemImage: "arrow.down", shortcut: "⌥⌘↓") {
+            manager.focusPaneDown()
+        },
+        PaletteCommand(id: "focus-prev-pane", title: "Focus Previous Pane", systemImage: "arrow.backward.square", shortcut: "⌘[") {
+            manager.focusPreviousPane()
+        },
+        PaletteCommand(id: "focus-next-pane", title: "Focus Next Pane", systemImage: "arrow.forward.square", shortcut: "⌘]") {
+            manager.focusNextPane()
+        },
+        PaletteCommand(id: "toggle-pane-zoom", title: "Toggle Pane Zoom", systemImage: "arrow.up.left.and.arrow.down.right", shortcut: "⇧⌘↩") {
+            manager.togglePaneZoom()
+        },
+        PaletteCommand(id: "equalize-panes", title: "Equalize Panes", systemImage: "rectangle.split.3x1", shortcut: "⌃⌘=") {
+            manager.equalizePanes()
+        },
+        PaletteCommand(id: "resize-pane-up", title: "Resize Pane Up", systemImage: "arrow.up.to.line", shortcut: "⌃⌘↑") {
+            manager.resizePaneUp()
+        },
+        PaletteCommand(id: "resize-pane-down", title: "Resize Pane Down", systemImage: "arrow.down.to.line", shortcut: "⌃⌘↓") {
+            manager.resizePaneDown()
+        },
+        PaletteCommand(id: "resize-pane-left", title: "Resize Pane Left", systemImage: "arrow.left.to.line", shortcut: "⌃⌘←") {
+            manager.resizePaneLeft()
+        },
+        PaletteCommand(id: "resize-pane-right", title: "Resize Pane Right", systemImage: "arrow.right.to.line", shortcut: "⌃⌘→") {
+            manager.resizePaneRight()
+        },
+        PaletteCommand(id: "new-project", title: "New Project", systemImage: "folder.badge.plus", shortcut: "⌘N") {
+            manager.newProject()
+        },
+        PaletteCommand(id: "close-tab", title: "Close Tab", systemImage: "xmark.square", shortcut: "⌘W") {
+            manager.closeSelectedTab()
+        },
+        PaletteCommand(id: "save-file", title: "Save File", systemImage: "square.and.arrow.down", shortcut: "⌘S") {
+            manager.saveSelectedFile()
+        },
+        PaletteCommand(id: "toggle-left-sidebar", title: "Toggle Left Sidebar", systemImage: "sidebar.left", shortcut: "⌘B") {
+            manager.toggleLeftSidebar()
+        },
+        PaletteCommand(id: "toggle-sidebar", title: "Toggle Right Sidebar", systemImage: "sidebar.right", shortcut: "⇧⌘B") {
+            manager.toggleSidebar()
+        },
+        PaletteCommand(id: "toggle-files", title: "Toggle Files Panel", systemImage: "doc.text", shortcut: "⇧⌘E") {
+            manager.togglePanel(.files)
+        },
+        PaletteCommand(id: "toggle-git", title: "Toggle Git Panel", systemImage: "arrow.triangle.branch", shortcut: "⇧⌘G") {
+            manager.togglePanel(.git)
+        },
+        PaletteCommand(id: "toggle-compare", title: "Toggle Compare Panel", systemImage: "arrow.left.and.right", shortcut: "⇧⌘C") {
+            manager.togglePanel(.compare)
+        },
+        PaletteCommand(id: "toggle-info", title: "Toggle Info Panel", systemImage: "info.circle", shortcut: "⇧⌘I") {
+            manager.togglePanel(.info)
+        },
+        PaletteCommand(id: "next-tab", title: "Next Tab", systemImage: "arrow.right", shortcut: "⇧⌘]") {
+            manager.selectNextTab()
+        },
+        PaletteCommand(id: "prev-tab", title: "Previous Tab", systemImage: "arrow.left", shortcut: "⇧⌘[") {
+            manager.selectPreviousTab()
+        },
+        PaletteCommand(id: "next-project", title: "Next Project", systemImage: "arrow.right.square", shortcut: "⌥⌘]") {
+            manager.selectNextProject()
+        },
+        PaletteCommand(id: "prev-project", title: "Previous Project", systemImage: "arrow.left.square", shortcut: "⌥⌘[") {
+            manager.selectPreviousProject()
+        },
+        // ⌘= is the same command as ⌘+, and the one most people press.
+        PaletteCommand(id: "zoom-in", title: "Zoom In", systemImage: "textformat.size.larger", shortcut: "⌘+ ⌘=") {
+            ZoomCommand.zoomIn(manager)
+        },
+        PaletteCommand(id: "zoom-out", title: "Zoom Out", systemImage: "textformat.size.smaller", shortcut: "⌘-") {
+            ZoomCommand.zoomOut(manager)
+        },
+        PaletteCommand(id: "zoom-reset", title: "Actual Size", systemImage: "textformat.size", shortcut: "⌘0") {
+            ZoomCommand.actualSize(manager)
+        },
+    ]
+
+    if let project = manager.selectedProject {
+        items.append(
+            PaletteCommand(id: "close-project", title: "Close Project: \(project.name)", systemImage: "folder.badge.minus") {
+                manager.close(project)
+            }
+        )
+    }
+
+    for (index, project) in manager.projects.enumerated() where project.id != manager.selectedProjectID {
+        items.append(
+            PaletteCommand(
+                id: "switch-project-\(project.id)",
+                title: "Switch to Project: \(project.name)",
+                systemImage: "folder",
+                shortcut: index < 9 ? "⌘\(index + 1)" : nil
+            ) {
+                manager.selectProject(index: index)
+            }
+        )
+    }
+
+    items.append(
+        PaletteCommand(id: "settings", title: "Settings…", systemImage: "gearshape", shortcut: "⌘,") {
+            openSettings?()
+        }
+    )
+    return items
+}
+
 /// Centered ⌘P overlay: fuzzy-searchable list of app actions. Arrow keys
 /// move the selection, Return runs it, and Escape clears a query before
 /// dismissing an already-empty palette.
@@ -174,145 +327,7 @@ struct CommandPaletteView: View {
     // MARK: - Commands
 
     private var commands: [PaletteCommand] {
-        var items: [PaletteCommand] = [
-            PaletteCommand(id: "new-session", title: "New Session", systemImage: "terminal", shortcut: "⌘T") {
-                manager.newSession()
-            },
-            PaletteCommand(id: "new-browser-tab", title: "New Browser Tab", systemImage: "globe") {
-                manager.newBrowserTab()
-            },
-            PaletteCommand(id: "new-browser-pane", title: "New Browser Pane", systemImage: "globe") {
-                manager.newBrowserPane()
-            },
-            PaletteCommand(id: "clear-terminal", title: "Clear Terminal", systemImage: "eraser", shortcut: "⌘K") {
-                manager.clearActiveTerminal()
-            },
-            PaletteCommand(id: "split-right", title: "Split Right", systemImage: "rectangle.split.2x1", shortcut: "⌘D") {
-                manager.splitRight()
-            },
-            PaletteCommand(id: "split-left", title: "Split Left", systemImage: "rectangle.split.2x1") {
-                manager.splitLeft()
-            },
-            PaletteCommand(id: "split-down", title: "Split Down", systemImage: "rectangle.split.1x2", shortcut: "⇧⌘D") {
-                manager.splitDown()
-            },
-            PaletteCommand(id: "split-up", title: "Split Up", systemImage: "rectangle.split.1x2") {
-                manager.splitUp()
-            },
-            PaletteCommand(id: "focus-pane-left", title: "Focus Pane Left", systemImage: "arrow.left", shortcut: "⌥⌘←") {
-                manager.focusPaneLeft()
-            },
-            PaletteCommand(id: "focus-pane-right", title: "Focus Pane Right", systemImage: "arrow.right", shortcut: "⌥⌘→") {
-                manager.focusPaneRight()
-            },
-            PaletteCommand(id: "focus-pane-up", title: "Focus Pane Up", systemImage: "arrow.up", shortcut: "⌥⌘↑") {
-                manager.focusPaneUp()
-            },
-            PaletteCommand(id: "focus-pane-down", title: "Focus Pane Down", systemImage: "arrow.down", shortcut: "⌥⌘↓") {
-                manager.focusPaneDown()
-            },
-            PaletteCommand(id: "focus-prev-pane", title: "Focus Previous Pane", systemImage: "arrow.backward.square", shortcut: "⌘[") {
-                manager.focusPreviousPane()
-            },
-            PaletteCommand(id: "focus-next-pane", title: "Focus Next Pane", systemImage: "arrow.forward.square", shortcut: "⌘]") {
-                manager.focusNextPane()
-            },
-            PaletteCommand(id: "toggle-pane-zoom", title: "Toggle Pane Zoom", systemImage: "arrow.up.left.and.arrow.down.right", shortcut: "⇧⌘↩") {
-                manager.togglePaneZoom()
-            },
-            PaletteCommand(id: "equalize-panes", title: "Equalize Panes", systemImage: "rectangle.split.3x1", shortcut: "⌃⌘=") {
-                manager.equalizePanes()
-            },
-            PaletteCommand(id: "resize-pane-up", title: "Resize Pane Up", systemImage: "arrow.up.to.line", shortcut: "⌃⌘↑") {
-                manager.resizePaneUp()
-            },
-            PaletteCommand(id: "resize-pane-down", title: "Resize Pane Down", systemImage: "arrow.down.to.line", shortcut: "⌃⌘↓") {
-                manager.resizePaneDown()
-            },
-            PaletteCommand(id: "resize-pane-left", title: "Resize Pane Left", systemImage: "arrow.left.to.line", shortcut: "⌃⌘←") {
-                manager.resizePaneLeft()
-            },
-            PaletteCommand(id: "resize-pane-right", title: "Resize Pane Right", systemImage: "arrow.right.to.line", shortcut: "⌃⌘→") {
-                manager.resizePaneRight()
-            },
-            PaletteCommand(id: "new-project", title: "New Project", systemImage: "folder.badge.plus", shortcut: "⌘N") {
-                manager.newProject()
-            },
-            PaletteCommand(id: "close-tab", title: "Close Tab", systemImage: "xmark.square", shortcut: "⌘W") {
-                manager.closeSelectedTab()
-            },
-            PaletteCommand(id: "save-file", title: "Save File", systemImage: "square.and.arrow.down", shortcut: "⌘S") {
-                manager.saveSelectedFile()
-            },
-            PaletteCommand(id: "toggle-left-sidebar", title: "Toggle Left Sidebar", systemImage: "sidebar.left", shortcut: "⌘B") {
-                manager.toggleLeftSidebar()
-            },
-            PaletteCommand(id: "toggle-sidebar", title: "Toggle Right Sidebar", systemImage: "sidebar.right", shortcut: "⇧⌘B") {
-                manager.toggleSidebar()
-            },
-            PaletteCommand(id: "toggle-files", title: "Toggle Files Panel", systemImage: "doc.text", shortcut: "⇧⌘E") {
-                manager.togglePanel(.files)
-            },
-            PaletteCommand(id: "toggle-git", title: "Toggle Git Panel", systemImage: "arrow.triangle.branch", shortcut: "⇧⌘G") {
-                manager.togglePanel(.git)
-            },
-            PaletteCommand(id: "toggle-compare", title: "Toggle Compare Panel", systemImage: "arrow.left.and.right", shortcut: "⇧⌘C") {
-                manager.togglePanel(.compare)
-            },
-            PaletteCommand(id: "toggle-info", title: "Toggle Info Panel", systemImage: "info.circle", shortcut: "⇧⌘I") {
-                manager.togglePanel(.info)
-            },
-            PaletteCommand(id: "next-tab", title: "Next Tab", systemImage: "arrow.right", shortcut: "⇧⌘]") {
-                manager.selectNextTab()
-            },
-            PaletteCommand(id: "prev-tab", title: "Previous Tab", systemImage: "arrow.left", shortcut: "⇧⌘[") {
-                manager.selectPreviousTab()
-            },
-            PaletteCommand(id: "next-project", title: "Next Project", systemImage: "arrow.right.square", shortcut: "⌥⌘]") {
-                manager.selectNextProject()
-            },
-            PaletteCommand(id: "prev-project", title: "Previous Project", systemImage: "arrow.left.square", shortcut: "⌥⌘[") {
-                manager.selectPreviousProject()
-            },
-            // ⌘= is the same command as ⌘+, and the one most people press.
-            PaletteCommand(id: "zoom-in", title: "Zoom In", systemImage: "textformat.size.larger", shortcut: "⌘+ ⌘=") {
-                ZoomCommand.zoomIn(manager)
-            },
-            PaletteCommand(id: "zoom-out", title: "Zoom Out", systemImage: "textformat.size.smaller", shortcut: "⌘-") {
-                ZoomCommand.zoomOut(manager)
-            },
-            PaletteCommand(id: "zoom-reset", title: "Actual Size", systemImage: "textformat.size", shortcut: "⌘0") {
-                ZoomCommand.actualSize(manager)
-            },
-        ]
-
-        if let project = manager.selectedProject {
-            items.append(
-                PaletteCommand(id: "close-project", title: "Close Project: \(project.name)", systemImage: "folder.badge.minus") {
-                    manager.close(project)
-                }
-            )
-        }
-
-        for (index, project) in manager.projects.enumerated() where project.id != manager.selectedProjectID {
-            items.append(
-                PaletteCommand(
-                    id: "switch-project-\(project.id)",
-                    title: "Switch to Project: \(project.name)",
-                    systemImage: "folder",
-                    shortcut: index < 9 ? "⌘\(index + 1)" : nil
-                ) {
-                    manager.selectProject(index: index)
-                }
-            )
-        }
-
-        items.append(
-            PaletteCommand(id: "settings", title: "Settings…", systemImage: "gearshape", shortcut: "⌘,") {
-                openSettings()
-            }
-        )
-        return items
+        paletteCommands(manager: manager, openSettings: { openSettings() })
     }
 
     /// Every open terminal session across all projects, as a jump-to entry.

@@ -17,7 +17,7 @@ import TerminalCore
 /// notification: requests are signed with it instead, so an observer cannot
 /// forge one. See ``TerminalCLIProtocol``.
 @MainActor
-final class TerminalCLIService {
+final class TerminalCLIService: NSObject {
     static let shared = TerminalCLIService()
 
     private struct CatalogTheme: Codable {
@@ -40,16 +40,19 @@ final class TerminalCLIService {
         let pid: pid_t
     }
 
-    private let secret = UUID().uuidString
+    /// Read by the debug automation bridge; see
+    /// ``TerminalCLIAutomation/Bridge``.
+    let secret = UUID().uuidString
     private let directoryURL: URL
-    private let stateURL: URL
-    private var notificationObserver: NSObjectProtocol?
+    /// Read by the debug automation surface, which leaves its replies beside
+    /// the theme catalog in this same directory.
+    let stateURL: URL
     private var terminationObserver: NSObjectProtocol?
     private var previewMonitor: Timer?
     private var activePreview: ActivePreview?
     private var handledNonces = TerminalCLINonceWindow()
 
-    private init() {
+    private override init() {
         let fileManager = FileManager.default
         directoryURL = fileManager.temporaryDirectory
             .appendingPathComponent(
@@ -68,18 +71,29 @@ final class TerminalCLIService {
             NSLog("terminal: failed to prepare CLI state: \(error)")
         }
 
+        super.init()
+
+        #if DEBUG
+        writeAutomationBridge()
+        #endif
+
         writeState()
 
-        notificationObserver = DistributedNotificationCenter.default()
-            .addObserver(
-                forName: TerminalCLIProtocol.notificationName,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                MainActor.assumeIsolated {
-                    self?.handle(notification)
-                }
-            }
+        // `.deliverImmediately` because the system otherwise holds distributed
+        // notifications for an app that is not active and delivers them when it
+        // next comes forward. A `terminal` invocation is nearly always typed
+        // into one of Terminal's own shells, so the app is active and the
+        // difference never showed — but a request sent from anywhere else,
+        // which is exactly what the automation surface is for, would arrive
+        // whenever the user happened to click on Terminal next. Only the
+        // selector form takes the behavior, which is why this is not a block.
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(receive(_:)),
+            name: TerminalCLIProtocol.notificationName,
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
 
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -113,10 +127,18 @@ final class TerminalCLIService {
         return environment
     }
 
+    @objc private func receive(_ notification: Notification) {
+        MainActor.assumeIsolated { handle(notification) }
+    }
+
     private func handle(_ notification: Notification) {
         guard let request = TerminalCLIProtocol.request(
             from: notification.userInfo, secret: secret
         ), handledNonces.claim(request.nonce) else { return }
+
+        #if DEBUG
+        if handleAutomation(request) { return }
+        #endif
 
         if request.action == "openProject" {
             guard let arguments = request.arguments,

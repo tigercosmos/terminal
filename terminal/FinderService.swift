@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TerminalCore
 
 /// Provides Terminal's Finder service. The advertised menu item lives in
 /// Info.plist; AppKit forwards matching service requests to this object.
@@ -11,6 +12,16 @@ import AppKit
 final class TerminalApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = self
+
+        #if DEBUG
+        // The CLI channel otherwise comes up with the first shell, since that
+        // is the first thing to need the environment it hands out. An armed
+        // build has to be reachable before then: a driver's first request is
+        // usually the one that opens a window.
+        if TerminalCLIAutomation.isEnabled() {
+            _ = TerminalCLIService.shared
+        }
+        #endif
     }
 
     /// Opens every directory Finder placed on the service pasteboard as a

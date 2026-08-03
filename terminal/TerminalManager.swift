@@ -708,6 +708,15 @@ final class TerminalManager: nonisolated ObservableObject {
         }
     }
 
+    #if DEBUG
+    /// This window's state, in the same shape a saved session is written in.
+    /// Terminal history is not captured: a test asserting on the layout does
+    /// not want a copy of every shell's scrollback in the answer.
+    func automationSnapshot() -> SessionSnapshot {
+        makeWindowSnapshot(captureTerminalHistory: false).snapshot
+    }
+    #endif
+
     /// Re-themes every open window for app-wide changes that do not mutate an
     /// `AppSettings` publisher, such as a transient CLI theme preview.
     static func refreshAllAppearances() {

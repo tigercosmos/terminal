@@ -147,6 +147,41 @@ private final class AppConnection {
         send(request)
     }
 
+    #if DEBUG
+    /// Sends one automation request and waits for the app's answer.
+    ///
+    /// The reply is left in a file beside the theme catalog, named for the
+    /// request's own nonce. The path is derived on both sides rather than sent,
+    /// so the app only ever writes inside the directory it made itself — see
+    /// ``TerminalCLIAutomation``.
+    func automate(action: String, payload: [String]) throws -> String {
+        var request = TerminalCLIRequest(action: action, nonce: UUID().uuidString)
+        request.arguments = payload
+        guard let replyURL = TerminalCLIAutomation.replyURL(
+            stateURL: stateURL, nonce: request.nonce
+        ) else {
+            throw CLIError.message(String(localized: "Could not name a reply file."))
+        }
+        try? FileManager.default.removeItem(at: replyURL)
+        send(request)
+
+        // Bounded: the app answers on its main run loop, and a request it never
+        // saw must fail rather than hang a script.
+        for _ in 0..<200 {
+            Thread.sleep(forTimeInterval: 0.02)
+            guard let reply = TerminalCLIAutomation.read(at: replyURL) else { continue }
+            try? FileManager.default.removeItem(at: replyURL)
+            guard reply.ok else {
+                throw CLIError.message(reply.error ?? "the request failed")
+            }
+            return reply.text ?? ""
+        }
+        throw CLIError.message(
+            String(localized: "Terminal did not answer. Was it launched with TERMINAL_AUTOMATION=1?")
+        )
+    }
+    #endif
+
     func createProject(arguments: [String]) {
         var request = TerminalCLIRequest(
             action: "openProject", nonce: UUID().uuidString
@@ -546,6 +581,27 @@ private func run() throws {
         printHelp()
         return
     }
+    #if DEBUG
+    if arguments.first == "+automation" {
+        let rest = Array(arguments.dropFirst())
+        guard let name = rest.first,
+              let action = TerminalCLIAutomationAction(rawValue: "automation.\(name)")
+        else {
+            let names = TerminalCLIAutomationAction.allCases
+                .map { $0.rawValue.replacingOccurrences(of: "automation.", with: "") }
+                .joined(separator: ", ")
+            throw CLIError.message(
+                String(localized: "Usage: terminal +automation <\(names)> [argument]")
+            )
+        }
+        let output = try AppConnection().automate(
+            action: action.rawValue, payload: Array(rest.dropFirst())
+        )
+        if !output.isEmpty { print(output) }
+        return
+    }
+    #endif
+
     if arguments.first != "+themes" {
         if let command = arguments.first, command.hasPrefix("+") {
             throw CLIError.message(

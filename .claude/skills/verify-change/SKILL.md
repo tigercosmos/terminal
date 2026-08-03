@@ -67,6 +67,7 @@ make test        # everything below except lint and fmt-check
 make test-swift  # swift test for the TerminalCore package
 make test-rust   # cargo test for Vendor/alacritty-bridge
 make test-web    # web/ type-check
+make e2e         # drive a running Debug build over the CLI channel
 make lint        # cargo clippy on the bridge, warnings denied
 make fmt-check   # rustfmt, without writing
 ```
@@ -76,8 +77,14 @@ change to logic that lives there is expected to come with a test rather than
 only a manual pass. `make test-rust` and `make lint` are required when the diff
 touches `Vendor/alacritty-bridge`; `make test-web` when it touches `web/`.
 
-Most of the app is still outside `TerminalCore`, and everything there is
-verified in the running app -- which is why step 2 is not optional.
+`make e2e` is the way to exercise a feature flow without driving the UI by
+hand: it launches a Debug build armed with `TERMINAL_AUTOMATION=1` and sends
+input, reads the grid back, runs palette commands, and asks for the window's
+state, all over the CLI channel. Add a check there when a change adds a flow.
+It needs a GUI session, so it is not in `make test`.
+
+Rendering, layout, and feel still have to be looked at -- which is why step 2
+is not optional.
 
 `make fmt` fixes what `fmt-check` reports. A few pre-existing rustfmt diffs
 live in the bridge, so run it on the files you touched rather than reformatting

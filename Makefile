@@ -48,7 +48,7 @@ endef
 
 .DEFAULT_GOAL := help
 .PHONY: help deps build build-release run install uninstall \
-        test test-swift test-rust test-web lint fmt fmt-check \
+        test test-swift test-rust test-web e2e lint fmt fmt-check \
         web web-build dist clean
 
 help: ## Show this help
@@ -92,6 +92,13 @@ test: test-swift test-rust test-web ## Run every test suite
 # that needs no window, so this is the suite to reach for first.
 test-swift: ## Test the TerminalCore package
 	swift test --package-path $(CORE)
+
+# Needs a GUI session: it launches the app and drives it. Nothing is captured
+# from the screen and no input is synthesized from outside the app, so neither
+# Screen Recording nor Accessibility is ever requested.
+e2e: build ## Drive a running Debug build over the CLI channel
+	@$(call resolve_app,Debug); \
+	scripts/e2e.sh "$$app"
 
 test-rust: ## Test the Alacritty backend's Rust bridge
 	cargo test --locked --manifest-path $(BRIDGE)

@@ -304,6 +304,14 @@ request. Code that reaches AppKit stays in the app target until the AppKit part
 can be lifted out of it; text a user reads does not stop a move, but it does
 mean the strings move too — see [LOCALIZATION.md](LOCALIZATION.md).
 
+A feature flow that needs the real app has `make e2e`: it launches a debug
+build armed with `TERMINAL_AUTOMATION=1` and drives it over the CLI channel —
+the app injects its own input and reports its own state, so no pixels are read
+and nothing is synthesized from outside. That surface is compiled out of
+release builds and dormant unless armed; see `TerminalCLIAutomation`. Prefer it
+over a manual pass for anything a script can assert on, and add a check there
+when a change adds a flow rather than a rendering.
+
 The Rust bridge has `cargo test` suites colocated with the code in
 `#[cfg(test)]` modules (`make test-rust`), and `web/` is type-checked
 (`make test-web`). Add a Rust test whenever the bridge gains behavior that can

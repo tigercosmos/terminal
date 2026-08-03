@@ -18,7 +18,8 @@ AppKit used over SwiftUI where performance matters.
 Build, run the app, and exercise the change — a successful build says nothing
 about whether the change works. `make test-swift` for logic in the
 `TerminalCore` package (headless, seconds, no Xcode) and `cargo test` in
-`Vendor/alacritty-bridge` when you touch the Rust bridge. Requires Xcode 27;
+`Vendor/alacritty-bridge` when you touch the Rust bridge. `make e2e` drives a
+running Debug build over the CLI channel for a feature flow. Requires Xcode 27;
 see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Conventions
