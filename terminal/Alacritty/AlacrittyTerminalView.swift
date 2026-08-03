@@ -1288,6 +1288,24 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             return
         }
 
+        // Every repeat of a held key arrives here, but macOS press-and-hold
+        // answers a held character with an accent palette rather than with a
+        // repeat, and the input context swallows the events while deciding to
+        // — so holding j in `less` scrolled one line and then stopped. Keys
+        // the map encodes never reach this point and have always repeated.
+        // A repeat is never part of a composition: the first press would have
+        // left marked text, which returned above. Modified keys stay on the
+        // normal path — the ones that encode were handled by the key map, and
+        // the rest belong to Terminal's menus or to an input source composing
+        // Option-text.
+        if event.isARepeat,
+           event.modifierFlags.isDisjoint(with: [.command, .control, .option]),
+           let characters = event.characters,
+           !characters.isEmpty {
+            insertText(characters, replacementRange: NSRange(location: NSNotFound, length: 0))
+            return
+        }
+
         // First key of a composition, committed Unicode from an input source,
         // or a shortcut Terminal's menus own.
         if inputContext?.handleEvent(event) == true {
