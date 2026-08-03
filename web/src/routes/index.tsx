@@ -224,6 +224,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'a trackpad scrolls the scrollback by the pixel, not a row at a time — it tracks your fingers and stops where you let go',
       },
       {
+        name: 'Keys that repeat',
+        detail:
+          'holding a key down repeats it — hold j or k to run through git log or a file in less, instead of tapping',
+      },
+      {
         name: 'Desktop notifications',
         detail:
           'a bell in an unfocused session, or a notification escape from a long-running command, reaches Notification Center',
