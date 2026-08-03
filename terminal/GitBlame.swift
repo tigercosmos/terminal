@@ -95,7 +95,7 @@ nonisolated enum GitBlame {
     /// exclusive with `contents`, which Git rejects alongside a revision.
     static func line(
         _ line: Int, path: String, contents: String?,
-        revision: String? = nil, in root: String
+        revision: String? = nil, in root: GitDirectory
     ) -> BlameLine? {
         guard line >= 1 else { return nil }
         // A ref must never reach Git as an option; see
@@ -109,9 +109,12 @@ nonisolated enum GitBlame {
         if let revision { args.append(revision) }
         args += ["-L", "\(line),\(line)", "--", path]
 
-        let run = runBlame(args, in: root, input: contents)
+        // The buffer goes in on stdin rather than through a temporary file, so
+        // blaming a repository on another machine sends the same bytes over the
+        // same connection instead of needing somewhere to put them there.
+        let run = GitCommand.runData(args, in: root, input: contents.map { Data($0.utf8) })
         guard run.status == 0 else { return nil }
-        return parsePorcelain(run.stdout)
+        return parsePorcelain(String(decoding: run.stdout, as: UTF8.self))
     }
 
     static func parsePorcelain(_ text: String) -> BlameLine? {
@@ -152,51 +155,5 @@ nonisolated enum GitBlame {
             authorTime: authorTime,
             authorTimeZone: authorTimeZone
         )
-    }
-
-    /// Runs blame with the buffer optionally piped in. Separate from
-    /// `GitStatusModel.runGit` only because that one closes stdin outright.
-    private static func runBlame(
-        _ args: [String], in root: String, input: String?
-    ) -> (status: Int32, stdout: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        // Blame is an inspection, so it must never run code the repository
-        // supplies; see `GitStatusModel.untrustedConfig`.
-        process.arguments = [
-            "-c", "core.fsmonitor=",
-            "-c", "core.hooksPath=/dev/null",
-        ] + args
-        process.currentDirectoryURL = URL(fileURLWithPath: root, isDirectory: true)
-        var environment = ProcessInfo.processInfo.environment
-        environment["GIT_OPTIONAL_LOCKS"] = "0"
-        environment["GIT_TERMINAL_PROMPT"] = "0"
-        environment["LC_ALL"] = "C"
-        process.environment = environment
-
-        let stdout = Pipe()
-        let stdin = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
-        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
-
-        do {
-            try process.run()
-        } catch {
-            return (-1, "")
-        }
-
-        if let input {
-            // Write on another queue: a buffer larger than the pipe blocks
-            // until Git drains it, and Git will not drain while we are not
-            // reading its output.
-            DispatchQueue.global(qos: .userInitiated).async {
-                try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
-                try? stdin.fileHandleForWriting.close()
-            }
-        }
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 }

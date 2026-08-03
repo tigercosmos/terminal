@@ -154,20 +154,43 @@ enum RemoteFileService {
         done; exit 0
         """
 
-    /// Runs `script` on the remote host with `arguments` as `$1`, `$2`, ….
+    /// Runs `script` on the remote host with `arguments` as `$1`, `$2`, … and
+    /// hands back exactly what it said.
+    ///
+    /// Separate from ``run(script:arguments:on:)`` because a Git command's own
+    /// exit status is information the panels display — a revision that is not
+    /// in the repository is not a connection problem — so the caller needs the
+    /// status and the diagnostics apart rather than folded into a ``Failure``.
+    ///
+    /// `maxBytes`, when set, caps how much of stdout is retained; the pipe is
+    /// drained past it either way, because a remote command nobody reads
+    /// eventually blocks. `input` is fed to the command's stdin.
+    nonisolated static func execute(
+        script: String, arguments: [String], maxBytes: Int? = nil,
+        input: Data? = nil, on destination: RemoteShellDestination
+    ) -> (status: Int32, stdout: Data, stderr: String) {
+        runSSH(
+            arguments: sshInvocation(script: script, arguments: arguments, on: destination),
+            maxBytes: maxBytes,
+            input: input
+        )
+    }
+
+    /// The full `ssh` argument vector that runs `script` on `destination`.
     ///
     /// The command reaches the remote login shell as one string, so it is
     /// assembled with the paths single-quoted; the scripts themselves contain
     /// no single quote for that reason. Passing the paths as arguments rather
     /// than interpolating them into the script keeps a file name from being
     /// read as shell syntax twice over.
-    private nonisolated static func run(
+    ///
+    /// `/bin/sh` rather than the command on its own because the remote login
+    /// shell may be csh or fish, where a leading `NAME=value` is not an
+    /// assignment at all — the scripts that need an environment set it inside
+    /// the `sh` they are already running in.
+    private nonisolated static func sshInvocation(
         script: String, arguments: [String], on destination: RemoteShellDestination
-    ) throws -> Data {
-        // No environment prefix: every word here is quoted so the remote login
-        // shell cannot reinterpret a path, and a quoted `LC_ALL=C` stops being
-        // an assignment and becomes a command name. Nothing below parses
-        // locale-dependent output, so there is nothing to pin.
+    ) -> [String] {
         let remoteCommand = (["/bin/sh", "-c", script, "sh"] + arguments)
             .map(shellQuoted)
             .joined(separator: " ")
@@ -187,8 +210,16 @@ enum RemoteFileService {
         // because ssh keeps the first value it is given for a setting.
         sshArguments += destination.reachOptions
         sshArguments += ["-T", destination.destination, remoteCommand]
+        return sshArguments
+    }
 
-        let result = runSSH(arguments: sshArguments)
+    /// Runs `script` and folds anything other than success into a ``Failure``,
+    /// which is what the file listings want: they have nothing to say about a
+    /// non-zero status beyond "that path could not be read".
+    private nonisolated static func run(
+        script: String, arguments: [String], on destination: RemoteShellDestination
+    ) throws -> Data {
+        let result = execute(script: script, arguments: arguments, on: destination)
         switch result.status {
         case 0:
             return result.stdout
@@ -209,7 +240,7 @@ enum RemoteFileService {
     }
 
     private nonisolated static func runSSH(
-        arguments: [String]
+        arguments: [String], maxBytes: Int? = nil, input: Data? = nil
     ) -> (status: Int32, stdout: Data, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
@@ -223,14 +254,24 @@ enum RemoteFileService {
 
         let stdout = Pipe()
         let stderr = Pipe()
+        let stdin = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        process.standardInput = FileHandle.nullDevice
+        process.standardInput = input == nil ? FileHandle.nullDevice : stdin
 
         do {
             try process.run()
         } catch {
             return (-1, Data(), error.localizedDescription)
+        }
+        if let input {
+            // Written on another queue: a buffer larger than the pipe blocks
+            // until ssh drains it, and ssh will not drain it while nothing is
+            // reading what it sends back.
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? stdin.fileHandleForWriting.write(contentsOf: input)
+                try? stdin.fileHandleForWriting.close()
+            }
         }
         // Draining both pipes concurrently: waiting on the process first
         // deadlocks as soon as either fills, and a directory listing can.
@@ -239,7 +280,7 @@ enum RemoteFileService {
         let readers = DispatchGroup()
         readers.enter()
         DispatchQueue.global(qos: .utility).async {
-            outData.value = stdout.fileHandleForReading.readDataToEndOfFile()
+            outData.value = read(stdout.fileHandleForReading, retaining: maxBytes)
             readers.leave()
         }
         readers.enter()
@@ -254,6 +295,25 @@ enum RemoteFileService {
             outData.value,
             String(decoding: errData.value, as: UTF8.self)
         )
+    }
+
+    /// Drains `handle`, keeping at most `limit` bytes plus one — enough to tell
+    /// a payload that sits exactly on a caller's ceiling from one that runs
+    /// over it. Everything past that is read and dropped, because a remote
+    /// command whose output nobody takes eventually blocks.
+    private nonisolated static func read(
+        _ handle: FileHandle, retaining limit: Int?
+    ) -> Data {
+        guard let limit else { return handle.readDataToEndOfFile() }
+        var kept = Data()
+        while true {
+            guard let chunk = try? handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
+                break
+            }
+            let remaining = limit + 1 - kept.count
+            if remaining > 0 { kept.append(chunk.prefix(remaining)) }
+        }
+        return kept
     }
 
     private nonisolated final class PipeData: @unchecked Sendable {
@@ -280,12 +340,33 @@ enum RemoteFileService {
     }
 
     /// The most specific line of ssh's diagnostics, made safe to show.
-    ///
-    /// stderr here is remote-influenced text on its way into the interface, so
-    /// control characters come out and the length is capped; a banner or a
-    /// motd should not be able to redraw the panel.
     private nonisolated static func message(from stderr: String) -> String? {
-        let lines = stderr
+        guard let last = visibleLines(of: stderr).last else { return nil }
+        return last.count > 200 ? String(last.prefix(200)) + "…" : last
+    }
+
+    /// Remote-influenced text made safe to show, keeping its shape.
+    ///
+    /// Anything a remote command writes is on its way into the interface, so
+    /// control characters come out and both the line count and each line's
+    /// length are capped; a banner, a motd, or a hostile diagnostic should not
+    /// be able to redraw the panel or run it out of memory.
+    nonisolated static func sanitized(_ text: String, maxLines: Int = 20) -> String {
+        let lines = visibleLines(of: text)
+        let kept = lines.prefix(maxLines).map { line in
+            line.count > 500 ? String(line.prefix(500)) + "…" : line
+        }
+        let elided = lines.count - kept.count
+        return elided > 0
+            ? (kept + [String(localized: "…and \(elided) more lines")]).joined(separator: "\n")
+            : kept.joined(separator: "\n")
+    }
+
+    /// `text` split into non-empty lines with every non-printing scalar taken
+    /// out. Line separators are what the split consumed, so nothing here can
+    /// reintroduce one.
+    private nonisolated static func visibleLines(of text: String) -> [String] {
+        text
             .split(whereSeparator: \.isNewline)
             .map { line -> String in
                 let visible = line.unicodeScalars.filter { scalar in
@@ -298,8 +379,6 @@ enum RemoteFileService {
                     .trimmingCharacters(in: .whitespaces)
             }
             .filter { !$0.isEmpty }
-        guard let last = lines.last else { return nil }
-        return last.count > 200 ? String(last.prefix(200)) + "…" : last
     }
 
     private nonisolated static func shellQuoted(_ value: String) -> String {

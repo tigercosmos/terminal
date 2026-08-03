@@ -106,6 +106,8 @@ final class GitCompareModel: nonisolated ObservableObject {
     }
 
     @Published private(set) var rootPath = ""
+    /// Where the panel has been pointed, and on which machine.
+    @Published private(set) var panelRoot = PanelRoot.local("")
     /// Stable canonical repository root, used to key the remembered target.
     @Published private(set) var repositoryIdentity = ""
     @Published private(set) var isRepo = false
@@ -149,6 +151,8 @@ final class GitCompareModel: nonisolated ObservableObject {
     private var loadRequestID: UInt = 0
     /// Coalesces an event that arrives while a load or a revert is running.
     private var refreshPending = false
+    /// When the last comparison finished, for the remote polling interval.
+    private var lastLoad: Date?
     private var runningOperationID: UUID?
     /// Invalidates a search whose inputs or file set have moved on.
     private var searchRequestID: UInt = 0
@@ -156,6 +160,47 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     var repoRoot: String {
         topLevel.isEmpty ? rootPath : topLevel
+    }
+
+    /// The ssh connection the repository sits behind, when the terminal has
+    /// followed one onto another machine. Nil for a repository on this Mac.
+    var remote: RemoteShellDestination? { panelRoot.remote }
+
+    /// True when the comparison is looking wherever an ssh command lands
+    /// because the remote shell has never said where it is.
+    var isSearchingRemoteLoginDirectory: Bool {
+        panelRoot.isRemoteLoginFallback && !isRepo
+    }
+
+    /// The repository, and the machine it is on.
+    var repoDirectory: GitDirectory {
+        GitDirectory(repoRoot, on: remote)
+    }
+
+    /// The directory the panel was pointed at, before Git resolved which
+    /// repository contains it.
+    var rootDirectory: GitDirectory {
+        GitDirectory(rootPath, on: remote)
+    }
+
+    /// The host whose repository is compared, when it is not this machine's.
+    var remoteHost: String? { remote?.host }
+
+    /// Whether a revert can run. A remote comparison is read-only for the same
+    /// reason the remote file tree is: reverting a working-tree addition means
+    /// moving it to the Trash, which is a thing on this Mac.
+    var isEditable: Bool { remote == nil }
+
+    /// What the panel calls the directory it is describing, host-qualified when
+    /// the repository is on another machine.
+    var displayPath: String {
+        GitDirectory(isRepo ? repoRoot : rootPath, on: remote).displayPath
+    }
+
+    /// Host-qualified key for the remembered target: the same path names a
+    /// different repository on a different machine.
+    private var targetKey: String {
+        repoDirectory.displayPath
     }
 
     var hasTarget: Bool { target != nil }
@@ -177,20 +222,47 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     // MARK: - Lifecycle
 
-    func sync(root: String) {
-        if root != rootPath {
+    /// Points the panel at `root`, on this Mac or on the host a terminal has
+    /// ssh'd into. `polling` marks a tick from the panel's timer rather than
+    /// something the user did; see ``refreshIfStale()``.
+    func sync(root: PanelRoot, polling: Bool = false) {
+        var moved = false
+        if root != panelRoot {
+            let sameMachine = root.remote == panelRoot.remote
             contextGeneration &+= 1
-            rootPath = root
+            panelRoot = root
+            rootPath = root.provisionalPath
             hasResolvedList = false
-            clearRepositoryState(preserveIdentity: true)
+            clearRepositoryState(preserveIdentity: sameMachine)
+            moved = true
+        }
+        if polling && !moved {
+            refreshIfStale()
+        } else {
+            refresh()
+        }
+    }
+
+    /// How long a remote comparison is trusted before the panel's next tick
+    /// re-runs it. Matches the Git panel's interval, since the two answer the
+    /// same question about the same connection.
+    private static let remoteRefreshInterval: TimeInterval = 5
+
+    /// A tick from the panel's timer. Only a repository on another machine is
+    /// polled: a terminal sitting inside `ssh` finishes no commands, so the
+    /// completion events a local comparison refreshes on never arrive.
+    private func refreshIfStale() {
+        guard remote != nil else { return }
+        if let lastLoad, Date().timeIntervalSince(lastLoad) < Self.remoteRefreshInterval {
+            return
         }
         refresh()
     }
 
     func refresh() {
-        let root = rootPath
+        let root = panelRoot
         let generation = contextGeneration
-        guard !root.isEmpty else { return }
+        guard !root.isUnset else { return }
         guard !isRefreshing, !isBusy else {
             refreshPending = true
             return
@@ -202,14 +274,19 @@ final class GitCompareModel: nonisolated ObservableObject {
         let requested = target
 
         Task { [weak self] in
-            let result = await Task.detached(priority: .utility) {
-                Self.load(root: root, target: requested)
+            let loaded = await Task.detached(priority: .utility) { () -> (GitDirectory, LoadResult) in
+                // See `GitStatusModel.refresh()`: placing a remote root means
+                // asking the host, so it happens here rather than on the way in.
+                let directory = root.directory()
+                return (directory, Self.load(root: directory, target: requested))
             }.value
             guard let self, self.contextGeneration == generation,
                   self.loadRequestID == requestID,
-                  self.rootPath == root else { return }
+                  self.panelRoot == root else { return }
             self.isRefreshing = false
-            self.apply(result)
+            self.lastLoad = Date()
+            self.rootPath = loaded.0.path
+            self.apply(loaded.1)
             self.hasResolvedList = true
             if self.refreshPending {
                 self.refreshPending = false
@@ -234,7 +311,8 @@ final class GitCompareModel: nonisolated ObservableObject {
             lastError = String(localized: "Open a Git repository first")
             return
         }
-        let root = repoRoot
+        let root = repoDirectory
+        let key = targetKey
         let generation = contextGeneration
         loadRequestID &+= 1
         // Choosing A then B must land on B even when A resolves last, and
@@ -262,7 +340,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             self.entries = []
             let target = Target(kind: kind, name: trimmed, oid: resolved)
             self.target = target
-            self.targetsByRepository[root] = target
+            self.targetsByRepository[key] = target
             self.refresh()
         }
     }
@@ -277,7 +355,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         entries = []
         hasResolvedList = false
         if !repoRoot.isEmpty {
-            targetsByRepository[repoRoot] = nil
+            targetsByRepository[targetKey] = nil
         }
     }
 
@@ -294,6 +372,15 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     func revert(_ entry: Entry, confirmedAs confirmed: FileFingerprint? = nil) {
         guard let target else { return }
+        // Checked here rather than trusting the panel to have hidden the
+        // action: a revert writes, and the panel can be showing a repository on
+        // another machine one refresh after it was showing a local one.
+        guard isEditable else {
+            failImmediately(
+                String(localized: "This repository is on \(remoteHost ?? ""), which Terminal compares but does not change.")
+            )
+            return
+        }
         guard isCurrent(entry) else {
             failImmediately(
                 String(localized: "Repository changed; refresh and try the revert again")
@@ -302,7 +389,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         }
         guard !isBusy else { return }
 
-        let root = repoRoot
+        let root = repoDirectory
         let oid = target.oid
         let generation = contextGeneration
         // Only a true rename restores its old path; see `Entry.isRename`.
@@ -318,7 +405,7 @@ final class GitCompareModel: nonisolated ObservableObject {
 
         Task { [weak self] in
             let failure = await Task.detached(priority: .userInitiated) { () -> String? in
-                guard Self.resolveRepositoryRoot(in: root) == root else {
+                guard Self.resolveRepositoryRoot(in: root) == root.path else {
                     return String(localized: "Repository changed before the revert could run. Review the current changes and try again.")
                 }
                 // The pinned commit must still be there: a rewrite or a prune
@@ -398,14 +485,14 @@ final class GitCompareModel: nonisolated ObservableObject {
         isRepo = true
         branch = loaded.branch
         topLevel = loaded.topLevel
-        repositoryIdentity = loaded.topLevel
+        repositoryIdentity = GitDirectory(loaded.topLevel, on: remote).displayPath
         localBranches = loaded.localBranches
         remoteBranches = loaded.remoteBranches
         recentCommits = loaded.recentCommits
 
         // Entering a repository for the first time picks up whatever target was
         // last used there, so the comparison survives switching projects.
-        if target == nil, let remembered = targetsByRepository[loaded.topLevel] {
+        if target == nil, let remembered = targetsByRepository[targetKey] {
             target = remembered
         }
         guard target != nil else {
@@ -416,7 +503,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         if let resolved = loaded.resolvedOID {
             targetError = nil
             target?.oid = resolved
-            if let target { targetsByRepository[loaded.topLevel] = target }
+            if let target { targetsByRepository[targetKey] = target }
             let refreshed = loaded.entries.map { entry -> Entry in
                 var entry = entry
                 entry.repositoryRoot = loaded.topLevel
@@ -474,7 +561,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             searchRequestID &+= 1
             let requestID = searchRequestID
             let generation = contextGeneration
-            let root = repoRoot
+            let root = repoDirectory
             let paths = entries.map(\.path)
             isSearching = true
 
@@ -491,7 +578,7 @@ final class GitCompareModel: nonisolated ObservableObject {
     }
 
     private nonisolated static func pathsMatching(
-        _ expression: NSRegularExpression, paths: [String], in root: String
+        _ expression: NSRegularExpression, paths: [String], in root: GitDirectory
     ) -> Set<String> {
         var matches: Set<String> = []
         for path in paths {
@@ -539,8 +626,8 @@ final class GitCompareModel: nonisolated ObservableObject {
         var entries: [Entry] = []
     }
 
-    private nonisolated static func load(root: String, target: Target?) -> LoadResult {
-        let top = GitStatusModel.runGit(["rev-parse", "--show-toplevel"], in: root)
+    private nonisolated static func load(root: GitDirectory, target: Target?) -> LoadResult {
+        let top = GitCommand.run(["rev-parse", "--show-toplevel"], in: root)
         guard top.status == 0 else {
             let message = [top.stderr, top.stdout]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -551,25 +638,26 @@ final class GitCompareModel: nonisolated ObservableObject {
             }
             return .failed(message)
         }
-        let repoRoot = trimmedLine(top.stdout)
-        guard !repoRoot.isEmpty else {
+        let resolvedRoot = trimmedLine(top.stdout)
+        guard !resolvedRoot.isEmpty else {
             return .failed(String(localized: "Git returned an empty repository path."))
         }
+        let repoRoot = root.directory(resolvedRoot)
 
         var loaded = Loaded()
-        loaded.topLevel = repoRoot
+        loaded.topLevel = resolvedRoot
 
         // Fails on a detached HEAD, which simply has no branch to name.
-        let head = GitStatusModel.runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], in: repoRoot)
+        let head = GitCommand.run(["symbolic-ref", "--quiet", "--short", "HEAD"], in: repoRoot)
         loaded.branch = head.status == 0 ? trimmedLine(head.stdout) : nil
 
-        let locals = GitStatusModel.runGit(
+        let locals = GitCommand.run(
             ["for-each-ref", "--format=%(refname:short)", "refs/heads"], in: repoRoot
         )
         if locals.status == 0 {
             loaded.localBranches = locals.stdout.split(separator: "\n").map(String.init).sorted()
         }
-        let remotes = GitStatusModel.runGit(
+        let remotes = GitCommand.run(
             ["for-each-ref", "--format=%(refname:short)", "refs/remotes"], in: repoRoot
         )
         if remotes.status == 0 {
@@ -582,7 +670,7 @@ final class GitCompareModel: nonisolated ObservableObject {
                 .sorted()
         }
 
-        let log = GitStatusModel.runGit(
+        let log = GitCommand.run(
             ["log", "-n", "20", "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e"],
             in: repoRoot
         )
@@ -613,9 +701,9 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// answer" and "nothing differs" look identical in a list, and the second
     /// is a claim this must never make on the first's behalf.
     private nonisolated static func changedPaths(
-        against oid: String, in root: String
+        against oid: String, in root: GitDirectory
     ) throws -> [Entry] {
-        let diff = GitStatusModel.runGit(
+        let diff = GitCommand.run(
             ["diff", "--name-status", "-z", "--end-of-options", oid], in: root
         )
         guard diff.status == 0 else {
@@ -625,7 +713,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         }
         var entries = parseNameStatus(diff.stdout)
 
-        let untracked = GitStatusModel.runGit(
+        let untracked = GitCommand.run(
             ["ls-files", "--others", "--exclude-standard", "-z"], in: root
         )
         guard untracked.status == 0 else {
@@ -691,9 +779,9 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     /// The commit `ref` names, or nil when it is not a revision in this
     /// repository. `^{commit}` also rejects a tag that points at a blob.
-    nonisolated static func resolveCommit(_ ref: String, in root: String) -> String? {
+    nonisolated static func resolveCommit(_ ref: String, in root: GitDirectory) -> String? {
         guard isSafeRef(ref) else { return nil }
-        let run = GitStatusModel.runGit(
+        let run = GitCommand.run(
             ["rev-parse", "--verify", "--end-of-options", "\(ref)^{commit}"], in: root
         )
         guard run.status == 0 else { return nil }
@@ -703,8 +791,8 @@ final class GitCompareModel: nonisolated ObservableObject {
         return oid
     }
 
-    private nonisolated static func resolveRepositoryRoot(in root: String) -> String? {
-        let top = GitStatusModel.runGit(["rev-parse", "--show-toplevel"], in: root)
+    private nonisolated static func resolveRepositoryRoot(in root: GitDirectory) -> String? {
+        let top = GitCommand.run(["rev-parse", "--show-toplevel"], in: root)
         guard top.status == 0 else { return nil }
         let path = trimmedLine(top.stdout)
         return path.isEmpty ? nil : path
@@ -727,9 +815,9 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// while `ls-tree` matches more literally, so without this the gate and the
     /// destructive action it guards could disagree about which files are meant.
     private nonisolated static func membership(
-        ofPath path: String, atCommit oid: String, in root: String
+        ofPath path: String, atCommit oid: String, in root: GitDirectory
     ) -> TreeMembership {
-        let run = GitStatusModel.runGit(
+        let run = GitCommand.run(
             ["ls-tree", "--name-only", "-z", "--end-of-options", oid, "--", ":(literal)\(path)"],
             in: root
         )
@@ -743,7 +831,7 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     /// Restores one path to its state at `oid`. Returns a message on failure.
     private nonisolated static func revertToTarget(
-        path: String, renameFrom: String?, oid: String, in root: String
+        path: String, renameFrom: String?, oid: String, in root: GitDirectory
     ) -> String? {
         // `--` ends options but does NOT disable glob interpretation, so a path
         // holding `*`, `?`, or `[…]` would otherwise match — and destructively
@@ -754,12 +842,12 @@ final class GitCompareModel: nonisolated ObservableObject {
         if let renameFrom, renameFrom != path {
             // Restore the old name first, so a failure aborts before anything is
             // removed and the tree is left exactly as it was.
-            let restore = GitStatusModel.runGit(
+            let restore = GitCommand.run(
                 ["checkout", oid, "--", ":(literal)\(renameFrom)"], in: root
             )
             guard restore.status == 0 else { return failure(restore, path: renameFrom) }
             // Index-only: drop the stale new-path entry. Never touches disk.
-            let unstage = GitStatusModel.runGit(
+            let unstage = GitCommand.run(
                 ["rm", "-f", "--cached", "--ignore-unmatch", "--", literal], in: root
             )
             guard unstage.status == 0 else { return failure(unstage, path: path) }
@@ -768,8 +856,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             // pointing at one inode, so removing the new path here would wipe
             // the file the checkout just restored.
             guard !isSameFileSystemEntry(
-                (root as NSString).appendingPathComponent(path),
-                (root as NSString).appendingPathComponent(renameFrom)
+                root.appending(path), root.appending(renameFrom)
             ) else { return nil }
             return trash(path: path, in: root)
         }
@@ -778,7 +865,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         case .present:
             // No `--end-of-options` here: checkout reads it as a second ref.
             // `isSafeRef` on the way in is what protects the ref itself.
-            let run = GitStatusModel.runGit(["checkout", oid, "--", literal], in: root)
+            let run = GitCommand.run(["checkout", oid, "--", literal], in: root)
             return run.status == 0 ? nil : failure(run, path: path)
         case .unknown(let message):
             // Never guess. Guessing "absent" here deletes the file.
@@ -794,7 +881,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         // `--ignore-unmatch` keeps `rm` at exit 0 when the path was never
         // staged; a real failure (an index lock, a rejected pathspec) still
         // aborts before anything leaves the working tree.
-        let unstage = GitStatusModel.runGit(
+        let unstage = GitCommand.run(
             ["rm", "-f", "--cached", "--ignore-unmatch", "--", literal], in: root
         )
         guard unstage.status == 0 else { return failure(unstage, path: path) }
@@ -804,8 +891,8 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// Removes a path the target does not have. The Trash rather than an
     /// unlink, matching how the Git panel discards untracked files: reverting
     /// to a target is undoable in Git only for content Git already knows about.
-    private nonisolated static func trash(path: String, in root: String) -> String? {
-        let url = URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent(path)
+    private nonisolated static func trash(path: String, in root: GitDirectory) -> String? {
+        let url = URL(fileURLWithPath: root.path, isDirectory: true).appendingPathComponent(path)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
@@ -827,11 +914,15 @@ final class GitCompareModel: nonisolated ObservableObject {
         return leftNode == rightNode && leftDevice == rightDevice
     }
 
+    /// Git's own diagnostic, made safe to show; see
+    /// ``GitStatusModel.gitFailureMessage(_:fallback:)`` for why the cleaning
+    /// happens here rather than on the way out of the command.
     private nonisolated static func failure(
         _ run: (status: Int32, stdout: String, stderr: String), path: String
     ) -> String {
         let text = [run.stderr, run.stdout]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .lazy
+            .map { RemoteFileService.sanitized($0, maxLines: 8) }
             .first { !$0.isEmpty }
         return text ?? String(localized: "Unable to revert \(path)")
     }

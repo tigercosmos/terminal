@@ -31,6 +31,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// The directory that remote shell last reported, paired with
     /// ``remoteHost``. Never a path on this machine.
     @Published private(set) var remoteWorkingDirectory: String?
+
     @Published var hasExited = false
     @Published private(set) var commandLifecycle = TerminalCommandLifecycle()
 
@@ -44,6 +45,26 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     var onExited: ((TerminalSession) -> Void)?
 
     private static let persistedHistoryLineLimit = 500
+
+    /// How long an established remote location is used before the host is
+    /// asked again. Matches the panels' own refresh, so following a `cd` costs
+    /// no more delay than the panels already have.
+    private static let remoteLocationLifetime: TimeInterval = 2
+
+    /// Where this terminal was last established to be on the host it has ssh'd
+    /// into, and when — see ``remoteRoot(on:)``.
+    private struct RemoteLocation {
+        let destination: RemoteShellDestination
+        let root: RemoteRoot
+        let asOf: Date
+    }
+
+    /// Deliberately not published: it is refreshed on a timer, and the panels
+    /// that read it are already driven by that same timer. Publishing it would
+    /// redraw every view watching this session twice a second for a value most
+    /// of them never look at.
+    private var remoteLocation: RemoteLocation?
+    private var isLocating = false
 
     private let shellPath: String
     private let launchWorkingDirectory: String
@@ -237,18 +258,6 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         guard let foreground = surface.foregroundPid, foreground > 0, foreground != shellPid
         else { return nil }
         return remoteShellDestination(foregroundPid: foreground)
-    }
-
-    /// Where the remote shell says it is, when that report came from the host
-    /// `destination` reaches. A shell on some *other* host is not this
-    /// connection's business — an ssh from inside an ssh, say.
-    ///
-    /// A destination the user spelled as an `ssh_config` alias will not match
-    /// the name the far side calls itself, and the tree falls back to the
-    /// login directory rather than trusting a path it cannot place.
-    func remoteWorkingDirectory(on destination: RemoteShellDestination) -> String? {
-        guard let remoteHost, destination.matches(reportedHost: remoteHost) else { return nil }
-        return remoteWorkingDirectory
     }
 
     func sendCommand(_ text: String) {
@@ -457,11 +466,11 @@ extension TerminalSession: TerminalBackendEvents {
     /// path otherwise.
     ///
     /// A path from another machine must not become this session's working
-    /// directory. That value is where a new tab opens, what a restored session
-    /// reopens, and what the Git and Compare panels root at — all of which are
-    /// local, and all of which would land on whatever happens to sit at the
-    /// same path here. It is kept separately instead, for the Files panel to
-    /// follow the terminal onto the host it is really working on.
+    /// directory. That value is where a new tab opens and what a restored
+    /// session reopens — both local, and both of which would land on whatever
+    /// happens to sit at the same path here. It is kept separately instead, as
+    /// one of the ways ``remoteRoot(on:)`` follows the panels onto the host the
+    /// terminal is really working on.
     func terminalDidChangeWorkingDirectory(_ path: String) {
         guard !path.isEmpty else { return }
         let fields = path.split(separator: "\0", maxSplits: 1, omittingEmptySubsequences: false)
@@ -688,5 +697,62 @@ extension TerminalSession: TerminalBackendEvents {
             }
         }
         return String(output)
+    }
+}
+
+extension TerminalSession {
+    /// Where this terminal is on `destination`, as last established.
+    ///
+    /// Answers from what is already known and starts a fresh enquiry when that
+    /// has gone stale, because establishing it means asking the host and the
+    /// main actor cannot wait on a network round trip. Files, Git and Compare
+    /// all ask this, so asking it once here — rather than in each panel — is
+    /// also one question per few seconds instead of three.
+    func remoteRoot(on destination: RemoteShellDestination) -> RemoteRoot {
+        locateIfStale(on: destination)
+        guard let remoteLocation, remoteLocation.destination == destination else {
+            return .loginDirectory
+        }
+        return remoteLocation.root
+    }
+
+    /// Asks the host where this terminal is, unless a recent answer already
+    /// covers it or an enquiry is already out.
+    ///
+    /// The answer expires because the user is free to `cd`: this is the panels'
+    /// only way of noticing on a host whose shell reports nothing, and two
+    /// seconds is the same cadence the panels themselves refresh on.
+    private func locateIfStale(on destination: RemoteShellDestination) {
+        guard !isLocating else { return }
+        if let remoteLocation, remoteLocation.destination == destination,
+           Date().timeIntervalSince(remoteLocation.asOf) < Self.remoteLocationLifetime {
+            return
+        }
+        // Read on the actor that owns them, so the enquiry carries values
+        // rather than a reference to this session.
+        let report = remoteHost.flatMap { host in
+            remoteWorkingDirectory.map { (host: host, path: $0) }
+        }
+        let connection = surface.foregroundPid.flatMap { sshConnection(pid: $0) }
+        isLocating = true
+        Task.detached(priority: .utility) { [weak self] in
+            let root = RemoteRoot.locate(
+                report: report, connection: connection, on: destination
+            )
+            await self?.located(root, on: destination)
+        }
+    }
+
+    /// Takes the answer to an enquiry, or the lack of one.
+    private func located(_ root: RemoteRoot?, on destination: RemoteShellDestination) {
+        isLocating = false
+        let previous = remoteLocation?.destination == destination ? remoteLocation?.root : nil
+        // A host that could not be reached at all keeps the last known
+        // directory: a connection that blinked is not a terminal that moved.
+        // The timestamp moves either way, so an unreachable host is asked again
+        // on the next expiry rather than on every tick.
+        remoteLocation = RemoteLocation(
+            destination: destination, root: root ?? previous ?? .loginDirectory, asOf: Date()
+        )
     }
 }

@@ -67,7 +67,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     private var remoteListings: [String: (entries: [Entry], loadedAt: Date)] = [:]
     private var pendingDirectories: Set<String> = []
     /// Where an ssh login lands, learned from the first listing, so the tree
-    /// has somewhere to root when the remote shell has never reported where it
+    /// has somewhere to root when the host could not say where the terminal
     /// is. Cleared with the listings when the tree changes host.
     private var loginDirectory: String?
     /// Bumped whenever the host or root changes, so a listing that arrives
@@ -117,13 +117,14 @@ final class FileTreeModel: nonisolated ObservableObject {
 
     /// Points the tree at a directory on the host a terminal has ssh'd into.
     ///
-    /// `reportedPath` is where the remote shell last said it was, which only a
-    /// shell with OSC 7 integration ever says. Without one the tree roots at
-    /// the directory an ssh login lands in — the far side of the connection is
-    /// still browsable, it just does not follow the remote `cd`.
-    func sync(remote destination: RemoteShellDestination, reportedPath: String?) {
+    /// `directory` is where the terminal has got to on that host, once the
+    /// session has established it — see ``TerminalSession/remoteRoot(on:)``.
+    /// When it could not be established the tree roots at the directory an ssh
+    /// login lands in: the far side of the connection is still browsable, it
+    /// just does not follow the remote `cd`.
+    func sync(remote destination: RemoteShellDestination, directory: String?) {
         leaveHost(unless: .remote(destination))
-        guard let root = reportedPath ?? loginDirectory else {
+        guard let root = directory ?? loginDirectory else {
             move(to: "", source: .remote(destination))
             if status == .ready { status = .loading }
             // The listing reports the directory it ran in, so asking for the
@@ -479,7 +480,7 @@ final class FileTreeModel: nonisolated ObservableObject {
                 // spent a round trip asking.
                 if dir == Self.loginDirectoryRequest {
                     self.loginDirectory = contents.directory
-                    self.sync(remote: destination, reportedPath: nil)
+                    self.sync(remote: destination, directory: nil)
                     return
                 }
             case .failure(let failure):

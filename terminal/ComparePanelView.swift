@@ -97,7 +97,7 @@ struct ComparePanel: View {
                 Image(systemName: "arrow.left.arrow.right")
                     .sidebarFont(size: 11, weight: .medium)
                     .foregroundStyle(Color(nsColor: Theme.accent))
-                PanelHeader(title: String(localized: "Compare"), subtitle: model.rootPath)
+                PanelHeader(title: String(localized: "Compare"), subtitle: model.displayPath)
             }
             if model.isBusy || model.isResolvingInitialList || model.isSearching {
                 ProgressView()
@@ -539,6 +539,11 @@ struct ComparePanel: View {
                         // two visible files share a name and it tells them apart.
                         showsDirectory: ambiguousNames.contains(entry.fileName),
                         disabled: model.isBusy,
+                        // A remote comparison is read, not reverted: what a
+                        // revert reaches for — the Trash, for a file the target
+                        // does not have — belongs to this Mac.
+                        isEditable: model.isEditable,
+                        remoteHost: model.remoteHost,
                         absolutePath: model.absolutePath(for: entry),
                         openCompare: { openCompare(entry, target) },
                         openFile: { openFile(model.absolutePath(for: entry)) },
@@ -640,6 +645,12 @@ private struct CompareEntryRow: View {
     let entry: GitCompareModel.Entry
     let showsDirectory: Bool
     let disabled: Bool
+    /// False for a repository on another machine, where the row shows what
+    /// differs but offers nothing that would write to it.
+    let isEditable: Bool
+    /// The host the file is on, when it is not this machine's; used for the
+    /// `host:/path` form that stays meaningful off that machine.
+    let remoteHost: String?
     let absolutePath: String
     let openCompare: () -> Void
     let openFile: () -> Void
@@ -682,7 +693,7 @@ private struct CompareEntryRow: View {
             .accessibilityLabel("\(entry.fileName), \(statusName)")
             .accessibilityHint("Opens the comparison, editable")
 
-            if !disabled {
+            if !disabled && isEditable {
                 Button(action: revert) {
                     Image(systemName: "arrow.uturn.backward")
                         .sidebarFont(size: 9, weight: .semibold)
@@ -714,16 +725,31 @@ private struct CompareEntryRow: View {
         Button("Open Comparison") { openCompare() }
         Button("Open File") { openFile() }
         Button("Open File to the Side") { openToSide() }
+        if isEditable {
+            Divider()
+            Button("Revert to Comparison Target…") { revert() }
+                .disabled(disabled)
+        }
         Divider()
-        Button("Revert to Comparison Target…") { revert() }
-            .disabled(disabled)
-        Divider()
-        Button("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: absolutePath)])
+        // Left out for a remote row: the path names a file on the other
+        // machine, and handing it to Finder would reveal whatever happens to
+        // sit at the same path here.
+        if isEditable {
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [URL(fileURLWithPath: absolutePath)]
+                )
+            }
         }
         Button("Copy Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(absolutePath, forType: .string)
+        }
+        if let remoteHost {
+            Button("Copy Path with Host") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("\(remoteHost):\(absolutePath)", forType: .string)
+            }
         }
         Button("Copy Relative Path") {
             NSPasteboard.general.clearContents()

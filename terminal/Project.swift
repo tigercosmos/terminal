@@ -461,10 +461,12 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// Opens a git diff as a new tab, reusing (and reloading) an existing tab
     /// for the same file and stage side.
     func openDiff(
-        repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?
+        repository: GitDirectory, path: String, staged: Bool,
+        untracked: Bool, origPath: String?
     ) {
-        if let (tab, pane) = findDiffPane(repoRoot: repoRoot, path: path, staged: staged),
-           case .diff(let diff) = pane.content {
+        if let (tab, pane) = findDiffPane(
+            repository: repository, path: path, staged: staged
+        ), case .diff(let diff) = pane.content {
             diff.untracked = untracked
             diff.origPath = origPath
             diff.reload()
@@ -474,7 +476,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         }
         let context = selectedSession
         let diff = DiffTab(
-            repoRoot: repoRoot, path: path, staged: staged,
+            repository: repository, path: path, staged: staged,
             untracked: untracked, origPath: origPath
         )
         let tab = makeTab(content: .diff(diff))
@@ -483,13 +485,18 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         selectedTabID = tab.id
     }
 
+    /// Keyed by the repository *and* its host: the same path on another
+    /// machine is a different file, so it gets its own tab rather than
+    /// reloading this one over the wrong connection.
     private func findDiffPane(
-        repoRoot: String, path: String, staged: Bool
+        repository: GitDirectory, path: String, staged: Bool
     ) -> (tab: PaneTab, pane: Pane)? {
         for tab in tabs {
             if let pane = tab.allPanes.first(where: {
                 if case .diff(let diff) = $0.content {
-                    return diff.repoRoot == repoRoot && diff.path == path && diff.staged == staged
+                    return diff.repository == repository
+                        && diff.path == path
+                        && diff.staged == staged
                 }
                 return false
             }) {
@@ -509,11 +516,11 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// comparison and gets its own tab, so an open one never changes underneath
     /// unsaved edits.
     func openCompare(
-        repoRoot: String, path: String, origPath: String?,
+        repository: GitDirectory, path: String, origPath: String?,
         targetOID: String, targetName: String
     ) {
         if let (tab, pane) = findComparePane(
-            repoRoot: repoRoot, path: path, targetOID: targetOID
+            repository: repository, path: path, targetOID: targetOID
         ), case .compare(let compare) = pane.content {
             compare.reload()
             compare.file.reloadFromDiskIfClean()
@@ -523,7 +530,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         }
         let context = selectedSession
         let compare = CompareTab(
-            repoRoot: repoRoot, path: path, origPath: origPath,
+            repository: repository, path: path, origPath: origPath,
             targetOID: targetOID, targetName: targetName
         )
         let tab = makeTab(content: .compare(compare))
@@ -533,12 +540,12 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     }
 
     private func findComparePane(
-        repoRoot: String, path: String, targetOID: String
+        repository: GitDirectory, path: String, targetOID: String
     ) -> (tab: PaneTab, pane: Pane)? {
         for tab in tabs {
             if let pane = tab.allPanes.first(where: {
                 if case .compare(let compare) = $0.content {
-                    return compare.repoRoot == repoRoot
+                    return compare.repository == repository
                         && compare.path == path
                         && compare.targetOID == targetOID
                 }
@@ -816,15 +823,18 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             return .file(file)
         case .browser(let url):
             return .browser(makeBrowser(initialURL: url, initialFocus: .none))
-        case .diff(let repoRoot, let path, let staged, let untracked, let origPath):
+        case .diff(let repoRoot, let path, let staged, let untracked, let origPath, let remoteHost):
             return .diff(DiffTab(
-                repoRoot: repoRoot, path: path, staged: staged,
-                untracked: untracked, origPath: origPath
+                repository: GitDirectory(repoRoot), path: path, staged: staged,
+                untracked: untracked, origPath: origPath, disconnectedFrom: remoteHost
             ))
-        case .compare(let repoRoot, let path, let origPath, let targetOID, let targetName):
+        case .compare(
+            let repoRoot, let path, let origPath, let targetOID, let targetName, let remoteHost
+        ):
             return .compare(CompareTab(
-                repoRoot: repoRoot, path: path, origPath: origPath,
-                targetOID: targetOID, targetName: targetName
+                repository: GitDirectory(repoRoot), path: path, origPath: origPath,
+                targetOID: targetOID, targetName: targetName,
+                disconnectedFrom: remoteHost
             ))
         }
     }

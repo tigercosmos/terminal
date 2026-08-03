@@ -118,6 +118,8 @@ final class GitStatusModel: nonisolated ObservableObject {
     }
 
     @Published private(set) var rootPath = ""
+    /// Where the panel has been pointed, and on which machine.
+    @Published private(set) var panelRoot = PanelRoot.local("")
     /// Stable canonical repository root, used by the UI to key drafts. It is
     /// preserved while a cwd change is being resolved inside the same repo.
     @Published private(set) var repositoryIdentity = ""
@@ -164,6 +166,8 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// running. Without polling, dropping that event could leave the snapshot
     /// stale indefinitely.
     private var refreshPending = false
+    /// When the last status load finished, for the remote polling interval.
+    private var lastLoad: Date?
     /// Keeps a mutation globally exclusive even if the terminal changes cwd
     /// while its Git process is still running.
     private var runningOperationID: UUID?
@@ -180,6 +184,48 @@ final class GitStatusModel: nonisolated ObservableObject {
 
     var repoRoot: String {
         topLevel.isEmpty ? rootPath : topLevel
+    }
+
+    /// The ssh connection the repository sits behind, when the terminal has
+    /// followed one onto another machine. Nil for a repository on this Mac.
+    var remote: RemoteShellDestination? { panelRoot.remote }
+
+    /// The repository, and the machine it is on. Everything the panel runs goes
+    /// through this rather than through ``repoRoot`` alone.
+    var repoDirectory: GitDirectory {
+        GitDirectory(repoRoot, on: remote)
+    }
+
+    /// The directory the panel was pointed at, before Git resolved which
+    /// repository contains it.
+    var rootDirectory: GitDirectory {
+        GitDirectory(rootPath, on: remote)
+    }
+
+    /// True when the panel is looking wherever an ssh command lands because the
+    /// remote shell has never said where it is. The repository the user is
+    /// actually in will not be found from there unless it happens to be the
+    /// login directory, so the panel says so rather than reporting no
+    /// repository at all.
+    var isSearchingRemoteLoginDirectory: Bool {
+        panelRoot.isRemoteLoginFallback && !isRepo
+    }
+
+    /// The host whose repository is shown, when it is not this machine's.
+    var remoteHost: String? { remote?.host }
+
+    /// Whether Terminal can act on this repository from the panel.
+    ///
+    /// A remote repository is read-only, exactly as the remote file tree is:
+    /// what the Git actions ultimately reach for — the Trash for a discarded
+    /// untracked file, a credential helper for a push — is on this Mac and
+    /// belongs to a different machine's checkout.
+    var isEditable: Bool { remote == nil }
+
+    /// What the panel calls the directory it is describing, host-qualified when
+    /// the repository is on another machine.
+    var displayPath: String {
+        GitDirectory(isRepo ? repoRoot : rootPath, on: remote).displayPath
     }
 
     func absolutePath(for entry: Entry) -> String {
@@ -228,20 +274,58 @@ final class GitStatusModel: nonisolated ObservableObject {
             .max { $0.directoryPriority < $1.directoryPriority }
     }
 
-    func sync(root: String) {
-        if root != rootPath {
+    /// Points the panel at `root`, on this Mac or on the host a terminal has
+    /// ssh'd into. Changing machine is not a cwd change inside one repository,
+    /// so it drops the identity a draft was keyed to rather than preserving it.
+    ///
+    /// `polling` marks a tick from the panel's timer rather than something the
+    /// user did; see ``refreshIfStale()``.
+    func sync(root: PanelRoot, polling: Bool = false) {
+        var moved = false
+        if root != panelRoot {
+            let sameMachine = root.remote == panelRoot.remote
             contextGeneration &+= 1
-            rootPath = root
+            panelRoot = root
+            // The best name available now, so the header is not blank while the
+            // host is asked to place it; the load replaces it with what it
+            // actually read.
+            rootPath = root.provisionalPath
             hasResolvedStatus = false
-            clearRepositoryState(preserveIdentity: true)
+            clearRepositoryState(preserveIdentity: sameMachine)
+            moved = true
+        }
+        if polling && !moved {
+            refreshIfStale()
+        } else {
+            refresh()
+        }
+    }
+
+    /// How long a remote snapshot is trusted before the panel's next tick
+    /// re-reads it. Long enough that leaving the panel open is not a command a
+    /// second on the other machine, short enough that work an agent does there
+    /// shows up while the user is still looking at it.
+    private static let remoteRefreshInterval: TimeInterval = 5
+
+    /// A tick from the panel's timer.
+    ///
+    /// Only a repository on another machine is polled at all. A local one has
+    /// events to refresh on — a terminal command finishing, the app coming
+    /// forward — but a terminal sitting inside `ssh` finishes no commands until
+    /// the user comes back out of it, so those events never arrive and the
+    /// panel would go stale for as long as the connection lasted.
+    private func refreshIfStale() {
+        guard remote != nil else { return }
+        if let lastLoad, Date().timeIntervalSince(lastLoad) < Self.remoteRefreshInterval {
+            return
         }
         refresh()
     }
 
     func refresh() {
-        let root = rootPath
+        let root = panelRoot
         let generation = contextGeneration
-        guard !root.isEmpty else { return }
+        guard !root.isUnset else { return }
         guard !isRefreshing, !isBusy else {
             refreshPending = true
             return
@@ -252,14 +336,20 @@ final class GitStatusModel: nonisolated ObservableObject {
         isRefreshing = true
 
         Task { [weak self] in
-            let result = await Task.detached(priority: .utility) {
-                Self.runGitStatus(in: root)
+            let loaded = await Task.detached(priority: .utility) {
+                // Resolving the directory can mean asking the host where its
+                // login lands, or whether it answers to the name a shell
+                // reported — neither of which the main actor can wait on.
+                let directory = root.directory()
+                return (directory: directory, result: Self.runGitStatus(in: directory))
             }.value
             guard let self, self.contextGeneration == generation,
                   self.statusRequestID == requestID,
-                  self.rootPath == root else { return }
+                  self.panelRoot == root else { return }
             self.isRefreshing = false
-            self.apply(result)
+            self.lastLoad = Date()
+            self.rootPath = loaded.directory.path
+            self.apply(loaded.result)
             self.hasResolvedStatus = true
             if self.refreshPending {
                 self.refreshPending = false
@@ -602,6 +692,22 @@ final class GitStatusModel: nonisolated ObservableObject {
         return true
     }
 
+    /// Refuses an action against a repository on another machine.
+    ///
+    /// Checked here rather than trusting the panel to have hidden the button:
+    /// every one of these commands writes, and the panel can be looking at a
+    /// remote repository one refresh after it was looking at a local one.
+    private func validateEditable(
+        completion: (@MainActor (Bool) -> Void)? = nil
+    ) -> Bool {
+        guard !isEditable else { return true }
+        failImmediately(
+            String(localized: "This repository is on \(remoteHost ?? ""), which Terminal shows but does not change."),
+            completion: completion
+        )
+        return false
+    }
+
     private func perform(
         label: String,
         commands: [[String]],
@@ -610,6 +716,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         requiresStableUpstream: Bool = false,
         completion: (@MainActor (Bool) -> Void)? = nil
     ) {
+        guard validateEditable(completion: completion) else { return }
         if directory == nil && !isRepo {
             failImmediately(
                 String(localized: "Repository changed; review the current directory and try the Git action again."),
@@ -619,7 +726,12 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
         let dir = directory ?? repoRoot
         let generation = contextGeneration
-        let validationRoot = rootPath
+        let validationRoot = rootDirectory
+        // Carried rather than rebuilt as a bare local path: `validateEditable`
+        // is what keeps these off another machine, and a directory that quietly
+        // dropped its host would turn a bypass of that guard into a local `git`
+        // running at a path only the remote host has.
+        let commandDirectory = validationRoot.directory(dir)
         let expectedRepositoryRoot = directory == nil && isRepo ? repoRoot : nil
         let expectedHeadOID = headOID
         let expectedBranch = branch
@@ -654,9 +766,9 @@ final class GitStatusModel: nonisolated ObservableObject {
                         )
                     }
                     if requiresStableHead {
-                        let liveStatus = Self.runGit(
+                        let liveStatus = GitCommand.run(
                             ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=no"],
-                            in: expectedRepositoryRoot
+                            in: validationRoot.directory(expectedRepositoryRoot)
                         )
                         let live = liveStatus.status == 0
                             ? Self.parseStatus(liveStatus.stdout)
@@ -679,7 +791,9 @@ final class GitStatusModel: nonisolated ObservableObject {
                     transcript.append("$ git " + Self.displayCommand(args))
                     // The user asked for this command, so the repository's own
                     // hooks (pre-commit, post-checkout, …) must run normally.
-                    let run = Self.runGit(args, in: dir, allowingRepositoryHooks: true)
+                    let run = GitCommand.run(
+                        args, in: commandDirectory, allowingRepositoryHooks: true
+                    )
                     let text = [run.stdout, run.stderr]
                         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                         .filter { !$0.isEmpty }
@@ -762,12 +876,13 @@ final class GitStatusModel: nonisolated ObservableObject {
     }
 
     private func trash(paths: [String], label: String, completedBefore: String? = nil) {
+        guard validateEditable() else { return }
         guard !paths.isEmpty, !isBusy else { return }
         let base = URL(fileURLWithPath: repoRoot, isDirectory: true)
         let expectedRepositoryRoot = repoRoot
         let expectedHeadOID = headOID
         let expectedBranch = branch
-        let validationRoot = rootPath
+        let validationRoot = rootDirectory
         let generation = contextGeneration
         let operationID = UUID()
         invalidateStatusRefresh()
@@ -787,9 +902,9 @@ final class GitStatusModel: nonisolated ObservableObject {
                         failure: String(localized: "Repository changed before the file action could run. Review the current changes and try again.")
                     )
                 }
-                let liveStatus = Self.runGit(
+                let liveStatus = GitCommand.run(
                     ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=no"],
-                    in: expectedRepositoryRoot
+                    in: validationRoot.directory(expectedRepositoryRoot)
                 )
                 let live = liveStatus.status == 0 ? Self.parseStatus(liveStatus.stdout) : nil
                 guard let live,
@@ -972,7 +1087,10 @@ final class GitStatusModel: nonisolated ObservableObject {
         behind = result.behind
         hasUpstream = result.upstream != nil
         topLevel = result.topLevel
-        repositoryIdentity = result.topLevel
+        // Host-qualified: the same path names a different repository on a
+        // different machine, and this is what the panel keys a commit message
+        // draft to.
+        repositoryIdentity = GitDirectory(result.topLevel, on: remote).displayPath
         if result.loadedDetails {
             branches = result.branches
             remotes = result.remotes
@@ -1023,83 +1141,10 @@ final class GitStatusModel: nonisolated ObservableObject {
         var loadedDetails = false
     }
 
-    /// Config that neutralizes the two settings a repository can use to make
-    /// Git execute a command on Terminal's behalf. `core.fsmonitor` runs on any
-    /// index refresh — including the `status` Terminal issues the moment a project
-    /// directory is opened — so a downloaded repository, or one an agent has
-    /// written `.git/config` in, would otherwise get code execution with no
-    /// user action at all. `core.hooksPath` is disabled for the same reason:
-    /// `status` can write the index and fire `post-index-change`.
-    ///
-    /// Hooks are a legitimate part of an *explicit* Git action, so
-    /// ``runGit(_:in:allowingRepositoryHooks:)`` re-enables them for the
-    /// commands the operation runner executes. `core.fsmonitor` stays off
-    /// everywhere: it is only a performance hint, and Terminal never needs it.
-    private nonisolated static let untrustedConfig = ["-c", "core.fsmonitor="]
-    private nonisolated static let noHooksConfig = ["-c", "core.hooksPath=/dev/null"]
-
-    /// Runs Git while draining stdout and stderr concurrently. Reading either
-    /// pipe only after the process exits can deadlock when the other fills.
-    ///
-    /// `allowingRepositoryHooks` is opt-in: a caller that merely inspects the
-    /// repository must never run code the repository supplies. See
-    /// ``untrustedConfig``.
-    nonisolated static func runGit(
-        _ args: [String], in dir: String, allowingRepositoryHooks: Bool = false
-    ) -> (status: Int32, stdout: String, stderr: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = untrustedConfig
-            + (allowingRepositoryHooks ? [] : noHooksConfig)
-            + args
-        process.currentDirectoryURL = URL(fileURLWithPath: dir, isDirectory: true)
-        var env = ProcessInfo.processInfo.environment
-        env["GIT_OPTIONAL_LOCKS"] = "0"
-        // Fail rather than hanging on a credential prompt behind the app.
-        env["GIT_TERMINAL_PROMPT"] = "0"
-        // Git diagnostics are parsed only to distinguish an ordinary folder
-        // from a broken repository. Pinning the locale makes that safe and
-        // also keeps relative dates stable in the compact history list.
-        env["LC_ALL"] = "C"
-        process.environment = env
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-        process.standardInput = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            return (-1, "", error.localizedDescription)
-        }
-        let outData = PipeData()
-        let errData = PipeData()
-        let readers = DispatchGroup()
-        readers.enter()
-        DispatchQueue.global(qos: .utility).async {
-            outData.value = stdout.fileHandleForReading.readDataToEndOfFile()
-            readers.leave()
-        }
-        readers.enter()
-        DispatchQueue.global(qos: .utility).async {
-            errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
-            readers.leave()
-        }
-        process.waitUntilExit()
-        readers.wait()
-        return (
-            process.terminationStatus,
-            String(data: outData.value, encoding: .utf8) ?? "",
-            String(data: errData.value, encoding: .utf8) ?? ""
-        )
-    }
-
     /// Resolves the active repository and distinguishes a normal non-repo
     /// directory from an actual Git failure that the UI should surface.
-    private nonisolated static func runGitStatus(in root: String) -> StatusLoadResult {
-        let top = runGit(["rev-parse", "--show-toplevel"], in: root)
+    private nonisolated static func runGitStatus(in root: GitDirectory) -> StatusLoadResult {
+        let top = GitCommand.run(["rev-parse", "--show-toplevel"], in: root)
         guard top.status == 0 else {
             let failure = gitFailureMessage(
                 top,
@@ -1116,12 +1161,13 @@ final class GitStatusModel: nonisolated ObservableObject {
         guard !resolvedRoot.isEmpty else {
             return .failed(String(localized: "Git returned an empty repository path."))
         }
-        let status = runGit(
+        let repoRoot = root.directory(resolvedRoot)
+        let status = GitCommand.run(
             [
                 "status", "--porcelain=v2", "--branch", "-z",
                 "--untracked-files=all", "--ignored=matching",
             ],
-            in: resolvedRoot
+            in: repoRoot
         )
         guard status.status == 0 else {
             return .failed(
@@ -1135,41 +1181,44 @@ final class GitStatusModel: nonisolated ObservableObject {
         result.topLevel = resolvedRoot
 
         result.loadedDetails = true
-        let repoRoot = resolvedRoot
 
-        let refs = runGit(
+        let refs = GitCommand.run(
             ["for-each-ref", "--format=%(refname:short)", "refs/heads"], in: repoRoot
         )
         if refs.status == 0 {
             result.branches = refs.stdout.split(separator: "\n").map(String.init).sorted()
         }
 
-        let remoteRun = runGit(["remote"], in: repoRoot)
+        let remoteRun = GitCommand.run(["remote"], in: repoRoot)
         if remoteRun.status == 0 {
             result.remotes = remoteRun.stdout.split(separator: "\n").map(String.init).sorted()
         }
 
-        let log = runGit(
+        let log = GitCommand.run(
             ["log", "-n", "8", "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e"],
             in: repoRoot
         )
         if log.status == 0 { result.recentCommits = parseRecentCommits(log.stdout) }
 
-        let stash = runGit(["rev-list", "--walk-reflogs", "--count", "refs/stash"], in: repoRoot)
+        let stash = GitCommand.run(
+            ["rev-list", "--walk-reflogs", "--count", "refs/stash"], in: repoRoot
+        )
         if stash.status == 0 {
             result.stashCount = Int(stash.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         }
 
-        let gitDir = runGit(["rev-parse", "--absolute-git-dir"], in: repoRoot)
+        let gitDir = GitCommand.run(["rev-parse", "--absolute-git-dir"], in: repoRoot)
         if gitDir.status == 0 {
             let path = strippingTrailingLineEnding(gitDir.stdout)
-            result.repositoryOperation = detectRepositoryOperation(gitDirectory: path)
+            result.repositoryOperation = detectRepositoryOperation(
+                gitDirectory: root.directory(path)
+            )
         }
         return .repository(result)
     }
 
-    private nonisolated static func resolveRepositoryRoot(in root: String) -> String? {
-        let top = runGit(["rev-parse", "--show-toplevel"], in: root)
+    private nonisolated static func resolveRepositoryRoot(in root: GitDirectory) -> String? {
+        let top = GitCommand.run(["rev-parse", "--show-toplevel"], in: root)
         guard top.status == 0 else { return nil }
         let path = strippingTrailingLineEnding(top.stdout)
         return path.isEmpty ? nil : path
@@ -1178,9 +1227,14 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// A malformed `.git` directory/file can produce the same rev-parse text
     /// as a plain folder. Preserve that as an actionable status error instead
     /// of offering to initialize a nested repository on top of broken metadata.
-    private nonisolated static func containsGitMetadata(atOrAbove root: String) -> Bool {
+    ///
+    /// Only ever asked of a directory on this machine: walking a remote tree
+    /// would be a round trip per level, and the panel offers no "Initialize
+    /// Repository" button there for the answer to change.
+    private nonisolated static func containsGitMetadata(atOrAbove root: GitDirectory) -> Bool {
+        guard root.isLocal else { return false }
         let fm = FileManager.default
-        var directory = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL
+        var directory = URL(fileURLWithPath: root.path, isDirectory: true).standardizedFileURL
         while true {
             if fm.fileExists(atPath: directory.appendingPathComponent(".git").path) {
                 return true
@@ -1198,11 +1252,22 @@ final class GitStatusModel: nonisolated ObservableObject {
         return value
     }
 
+    /// Git's own diagnostic for a failed command, made safe to show.
+    ///
+    /// Sanitized because this is the one place Git's output stops being parsed
+    /// and starts being displayed. `GitCommand` cleans a remote command's
+    /// stderr, but not its stdout — that is where the porcelain records live,
+    /// and stripping control characters out of those would corrupt the very
+    /// NUL-delimited framing the parsers rely on. So it happens here instead,
+    /// on the string that actually reaches the panel, and for a local
+    /// repository too: a branch name holding an escape sequence should not be
+    /// able to redraw the error it appears in.
     private nonisolated static func gitFailureMessage(
         _ run: (status: Int32, stdout: String, stderr: String), fallback: String
     ) -> String {
         let message = [run.stderr, run.stdout]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .lazy
+            .map { RemoteFileService.sanitized($0, maxLines: 8) }
             .first { !$0.isEmpty }
         return message ?? fallback
     }
@@ -1301,12 +1366,18 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
     }
 
-    nonisolated static func detectRepositoryOperation(gitDirectory: String) -> String? {
-        let fm = FileManager.default
-        let git = URL(fileURLWithPath: gitDirectory, isDirectory: true)
-        func exists(_ name: String) -> Bool {
-            fm.fileExists(atPath: git.appendingPathComponent(name).path)
-        }
+    nonisolated static func detectRepositoryOperation(gitDirectory: GitDirectory) -> String? {
+        // Asked for in one go: on a remote repository each name would otherwise
+        // be its own round trip, on every refresh, to answer a question that is
+        // "no" almost always.
+        let present = GitCommand.existingNames(
+            [
+                "rebase-merge", "rebase-apply", "MERGE_HEAD",
+                "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
+            ],
+            in: gitDirectory
+        )
+        func exists(_ name: String) -> Bool { present.contains(name) }
 
         if exists("rebase-merge") || exists("rebase-apply") {
             return String(localized: "Rebase in progress")

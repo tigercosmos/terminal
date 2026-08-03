@@ -22,13 +22,21 @@ struct RightSidebarView: View {
     @AppStorage("rightSidebarWidth") private var width: Double = 240
 
     private var pollsSelectedPanel: Bool {
-        manager.isPanelVisible
-            && applicationIsActive
-            && manager.panelTab != .git
-            // Comparing runs a diff against the target and reads the files it
-            // finds, so it refreshes on repository events rather than on a
-            // two-second timer.
-            && manager.panelTab != .compare
+        guard manager.isPanelVisible, applicationIsActive else { return false }
+        switch manager.panelTab {
+        case .files, .info:
+            return true
+        // Git and Compare are event-driven for a repository on this machine:
+        // both read every changed file, so they refresh when a terminal or Git
+        // command completes rather than on a two-second timer. A terminal
+        // sitting inside `ssh` completes no commands until the user comes back
+        // out of it, so a repository on another machine is polled instead — at
+        // the models' own interval, not on every tick.
+        case .git:
+            return git.remote != nil
+        case .compare:
+            return compare.remote != nil
+        }
     }
 
     /// Every terminal in the selected project can change the same repository.
@@ -79,11 +87,11 @@ struct RightSidebarView: View {
                         GitPanel(
                             model: git,
                             session: manager.selectedSession,
-                            openFile: { manager.openFile($0) },
-                            openToSide: { manager.openFileToSide($0) },
+                            openFile: { manager.openFile($0, remote: git.remote) },
+                            openToSide: { manager.openFileToSide($0, remote: git.remote) },
                             openDiff: { entry, staged in
                                 manager.openDiff(
-                                    repoRoot: git.repoRoot,
+                                    repository: git.repoDirectory,
                                     path: entry.path,
                                     staged: staged,
                                     untracked: entry.isUntracked,
@@ -94,11 +102,11 @@ struct RightSidebarView: View {
                     case .compare:
                         ComparePanel(
                             model: compare,
-                            openFile: { manager.openFile($0) },
-                            openToSide: { manager.openFileToSide($0) },
+                            openFile: { manager.openFile($0, remote: compare.remote) },
+                            openToSide: { manager.openFileToSide($0, remote: compare.remote) },
                             openCompare: { entry, target in
                                 manager.openCompare(
-                                    repoRoot: compare.repoRoot,
+                                    repository: compare.repoDirectory,
                                     path: entry.path,
                                     origPath: entry.origPath,
                                     targetOID: target.oid,
@@ -250,23 +258,35 @@ struct RightSidebarView: View {
             followingSessionAt: cwd, foregroundAt: session.foregroundDirectoryPath
         )
         if rootSource != source { rootSource = source }
+        // Files, Git, and Compare all follow the terminal onto another machine,
+        // and all three stop doing so when the user has pinned a directory for
+        // the project — a pin is an explicit choice about what these panels are
+        // for. Asking costs three syscalls, so it is asked once here rather
+        // than inside each panel.
+        let remote = source == .pinned ? nil : session.remoteDestination
+        // Where the panels look: a directory on this Mac, or wherever the
+        // terminal has got to on the host it has ssh'd into. The session
+        // establishes that once for all three panels, since it takes asking
+        // the host.
+        let panelRoot = remote.map { PanelRoot.remote(session.remoteRoot(on: $0), $0) }
+            ?? .local(root)
         switch manager.panelTab {
         case .files:
-            // Only the file tree can follow the terminal onto another machine,
-            // and only when the user has not pinned a directory for the
-            // project — a pin is an explicit choice about what these panels
-            // are for. Asking costs three syscalls, so it is asked for the one
-            // panel that acts on the answer rather than on every tick.
-            guard source != .pinned, let remote = session.remoteDestination else {
+            guard let remote else {
                 fileTree.sync(root: root)
-                if refreshGitStatus { git.sync(root: root) }
+                if refreshGitStatus { git.sync(root: panelRoot) }
                 return
             }
-            fileTree.sync(
-                remote: remote, reportedPath: session.remoteWorkingDirectory(on: remote)
-            )
-        case .git: git.sync(root: root)
-        case .compare: compare.sync(root: root)
+            // With no directory established yet, the tree learns the login
+            // directory from the first listing it makes rather than waiting.
+            fileTree.sync(remote: remote, directory: panelRoot.provisionalPath.isEmpty
+                ? nil : panelRoot.provisionalPath)
+        // `refreshGitStatus` is false only on a timer tick, which is what the
+        // models rate-limit a remote re-read against.
+        case .git:
+            git.sync(root: panelRoot, polling: !refreshGitStatus)
+        case .compare:
+            compare.sync(root: panelRoot, polling: !refreshGitStatus)
         case .info:
             info.sync(
                 root: cwd, projectRoot: root, projectRootSource: source,
@@ -517,6 +537,12 @@ private struct FileTreeRow: View {
         Button("Copy Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(item.path, forType: .string)
+        }
+        if let host = model.remoteHost {
+            Button("Copy Path with Host") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("\(host):\(item.path)", forType: .string)
+            }
         }
         if item.isDirectory {
             Button("cd Here") {
@@ -812,8 +838,12 @@ private struct GitPanel: View {
             } else {
                 trackingBar
                 repositoryOperationBanner
-                branchCreator
-                commitBox
+                if model.isEditable {
+                    branchCreator
+                    commitBox
+                } else {
+                    readOnlyNotice
+                }
                 filterBar
                 changeList
             }
@@ -880,12 +910,12 @@ private struct GitPanel: View {
     private var header: some View {
         HStack(spacing: 6) {
             if model.isRepo {
-                branchMenu
+                branchLabel
             } else {
                 Image(systemName: "arrow.triangle.branch")
                     .sidebarFont(size: 11, weight: .medium)
                     .foregroundStyle(Color(nsColor: Theme.accent))
-                PanelHeader(title: String(localized: "Git"), subtitle: model.rootPath)
+                PanelHeader(title: String(localized: "Git"), subtitle: model.displayPath)
             }
             // Only surface progress for user operations and initial repository
             // discovery. Event-driven refreshes retain the resolved content.
@@ -924,6 +954,52 @@ private struct GitPanel: View {
         .padding(.bottom, 8)
     }
 
+    /// Why the panel is showing a repository it will not act on. Stated once,
+    /// where the commit box would be, rather than as a disabled control per
+    /// action — matching the remote file tree, which simply has no editing
+    /// commands rather than greyed-out ones.
+    private var readOnlyNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "eye")
+                .sidebarFont(size: 10, weight: .medium)
+                .foregroundStyle(.secondary)
+            Text("Read-only: this repository is on \(model.remoteHost ?? "").")
+                .sidebarFont(size: 10)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05))
+        )
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var branchLabel: some View {
+        if model.isEditable {
+            branchMenu
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch")
+                    .sidebarFont(size: 11, weight: .medium)
+                    .foregroundStyle(Color(nsColor: Theme.accent))
+                PanelHeader(
+                    title: model.branch ?? String(localized: "Detached HEAD"),
+                    subtitle: model.displayPath
+                )
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                String(localized: "Current branch, \(model.branch ?? String(localized: "detached HEAD"))")
+            )
+        }
+    }
+
     private var branchMenu: some View {
         Menu {
             if !model.branches.isEmpty {
@@ -953,7 +1029,7 @@ private struct GitPanel: View {
                     .foregroundStyle(Color(nsColor: Theme.accent))
                 PanelHeader(
                     title: model.branch ?? String(localized: "Detached HEAD"),
-                    subtitle: model.rootPath
+                    subtitle: model.displayPath
                 )
             }
             .contentShape(Rectangle())
@@ -971,47 +1047,28 @@ private struct GitPanel: View {
 
     private var moreMenu: some View {
         Menu {
-            Button("Fetch") { model.fetch() }
-                .disabled(model.isBusy || model.remotes.isEmpty)
-            Button("Pull (Fast-forward Only)") { model.pull() }
-                .disabled(model.isBusy || !model.hasUpstream)
-            if model.hasUpstream {
-                Button("Push") { model.push() }
-                    .disabled(model.isBusy)
-            } else if model.remotes.count > 1 {
-                Menu("Publish Branch to") {
-                    ForEach(model.remotes, id: \.self) { remote in
-                        Button(remote) { model.publish(to: remote) }
-                    }
-                }
-                .disabled(model.isBusy || model.branch == "detached HEAD")
-            } else {
-                Button("Publish Branch") { model.push() }
-                    .disabled(model.isBusy || model.remotes.isEmpty || model.branch == "detached HEAD")
+            if model.isEditable {
+                remoteActions
+                Divider()
             }
-            Button("Sync Changes") { model.syncChanges() }
-                .disabled(
-                    model.isBusy || model.remotes.isEmpty
-                        || (!model.hasUpstream && model.remotes.count != 1)
-                        || model.branch == "detached HEAD"
-                )
-            Divider()
-            Button("Stash All Changes") { model.stash(includeUntracked: true) }
-                .disabled(model.isBusy || model.totalChangeCount == 0)
-            Button(
-                model.stashCount == 1
-                    ? String(localized: "Pop Stash")
-                    : String(localized: "Pop Stash (\(model.stashCount))")
-            ) {
-                model.stashPop()
-            }
-            .disabled(model.isBusy || model.stashCount == 0)
-            Divider()
             Button("Copy Changed Paths") { copyChangedPaths() }
                 .disabled(model.totalChangeCount == 0)
+            // The bare path is what pastes correctly into the terminal the
+            // user is already in — on the far side, for a remote repository.
+            // The host-qualified form is the one that survives leaving it, so
+            // both are offered rather than guessing which is meant.
             Button("Copy Repository Path") { copyToPasteboard(model.repoRoot) }
-            Button("Reveal Repository in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: model.repoRoot)])
+            if !model.isEditable {
+                Button("Copy Repository Path with Host") {
+                    copyToPasteboard(model.repoDirectory.displayPath)
+                }
+            }
+            if model.isEditable {
+                Button("Reveal Repository in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(
+                        [URL(fileURLWithPath: model.repoRoot)]
+                    )
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -1026,6 +1083,47 @@ private struct GitPanel: View {
         .fixedSize()
         .help("More Actions…")
         .accessibilityLabel("More Git Actions")
+    }
+
+    /// The actions that change the repository. Only offered for a checkout on
+    /// this machine.
+    @ViewBuilder
+    private var remoteActions: some View {
+        Button("Fetch") { model.fetch() }
+            .disabled(model.isBusy || model.remotes.isEmpty)
+        Button("Pull (Fast-forward Only)") { model.pull() }
+            .disabled(model.isBusy || !model.hasUpstream)
+        if model.hasUpstream {
+            Button("Push") { model.push() }
+                .disabled(model.isBusy)
+        } else if model.remotes.count > 1 {
+            Menu("Publish Branch to") {
+                ForEach(model.remotes, id: \.self) { remote in
+                    Button(remote) { model.publish(to: remote) }
+                }
+            }
+            .disabled(model.isBusy || model.branch == "detached HEAD")
+        } else {
+            Button("Publish Branch") { model.push() }
+                .disabled(model.isBusy || model.remotes.isEmpty || model.branch == "detached HEAD")
+        }
+        Button("Sync Changes") { model.syncChanges() }
+            .disabled(
+                model.isBusy || model.remotes.isEmpty
+                    || (!model.hasUpstream && model.remotes.count != 1)
+                    || model.branch == "detached HEAD"
+            )
+        Divider()
+        Button("Stash All Changes") { model.stash(includeUntracked: true) }
+            .disabled(model.isBusy || model.totalChangeCount == 0)
+        Button(
+            model.stashCount == 1
+                ? String(localized: "Pop Stash")
+                : String(localized: "Pop Stash (\(model.stashCount))")
+        ) {
+            model.stashPop()
+        }
+        .disabled(model.isBusy || model.stashCount == 0)
     }
 
     private func headerButton(
@@ -1504,7 +1602,7 @@ private struct GitPanel: View {
                         title: String(localized: "STAGED CHANGES"),
                         count: filteredStagedEntries.count,
                         isCollapsed: $stagedCollapsed,
-                        actions: filterText.isEmpty ? [
+                        actions: filterText.isEmpty && model.isEditable ? [
                             .init(
                                 systemImage: "minus",
                                 help: String(localized: "Unstage All Changes")
@@ -1525,7 +1623,7 @@ private struct GitPanel: View {
                         title: String(localized: "CHANGES"),
                         count: filteredChangedEntries.count,
                         isCollapsed: $changesCollapsed,
-                        actions: filterText.isEmpty ? [
+                        actions: filterText.isEmpty && model.isEditable ? [
                             .init(
                                 systemImage: "arrow.uturn.backward",
                                 help: String(localized: "Discard All Changes")
@@ -1605,6 +1703,10 @@ private struct GitPanel: View {
             status: status,
             kind: kind,
             disabled: model.isBusy,
+            // A remote repository is shown, not changed, so the row offers
+            // nothing that writes — the same shape the remote file tree takes.
+            isEditable: model.isEditable,
+            remoteHost: model.remoteHost,
             openDiff: {
                 guard model.isCurrent(entry) else { return }
                 var diffEntry = entry
@@ -1631,7 +1733,12 @@ private struct GitPanel: View {
     private func openIfPossible(_ entry: GitStatusModel.Entry, toSide: Bool = false) {
         guard model.isCurrent(entry) else { return }
         let path = model.absolutePath(for: entry)
-        guard FileManager.default.fileExists(atPath: path) else { return }
+        // A remote path names a file on the other machine, and the tab reads it
+        // back over the same connection; asking this machine whether it exists
+        // would be a question about a different file.
+        guard !model.isEditable || FileManager.default.fileExists(atPath: path) else {
+            return
+        }
         if toSide {
             openToSide(path)
         } else {
@@ -1766,24 +1873,50 @@ private struct GitPanel: View {
                 .sidebarFont(size: 24, weight: .light)
                 .foregroundStyle(.quaternary)
             VStack(spacing: 2) {
-                Text("No Git Repository")
+                Text(model.isSearchingRemoteLoginDirectory
+                     ? String(localized: "Can’t Tell Where This Terminal Is")
+                     : String(localized: "No Git Repository"))
                     .sidebarFont(size: 11.5, weight: .medium)
-                Text("Initialize the terminal’s current directory to start tracking changes.")
+                Text(notRepositoryDetail)
                     .sidebarFont(size: 10)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
-            Button("Initialize Repository") {
-                model.initializeRepository()
+            if model.isEditable {
+                Button("Initialize Repository") {
+                    model.initializeRepository()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color(nsColor: Theme.accent))
+                .disabled(model.rootPath.isEmpty || model.isBusy)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(Color(nsColor: Theme.accent))
-            .disabled(model.rootPath.isEmpty || model.isBusy)
             Spacer()
         }
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Why the panel has nothing to show.
+    ///
+    /// The remote login-directory case gets its own wording because "no
+    /// repository" would be a claim about the wrong directory: the host could
+    /// not say where this terminal is, so Terminal looked where an ssh command
+    /// lands rather than where the user actually is.
+    private var notRepositoryDetail: String {
+        if model.isSearchingRemoteLoginDirectory {
+            return String(
+                localized: "\(model.remoteHost ?? "") couldn’t say which directory this terminal is in — a shell inside screen or tmux can’t be followed — so Terminal looked in \(model.rootPath), where an ssh command lands. Open the repository’s directory in a new terminal to work on it here.",
+                comment: "Git panel empty state on a remote host whose working directory could not be established. The placeholders are a hostname and the directory that was searched."
+            )
+        }
+        if !model.isEditable {
+            return String(
+                localized: "\(model.displayPath) is not in a repository.",
+                comment: "Git panel empty state for a remote directory outside any repository. The placeholder is a host-qualified path."
+            )
+        }
+        return String(localized: "Initialize the terminal’s current directory to start tracking changes.")
     }
 
     private func statusFailure(_ message: String) -> some View {
@@ -2009,6 +2142,12 @@ private struct GitEntryRow: View {
     let status: Character
     let kind: Kind
     let disabled: Bool
+    /// False for a repository on another machine, where the row shows changes
+    /// but offers nothing that would write to them.
+    let isEditable: Bool
+    /// The host the file is on, when it is not this machine's; used for the
+    /// `host:/path` form that stays meaningful off that machine.
+    let remoteHost: String?
     let openDiff: () -> Void
     let openFile: () -> Void
     let openToSide: () -> Void
@@ -2053,7 +2192,7 @@ private struct GitEntryRow: View {
             .accessibilityLabel("\(entry.fileName), \(statusName)")
             .accessibilityHint(kind == .merge ? "Opens conflict changes" : "Opens changes")
 
-            if !disabled {
+            if !disabled && isEditable {
                 hoverActions
                     .opacity(isHovering || isFocused ? 1 : 0.55)
             }
@@ -2126,27 +2265,42 @@ private struct GitEntryRow: View {
             Button("Open File") { openFile() }
         }
         Button("Open File to the Side") { openToSide() }
-        Divider()
-        switch kind {
-        case .merge:
-            Button("Mark Resolved (Stage)") { stage() }
-                .disabled(disabled)
-        case .staged:
-            Button("Unstage Changes") { unstage() }
-                .disabled(disabled)
-        case .unstaged:
-            Button("Stage Changes") { stage() }
-                .disabled(disabled)
-            Button(destructiveMenuTitle) { discard() }
-                .disabled(disabled)
+        if isEditable {
+            Divider()
+            switch kind {
+            case .merge:
+                Button("Mark Resolved (Stage)") { stage() }
+                    .disabled(disabled)
+            case .staged:
+                Button("Unstage Changes") { unstage() }
+                    .disabled(disabled)
+            case .unstaged:
+                Button("Stage Changes") { stage() }
+                    .disabled(disabled)
+                Button(destructiveMenuTitle) { discard() }
+                    .disabled(disabled)
+            }
         }
         Divider()
-        Button("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: absolutePath)])
+        // Left out for a remote row: the path names a file on the other
+        // machine, and handing it to Finder would reveal whatever happens to
+        // sit at the same path here.
+        if isEditable {
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [URL(fileURLWithPath: absolutePath)]
+                )
+            }
         }
         Button("Copy Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(absolutePath, forType: .string)
+        }
+        if let remoteHost {
+            Button("Copy Path with Host") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("\(remoteHost):\(absolutePath)", forType: .string)
+            }
         }
         Button("Copy Relative Path") { copyRelativePath() }
         if let insertInTerminal {

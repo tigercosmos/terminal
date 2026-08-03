@@ -19,6 +19,17 @@ the original feature bullet instead of adding separate entries for them.
 - Holding a key down in a terminal repeats it. Hold j or k to run through
   `git log`, a file in `less`, or anything else that scrolls a line at a time,
   instead of tapping the key
+- Git and Compare follow a terminal onto the host it has connected to, the way
+  the Files panel already did: `ssh` somewhere and they describe that machine's
+  repository — its branch, tracking, history, changed files, and every diff and
+  comparison, opened over the same connection. ⌘P searches that machine's files
+  too. They are read-only there, so committing, staging, discarding, and
+  reverting stay with the checkout on your Mac. All three panels follow the
+  directory you `cd` to on that host with nothing to install or configure
+  there, including on hosts that were previously stuck at your home directory
+  because their shell reports nothing to terminals it doesn't recognize. Where
+  the directory genuinely can't be established — a shell inside `screen` or
+  `tmux` — the panel says so instead of claiming there is no repository
 
 ## [0.4.0]
 
@@ -47,8 +58,8 @@ the original feature bullet instead of adding separate entries for them.
   `xattr -dr com.apple.quarantine /Applications/Terminal.app` once
 - The Files panel follows a terminal onto the host it has connected to: `ssh`
   somewhere and the file tree shows that machine's files, browsable and
-  openable read-only over the same connection you are already using. Files,
-  Git, and Compare still describe your Mac, which is where the checkout is
+  openable read-only over the same connection you are already using. Git and
+  Compare still describe your Mac, which is where the checkout is
 - Compare your working tree against any branch or commit and keep editing: the
   target sits read-only beside your live file, a Compare panel lists every file
   that differs, each line shows who last changed it, and any file can be

@@ -24,14 +24,21 @@ struct SessionSnapshot: Codable {
             /// Optional so snapshots written before this feature still decode.
             case file(path: String, editorState: EditorState?, remoteHost: String? = nil)
             case browser(url: String?)
-            case diff(repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?)
+            /// `remoteHost` is set when the repository was on a host a
+            /// terminal had connected to, for the same reason a file tab
+            /// records one. Optional so snapshots written before this feature
+            /// still decode.
+            case diff(
+                repoRoot: String, path: String, staged: Bool, untracked: Bool,
+                origPath: String?, remoteHost: String? = nil
+            )
             /// The target commit is saved rather than the branch it came from:
             /// a comparison tab is pinned to one commit for its lifetime, so
             /// restoring it must reopen the same comparison, not whatever the
             /// branch has moved on to since.
             case compare(
                 repoRoot: String, path: String, origPath: String?,
-                targetOID: String, targetName: String
+                targetOID: String, targetName: String, remoteHost: String? = nil
             )
         }
 

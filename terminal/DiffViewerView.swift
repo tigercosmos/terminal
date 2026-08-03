@@ -31,8 +31,14 @@ final class DiffWebModel: nonisolated ObservableObject {
 final class DiffTab: nonisolated ObservableObject, nonisolated Identifiable {
     nonisolated let id = UUID()
 
-    /// Absolute repository root the diff runs in.
-    let repoRoot: String
+    /// The repository the diff runs in, and the machine it is on.
+    let repository: GitDirectory
+    /// Set for a tab restored from a saved session whose repository was on
+    /// another host. Terminal does not open an ssh connection at launch to
+    /// read it — connecting somewhere is something the user does — so the pane
+    /// says where the diff is instead of running Git against whatever
+    /// repository happens to sit at the same path here.
+    let disconnectedHost: String?
     /// Repo-relative path, as porcelain reports it.
     let path: String
     /// Diffs HEAD → index instead of index → worktree.
@@ -57,15 +63,23 @@ final class DiffTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     private var reloadGeneration: UInt = 0
 
-    init(repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?) {
-        self.repoRoot = repoRoot
+    init(
+        repository: GitDirectory, path: String, staged: Bool,
+        untracked: Bool, origPath: String?, disconnectedFrom host: String? = nil
+    ) {
+        self.repository = repository
         self.path = path
         self.staged = staged
         self.untracked = untracked
         self.origPath = origPath
+        disconnectedHost = host
         web.fileName = name
         reload()
     }
+
+    /// The host this diff's repository is on, for the session snapshot. Nil
+    /// for a repository on this machine.
+    var remoteHost: String? { repository.host ?? disconnectedHost }
 
     var name: String {
         (path as NSString).lastPathComponent
@@ -79,10 +93,18 @@ final class DiffTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     func reload() {
         reloadGeneration &+= 1
+        if let disconnectedHost {
+            isLoading = false
+            error = String(
+                localized: "This repository is on \(disconnectedHost). Connect to it in a terminal to see the changes.",
+                comment: "Shown in place of a restored diff whose repository is on a remote host. The placeholder is a hostname."
+            )
+            return
+        }
         let generation = reloadGeneration
         isLoading = true
         error = nil
-        let root = repoRoot
+        let root = repository
         let path = path
         let oldPath = origPath ?? path
         let staged = staged
@@ -129,8 +151,8 @@ final class DiffTab: nonisolated ObservableObject, nonisolated Identifiable {
         }
     }
 
-    private nonisolated static func isUnmerged(path: String, in root: String) -> Bool {
-        let run = GitStatusModel.runGit(
+    private nonisolated static func isUnmerged(path: String, in root: GitDirectory) -> Bool {
+        let run = GitCommand.run(
             ["--literal-pathspecs", "ls-files", "--unmerged", "--", path], in: root
         )
         return run.status == 0 && !run.stdout.isEmpty

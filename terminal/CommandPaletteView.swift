@@ -108,6 +108,10 @@ struct CommandPaletteView: View {
         let name: String
         let relativePath: String
         let absolutePath: String
+        /// The connection the file was listed over, carried so opening it
+        /// reads the same machine it was found on rather than whatever sits at
+        /// that path here.
+        let remote: RemoteShellDestination?
 
         var parentPath: String? {
             let parent = (relativePath as NSString).deletingLastPathComponent
@@ -152,7 +156,9 @@ struct CommandPaletteView: View {
             projectFiles = []
             guard let root = fileIndexRoot else { return }
             let indexingTask = Task.detached(priority: .userInitiated) {
-                Self.loadProjectFiles(in: root)
+                // Placing a remote root means asking the host; the index
+                // already runs off the main actor, so it happens here.
+                Self.loadProjectFiles(in: root.directory())
             }
             let files = await withTaskCancellationHandler {
                 await indexingTask.value
@@ -344,30 +350,41 @@ struct CommandPaletteView: View {
         return path
     }
 
-    /// The current project's pinned/automatic panel root. Indexing starts only
-    /// after the user types, so opening ⌘P for a command stays filesystem-free.
-    /// Home is excluded because it is an account boundary, not a project root.
-    private var fileIndexRoot: String? {
+    /// The current project's pinned/automatic panel root, and the machine it
+    /// is on. Indexing starts only after the user types, so opening ⌘P for a
+    /// command stays filesystem-free — which is also what keeps the remote
+    /// question below off the path of every keystroke that is not a search.
+    private var fileIndexRoot: PanelRoot? {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty,
               let project = manager.selectedProject
         else { return nil }
-        let root: String?
         if let session = project.selectedSession {
-            root = project.panelRoot(
+            let (root, source) = project.panelRoot(
                 followingSessionAt: session.currentDirectoryPath,
                 foregroundAt: session.foregroundDirectoryPath
-            ).root
-        } else if let pinned = project.customDirectory,
-                  FileManager.default.fileExists(atPath: pinned) {
-            root = pinned
-        } else {
-            root = nil
+            )
+            // The rule the panels follow: a pin is an explicit choice that
+            // keeps the search on this machine, and otherwise it goes wherever
+            // the terminal went. Without OSC 7 from the remote shell the search
+            // roots where an ssh command lands, as the file tree does.
+            if source != .pinned, let remote = session.remoteDestination {
+                return .remote(session.remoteRoot(on: remote), remote)
+            }
+            return localIndexRoot(root)
         }
-        guard let root else { return nil }
+        if let pinned = project.customDirectory,
+           FileManager.default.fileExists(atPath: pinned) {
+            return localIndexRoot(pinned)
+        }
+        return nil
+    }
 
+    /// A directory on this machine, unless it is home — an account boundary
+    /// rather than a project root, and far too much to index.
+    private func localIndexRoot(_ root: String) -> PanelRoot? {
         let standardizedRoot = URL(fileURLWithPath: root).standardizedFileURL
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
-        return standardizedRoot == home ? nil : root
+        return standardizedRoot == home ? nil : .local(root)
     }
 
     private var filtered: [PaletteCommand] {
@@ -439,7 +456,7 @@ struct CommandPaletteView: View {
                 section: .file,
                 searchText: file.relativePath
             ) {
-                manager.openFile(file.absolutePath)
+                manager.openFile(file.absolutePath, remote: file.remote)
             }
         }
     }
@@ -774,26 +791,28 @@ struct CommandPaletteView: View {
     /// Git provides a fast, ignore-aware index for repositories. A normal
     /// directory falls back to recursive enumeration, still excluding VCS
     /// metadata to match the Files panel.
-    private nonisolated static func loadProjectFiles(in root: String) -> [ProjectFile] {
+    private nonisolated static func loadProjectFiles(in root: GitDirectory) -> [ProjectFile] {
         if let paths = gitProjectFilePaths(in: root) {
             return projectFiles(for: paths, in: root)
         }
-        return enumeratedProjectFiles(in: root)
+        // Enumeration is the fallback for a directory Git knows nothing about.
+        // Only on this machine: walking a remote tree is a round trip per
+        // directory, which is a search that never finishes on a large one, so
+        // a remote directory outside a repository has no file index at all.
+        return root.isLocal ? enumeratedProjectFiles(in: root) : []
     }
 
-    private nonisolated static func gitProjectFilePaths(in root: String) -> Set<String>? {
-        var tracked = GitStatusModel.runGit(
-            ["ls-files", "--cached", "--recurse-submodules", "-z"],
-            in: root
+    private nonisolated static func gitProjectFilePaths(in root: GitDirectory) -> Set<String>? {
+        var tracked = GitCommand.run(
+            ["ls-files", "--cached", "--recurse-submodules", "-z"], in: root
         )
         // A missing or broken submodule should not disable search for the rest
         // of the repository.
         if tracked.status != 0 {
-            tracked = GitStatusModel.runGit(["ls-files", "--cached", "-z"], in: root)
+            tracked = GitCommand.run(["ls-files", "--cached", "-z"], in: root)
         }
-        let untracked = GitStatusModel.runGit(
-            ["ls-files", "--others", "--exclude-standard", "-z"],
-            in: root
+        let untracked = GitCommand.run(
+            ["ls-files", "--others", "--exclude-standard", "-z"], in: root
         )
         guard tracked.status == 0, untracked.status == 0 else { return nil }
         return Set(nulSeparatedPaths(tracked.stdout) + nulSeparatedPaths(untracked.stdout))
@@ -805,20 +824,27 @@ struct CommandPaletteView: View {
 
     private nonisolated static func projectFiles(
         for relativePaths: Set<String>,
-        in root: String
+        in root: GitDirectory
     ) -> [ProjectFile] {
         let fileManager = FileManager.default
         return relativePaths.compactMap { relativePath in
             guard !Task.isCancelled else { return nil }
-            let absolutePath = (root as NSString).appendingPathComponent(relativePath)
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: absolutePath, isDirectory: &isDirectory),
-                  !isDirectory.boolValue
-            else { return nil }
+            let absolutePath = root.appending(relativePath)
+            // Git never lists a directory, so its answer only needs confirming
+            // where confirming is free. On the far side that would be a round
+            // trip per file, and the cost of trusting it is a row for a file
+            // deleted since the index was built.
+            if root.isLocal {
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: absolutePath, isDirectory: &isDirectory),
+                      !isDirectory.boolValue
+                else { return nil }
+            }
             return ProjectFile(
                 name: (relativePath as NSString).lastPathComponent,
                 relativePath: relativePath,
-                absolutePath: absolutePath
+                absolutePath: absolutePath,
+                remote: root.remote
             )
         }
         .sorted {
@@ -826,8 +852,8 @@ struct CommandPaletteView: View {
         }
     }
 
-    private nonisolated static func enumeratedProjectFiles(in root: String) -> [ProjectFile] {
-        let rootURL = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL
+    private nonisolated static func enumeratedProjectFiles(in root: GitDirectory) -> [ProjectFile] {
+        let rootURL = URL(fileURLWithPath: root.path, isDirectory: true).standardizedFileURL
         let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
         let keySet = Set(keys)
         let rootPrefix = rootURL.path == "/" ? "/" : rootURL.path + "/"
@@ -854,7 +880,9 @@ struct CommandPaletteView: View {
                 ProjectFile(
                     name: url.lastPathComponent,
                     relativePath: relativePath,
-                    absolutePath: url.path
+                    absolutePath: url.path,
+                    // Only ever reached for a directory on this machine.
+                    remote: nil
                 )
             )
         }

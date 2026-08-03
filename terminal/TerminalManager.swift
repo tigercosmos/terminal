@@ -601,21 +601,22 @@ final class TerminalManager: nonisolated ObservableObject {
 
     /// Opens a git diff tab in the current project.
     func openDiff(
-        repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?
+        repository: GitDirectory, path: String, staged: Bool,
+        untracked: Bool, origPath: String?
     ) {
         selectedProject?.openDiff(
-            repoRoot: repoRoot, path: path, staged: staged,
+            repository: repository, path: path, staged: staged,
             untracked: untracked, origPath: origPath
         )
     }
 
     /// Opens a file compared against a branch or commit.
     func openCompare(
-        repoRoot: String, path: String, origPath: String?,
+        repository: GitDirectory, path: String, origPath: String?,
         targetOID: String, targetName: String
     ) {
         selectedProject?.openCompare(
-            repoRoot: repoRoot, path: path, origPath: origPath,
+            repository: repository, path: path, origPath: origPath,
             targetOID: targetOID, targetName: targetName
         )
     }
@@ -893,14 +894,15 @@ final class TerminalManager: nonisolated ObservableObject {
             return .browser(url: browser.snapshotURL)
         case .diff(let diff):
             return .diff(
-                repoRoot: diff.repoRoot, path: diff.path, staged: diff.staged,
-                untracked: diff.untracked, origPath: diff.origPath
+                repoRoot: diff.repository.path, path: diff.path, staged: diff.staged,
+                untracked: diff.untracked, origPath: diff.origPath,
+                remoteHost: diff.remoteHost
             )
         case .compare(let compare):
             return .compare(
                 repoRoot: compare.repoRoot, path: compare.path,
                 origPath: compare.origPath, targetOID: compare.targetOID,
-                targetName: compare.targetName
+                targetName: compare.targetName, remoteHost: compare.remoteHost
             )
         }
     }

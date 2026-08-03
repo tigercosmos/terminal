@@ -794,6 +794,23 @@
         }
       }
     },
+    "Can’t Tell Where This Terminal Is" : {
+      "comment" : "Git panel empty state title when a remote shell has not reported its directory.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このターミナルの場所を特定できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确定此终端所在的位置"
+          }
+        }
+      }
+    },
     "Cancel Branch Creation" : {
       "localizations" : {
         "ja" : {
@@ -1584,6 +1601,22 @@
         }
       }
     },
+    "Copy Path with Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト付きでパスをコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制路径（含主机）"
+          }
+        }
+      }
+    },
     "Copy Repository Path" : {
       "localizations" : {
         "ja" : {
@@ -1596,6 +1629,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制仓库路径"
+          }
+        }
+      }
+    },
+    "Copy Repository Path with Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト付きでリポジトリのパスをコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制仓库路径（含主机）"
           }
         }
       }
@@ -5326,6 +5375,23 @@
         }
       }
     },
+    "Read-only: this repository is on %@." : {
+      "comment" : "Shown in the Git panel where the commit box would be, when the repository is on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り専用: このリポジトリは %@ にあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读：此仓库位于 %@。"
+          }
+        }
+      }
+    },
     "Restored %@." : {
       "localizations" : {
         "ja" : {
@@ -6438,6 +6504,23 @@
         }
       }
     },
+    "%@ couldn’t say which directory this terminal is in — a shell inside screen or tmux can’t be followed — so Terminal looked in %@, where an ssh command lands. Open the repository’s directory in a new terminal to work on it here." : {
+      "comment" : "Git panel empty state on a remote host whose working directory could not be established. The first placeholder is a hostname, the second the directory that was searched.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はこのターミナルがどのディレクトリにいるかを答えられませんでした（screen や tmux の中のシェルは追跡できません）。そのため Terminal は ssh の接続先である %@ を調べました。ここで作業するには、リポジトリのディレクトリで新しいターミナルを開いてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 无法确定此终端所在的目录（screen 或 tmux 中的 shell 无法跟随），因此 Terminal 查看了 ssh 登录所在的 %@。若要在此处进行操作，请在仓库目录中打开一个新终端。"
+          }
+        }
+      }
+    },
     "The selected Git remote is no longer available" : {
       "localizations" : {
         "ja" : {
@@ -6450,6 +6533,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所选的 Git 远程仓库已不存在"
+          }
+        }
+      }
+    },
+    "%@ is not in a repository." : {
+      "comment" : "Git panel empty state for a remote directory outside any repository. The placeholder is a host-qualified path.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はリポジトリ内にありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不在仓库中。"
+          }
+        }
+      }
+    },
+    "The working tree on %@ — read-only" : {
+      "comment" : "Compare header for a working tree on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上のワーキングツリー — 読み取り専用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的工作树 — 只读"
           }
         }
       }
@@ -6595,6 +6712,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此文件位于另一台主机上，Terminal 无法从这里保存它。"
+          }
+        }
+      }
+    },
+    "This repository is on %@, which Terminal compares but does not change." : {
+      "comment" : "Shown when a revert is attempted against a repository on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリは %@ にあります。Terminal は比較のみを行い、変更はしません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库位于 %@。Terminal 只会比较它，不会更改它。"
+          }
+        }
+      }
+    },
+    "This repository is on %@, which Terminal shows but does not change." : {
+      "comment" : "Shown when a Git action is attempted against a repository on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリは %@ にあります。Terminal は表示のみを行い、変更はしません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库位于 %@。Terminal 只会显示它，不会更改它。"
+          }
+        }
+      }
+    },
+    "This repository is on %@. Connect to it in a terminal to see the changes." : {
+      "comment" : "Shown in place of a restored diff whose repository is on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリは %@ にあります。ターミナルで接続すると変更を確認できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库位于 %@。请在终端中连接该主机以查看更改。"
+          }
+        }
+      }
+    },
+    "This repository is on %@. Connect to it in a terminal to see the comparison." : {
+      "comment" : "Shown in place of a restored comparison whose repository is on a remote host. The placeholder is a hostname.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリは %@ にあります。ターミナルで接続すると比較を確認できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库位于 %@。请在终端中连接该主机以查看比较结果。"
           }
         }
       }
@@ -7352,6 +7537,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "放大"
+          }
+        }
+      }
+    },
+    "…and %lld more lines" : {
+      "comment" : "Appended when a remote command's output is shortened before being shown. The placeholder is the number of lines left out.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "…and %lld more line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "…and %lld more lines"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…他 %lld 行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…另有 %lld 行"
           }
         }
       }

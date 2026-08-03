@@ -24,8 +24,21 @@ import SwiftUI
 final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     nonisolated let id = UUID()
 
-    /// Absolute repository root the comparison runs in.
-    let repoRoot: String
+    /// The repository the comparison runs in, and the machine it is on.
+    let repository: GitDirectory
+
+    /// Absolute repository root, for the path arithmetic the editable column
+    /// needs. Still a path on ``repository``'s machine.
+    var repoRoot: String { repository.path }
+
+    /// Set for a tab restored from a saved session whose repository was on
+    /// another host. Terminal does not open an ssh connection at launch to
+    /// read it, so the pane says where the comparison is instead of running
+    /// Git against whatever repository sits at the same path here.
+    let disconnectedHost: String?
+
+    /// The host this comparison's repository is on, for the session snapshot.
+    var remoteHost: String? { repository.host ?? disconnectedHost }
     /// Repo-relative path of the working-tree file — the right column.
     private(set) var path: String
     /// The file's path *at the target* when it was renamed, so the left column
@@ -53,15 +66,22 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     private var reloadGeneration: UInt = 0
 
     init(
-        repoRoot: String, path: String, origPath: String?,
-        targetOID: String, targetName: String
+        repository: GitDirectory, path: String, origPath: String?,
+        targetOID: String, targetName: String, disconnectedFrom host: String? = nil
     ) {
-        self.repoRoot = repoRoot
+        self.repository = repository
         self.path = path
         self.origPath = origPath
         self.targetOID = targetOID
         self.targetName = targetName
-        file = FileTab(path: (repoRoot as NSString).appendingPathComponent(path))
+        disconnectedHost = host
+        // Reached over the same connection the panel is using, so a comparison
+        // against a repository on another machine opens that machine's file
+        // rather than whatever sits at the same path here. A remote `FileTab`
+        // is read-only, which is what makes the editable column editable only
+        // when there is something local to edit.
+        file = host.map { FileTab(path: repository.appending(path), disconnectedFrom: $0) }
+            ?? FileTab(path: repository.appending(path), remote: repository.remote)
         reload()
     }
 
@@ -74,10 +94,13 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// legitimately empty rather than unreadable.
     var isDeletedFromWorkingTree: Bool {
         if case .unavailable = file.content {
+            // The file tab could not read it, so on a remote host "unavailable"
+            // already means the far side had nothing to give; asking the local
+            // file system about a remote path would answer about a different
+            // machine's file.
+            guard repository.isLocal else { return !baseText.isEmpty }
             return !baseText.isEmpty
-                && !FileManager.default.fileExists(
-                    atPath: (repoRoot as NSString).appendingPathComponent(path)
-                )
+                && !FileManager.default.fileExists(atPath: repository.appending(path))
         }
         return false
     }
@@ -100,10 +123,18 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// loads and reloads itself.
     func reload() {
         reloadGeneration &+= 1
+        if let disconnectedHost {
+            isLoading = false
+            error = String(
+                localized: "This repository is on \(disconnectedHost). Connect to it in a terminal to see the comparison.",
+                comment: "Shown in place of a restored comparison whose repository is on a remote host. The placeholder is a hostname."
+            )
+            return
+        }
         let generation = reloadGeneration
         isLoading = true
         error = nil
-        let root = repoRoot
+        let root = repository
         let oid = targetOID
         let oldPath = origPath ?? path
 
@@ -191,7 +222,7 @@ struct CompareDiffView: View {
             CompareColumnsView(
                 baseText: compare.baseText,
                 file: file,
-                repoRoot: compare.repoRoot,
+                repository: compare.repository,
                 path: compare.path,
                 targetPath: compare.origPath ?? compare.path,
                 targetOID: compare.targetOID,
@@ -230,11 +261,16 @@ struct CompareDiffView: View {
                 .frame(maxHeight: .infinity)
             columnLabel(
                 title: compare.path,
-                detail: nil,
+                detail: compare.remoteHost,
                 // The dot is the only state worth a glyph here: everything else
                 // in this bar is fixed, and the word "editable" never changed.
                 isDirty: file.isDirty,
-                help: String(localized: "Your working tree — edit here and press ⌘S to save")
+                help: compare.remoteHost.map { host in
+                    String(
+                        localized: "The working tree on \(host) — read-only",
+                        comment: "Compare header for a working tree on a remote host. The placeholder is a hostname."
+                    )
+                } ?? String(localized: "Your working tree — edit here and press ⌘S to save")
             )
         }
         // Fixed: the column divider is a rectangle with no height of its own,
@@ -339,7 +375,8 @@ struct CompareDiffView: View {
 private struct CompareColumnsView: NSViewRepresentable {
     let baseText: String
     let file: FileTab
-    let repoRoot: String
+    /// The repository both columns blame against, and the machine it is on.
+    let repository: GitDirectory
     /// The working-tree path — what the editable column blames against.
     let path: String
     /// The path at the target, which differs from `path` for a rename. The
@@ -356,7 +393,7 @@ private struct CompareColumnsView: NSViewRepresentable {
 
     func makeCoordinator() -> CompareColumnsCoordinator {
         CompareColumnsCoordinator(
-            file: file, repoRoot: repoRoot, path: path,
+            file: file, repository: repository, path: path,
             targetPath: targetPath, targetOID: targetOID, targetName: targetName
         )
     }
@@ -590,7 +627,7 @@ private final class CompareColumn {
 @MainActor
 private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
     private let file: FileTab
-    private let repoRoot: String
+    private let repository: GitDirectory
     private let path: String
     private let targetPath: String
     private let targetOID: String
@@ -619,11 +656,11 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
     private var hoverRequestID: UInt = 0
 
     init(
-        file: FileTab, repoRoot: String, path: String,
+        file: FileTab, repository: GitDirectory, path: String,
         targetPath: String, targetOID: String, targetName: String
     ) {
         self.file = file
-        self.repoRoot = repoRoot
+        self.repository = repository
         self.path = path
         self.targetPath = targetPath
         self.targetOID = targetOID
@@ -800,7 +837,7 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
 
         blameRequestID &+= 1
         let requestID = blameRequestID
-        let root = repoRoot
+        let root = repository
         let path = self.path
         // The buffer, not the file on disk: the annotation has to stay right
         // while there are unsaved edits, and a line just typed has to read as
@@ -835,7 +872,7 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
         guard let column = editable ? newColumn : oldColumn else { return }
         hoverRequestID &+= 1
         let requestID = hoverRequestID
-        let root = repoRoot
+        let root = repository
         let path = editable ? self.path : self.targetPath
         // The read-only column is the file as of the target, so it is blamed at
         // that commit; passing its text as `--contents` instead would blame a

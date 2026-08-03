@@ -13,7 +13,7 @@ import Foundation
 /// being their shell — so the panels open a second connection to the same
 /// place. What keeps that from being a second login is connection
 /// multiplexing; see ``RemoteFileService``.
-struct RemoteShellDestination: Equatable, Hashable, Sendable {
+nonisolated struct RemoteShellDestination: Equatable, Hashable, Sendable {
     /// The destination operand exactly as the user wrote it: a bare host, a
     /// `user@host`, or an alias their `ssh_config` resolves.
     let destination: String
@@ -89,6 +89,44 @@ func remoteShellDestination(foregroundPid pid: pid_t) -> RemoteShellDestination?
           let arguments = processArguments(pid: pid)
     else { return nil }
     return parseSSHArguments(arguments)
+}
+
+/// The ports of one connection an ssh process holds open, numbered the way the
+/// host on the far side numbers them.
+///
+/// `SSH_CONNECTION` in a remote shell's environment reads
+/// `client-address client-port server-address server-port`, so this pair is
+/// what ties a shell over there to a terminal over here. The addresses are
+/// deliberately not part of it: a connection that crossed a NAT is described by
+/// one address here and another there, and the ports are what survive.
+nonisolated struct SSHConnectionPorts: Equatable, Hashable, Sendable {
+    let client: Int
+    let server: Int
+}
+
+/// Enough about a terminal's ssh process to recognize, on the far side, the
+/// shell it is talking to.
+nonisolated struct SSHConnection: Equatable, Hashable, Sendable {
+    let ports: [SSHConnectionPorts]
+
+    /// How long the ssh process has been running. A shell the host started for
+    /// this connection cannot be older than the connection, which is what
+    /// separates a live session from a `screen` still carrying the environment
+    /// of whichever connection started it, days ago and now long gone — a
+    /// distinction the ports alone cannot make, since the kernel hands out the
+    /// same ephemeral port numbers again eventually.
+    let age: TimeInterval
+}
+
+/// The connections `pid` holds open, if it holds any.
+///
+/// Read from the kernel rather than by running `lsof`: this is asked again
+/// every few seconds while a terminal sits inside ssh, and it is two syscalls.
+func sshConnection(pid: pid_t) -> SSHConnection? {
+    guard pid > 0, let started = processStartTime(pid: pid) else { return nil }
+    let ports = establishedTCPPorts(pid: pid)
+    guard !ports.isEmpty else { return nil }
+    return SSHConnection(ports: ports, age: max(0, -started.timeIntervalSinceNow))
 }
 
 /// Whether `name` — a hostname from an OSC 7 report — names this machine.
@@ -193,6 +231,54 @@ private func processExecutablePath(pid: pid_t) -> String? {
     return String(cString: buffer)
 }
 
+/// The local and foreign ports of every established TCP connection a process
+/// holds. Ports come back in network byte order, as they sit on the wire.
+private func establishedTCPPorts(pid: pid_t) -> [SSHConnectionPorts] {
+    let size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+    guard size > 0 else { return [] }
+    var descriptors = [proc_fdinfo](
+        repeating: proc_fdinfo(), count: Int(size) / MemoryLayout<proc_fdinfo>.stride
+    )
+    let used = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &descriptors, size)
+    guard used > 0 else { return [] }
+
+    var ports: [SSHConnectionPorts] = []
+    for descriptor in descriptors.prefix(Int(used) / MemoryLayout<proc_fdinfo>.stride)
+    where descriptor.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET) {
+        var info = socket_fdinfo()
+        let read = proc_pidfdinfo(
+            pid, descriptor.proc_fd, PROC_PIDFDSOCKETINFO,
+            &info, Int32(MemoryLayout<socket_fdinfo>.size)
+        )
+        guard read > 0, info.psi.soi_kind == SOCKINFO_TCP else { continue }
+        let tcp = info.psi.soi_proto.pri_tcp
+        guard tcp.tcpsi_state == TSI_S_ESTABLISHED else { continue }
+        let client = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: tcp.tcpsi_ini.insi_lport)))
+        let server = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: tcp.tcpsi_ini.insi_fport)))
+        guard client > 0, server > 0 else { continue }
+        let connection = SSHConnectionPorts(client: client, server: server)
+        // ssh holds the same socket on more than one descriptor; asking the
+        // host about a connection twice would answer the same thing twice.
+        if !ports.contains(connection) { ports.append(connection) }
+    }
+    return ports
+}
+
+/// When a process started, for comparing its age against a process on another
+/// machine — an age is the same number on both sides of a clock difference,
+/// which a timestamp is not.
+private func processStartTime(pid: pid_t) -> Date? {
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+    let started = info.kp_proc.p_starttime
+    return Date(
+        timeIntervalSince1970: TimeInterval(started.tv_sec)
+            + TimeInterval(started.tv_usec) / 1_000_000
+    )
+}
+
 /// A process's argument vector, from kernel metadata.
 ///
 /// `KERN_PROCARGS2` hands back a counted blob: the argument count, then the
@@ -225,4 +311,21 @@ private func processArguments(pid: pid_t) -> [String]? {
         index += 1
     }
     return arguments.count == count ? arguments : nil
+}
+
+extension RemoteShellDestination {
+    /// Whether a shell that called itself `reported` was running on this
+    /// destination, given that the host answers to `confirmed`.
+    ///
+    /// The reported name is compared against what the host says rather than
+    /// against the way the user spelled it, so an `ssh_config` alias places a
+    /// directory correctly. A shell one ssh further out answers with a third
+    /// name and is still refused, which is the case the comparison exists for.
+    nonisolated func namesSameHost(reported: String, confirmed: String) -> Bool {
+        func firstLabel(_ name: String) -> Substring { name.prefix { $0 != "." } }
+        let reportedLabel = firstLabel(reported)
+        return !reportedLabel.isEmpty
+            && reportedLabel.compare(firstLabel(confirmed), options: .caseInsensitive)
+                == .orderedSame
+    }
 }
