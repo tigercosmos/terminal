@@ -1,11 +1,10 @@
 //
 //  GitCommand.swift
-//  terminal
+//  TerminalCore
 //
 
 import Dispatch
 import Foundation
-import TerminalCore
 
 /// A directory Git runs in, together with the machine it is on.
 ///
@@ -14,41 +13,41 @@ import TerminalCore
 /// differs. Carrying the two together is what keeps a remote path from ever
 /// reaching a local `git`, which would answer about whatever happens to sit at
 /// that path here.
-nonisolated struct GitDirectory: Equatable, Hashable, Sendable {
+public nonisolated struct GitDirectory: Equatable, Hashable, Sendable {
     /// Absolute path on whichever machine ``remote`` names. Empty while a
     /// panel has not resolved one yet, and `.` for a host that could not say
     /// where its terminal is — an ssh command lands in the login directory,
     /// which is the same place the file tree roots at.
-    let path: String
+    public let path: String
 
     /// The ssh connection the directory sits behind, or nil for this Mac.
-    let remote: RemoteShellDestination?
+    public let remote: RemoteShellDestination?
 
-    init(_ path: String, on remote: RemoteShellDestination? = nil) {
+    public init(_ path: String, on remote: RemoteShellDestination? = nil) {
         self.path = path
         self.remote = remote
     }
 
-    var isLocal: Bool { remote == nil }
+    public var isLocal: Bool { remote == nil }
 
     /// The host the directory is on, when it is not this machine.
-    var host: String? { remote?.host }
+    public var host: String? { remote?.host }
 
     /// Another directory on the same machine.
-    func directory(_ path: String) -> GitDirectory {
+    public func directory(_ path: String) -> GitDirectory {
         GitDirectory(path, on: remote)
     }
 
     /// A repository-relative path resolved against this directory. Still a
     /// path on ``remote``'s machine, so it is only ever handed back to Git or
     /// to ssh — never to `FileManager`.
-    func appending(_ relativePath: String) -> String {
+    public func appending(_ relativePath: String) -> String {
         (path as NSString).appendingPathComponent(relativePath)
     }
 
     /// The `host:/path` shape scp uses, so a remote path shown in the
     /// interface can never be read as a local one.
-    var displayPath: String {
+    public var displayPath: String {
         guard let host else { return path }
         return path == "." || path.isEmpty ? host : "\(host):\(path)"
     }
@@ -61,7 +60,7 @@ nonisolated struct GitDirectory: Equatable, Hashable, Sendable {
 /// untrusted-repository discipline below is applied once rather than at each
 /// call site, and so a remote repository is inspected under exactly the rules
 /// a local one is.
-nonisolated enum GitCommand {
+public nonisolated enum GitCommand {
     /// Config that neutralizes the two settings a repository can use to make
     /// Git execute a command on Terminal's behalf. `core.fsmonitor` runs on any
     /// index refresh — including the `status` Terminal issues the moment a
@@ -96,7 +95,7 @@ nonisolated enum GitCommand {
         .joined(separator: " ") + " exec \"$@\""
 
     /// Runs Git and hands back its decoded output.
-    static func run(
+    public static func run(
         _ args: [String], in directory: GitDirectory,
         allowingRepositoryHooks: Bool = false
     ) -> (status: Int32, stdout: String, stderr: String) {
@@ -119,7 +118,7 @@ nonisolated enum GitCommand {
     /// embedded NULs cannot be mistaken for an empty text file. `maxBytes`
     /// caps what is retained, keeping one byte past the ceiling so a payload
     /// sitting exactly on it can be told from one that runs over.
-    static func runData(
+    public static func runData(
         _ args: [String], in directory: GitDirectory,
         allowingRepositoryHooks: Bool = false,
         maxBytes: Int? = nil, input: Data? = nil
@@ -150,7 +149,7 @@ nonisolated enum GitCommand {
     ///
     /// Used to read the markers Git leaves in a repository's own directory for
     /// an interrupted rebase or merge, which no plumbing command reports.
-    static func existingNames(_ names: [String], in directory: GitDirectory) -> Set<String> {
+    public static func existingNames(_ names: [String], in directory: GitDirectory) -> Set<String> {
         guard let remote = directory.remote else {
             let fm = FileManager.default
             return Set(names.filter { fm.fileExists(atPath: directory.appending($0)) })
@@ -268,7 +267,7 @@ nonisolated enum GitCommand {
 /// directory itself, or the host was asked which of its processes belongs to
 /// this connection, or neither worked and the panels are left looking wherever
 /// an ssh command happens to land.
-nonisolated enum RemoteRoot: Equatable, Hashable, Sendable {
+public nonisolated enum RemoteRoot: Equatable, Hashable, Sendable {
     /// The directory the terminal is really in.
     case located(String)
 
@@ -290,7 +289,7 @@ extension RemoteRoot {
     /// it had rather than moving the panels.
     ///
     /// Runs off the main actor — every branch is a round trip.
-    nonisolated static func locate(
+    public nonisolated static func locate(
         report: (host: String, path: String)?,
         connection: SSHConnection?,
         on destination: RemoteShellDestination
@@ -320,7 +319,7 @@ extension GitCommand {
     /// host, which rides the connection the panels already hold open. That
     /// answer is a property of the host rather than of the moment, so it is
     /// asked once per destination.
-    nonisolated static func directory(
+    public nonisolated static func directory(
         for root: RemoteRoot, on destination: RemoteShellDestination
     ) -> GitDirectory {
         switch root {
@@ -349,7 +348,7 @@ extension GitCommand {
     /// not place the connection — it has no `/proc`, or the shell is inside a
     /// `screen` whose connection is long gone — and nil when it could not be
     /// reached at all.
-    nonisolated static func shellDirectory(
+    public nonisolated static func shellDirectory(
         of connection: SSHConnection, on destination: RemoteShellDestination
     ) -> RemoteRoot? {
         // The bound is the ssh process's own age, which the shell on the far
@@ -484,7 +483,7 @@ extension GitCommand {
 
 extension RemoteRoot {
     /// The directory the terminal is in, when the host could say.
-    nonisolated var locatedPath: String? {
+    public nonisolated var locatedPath: String? {
         switch self {
         case .located(let path): path
         case .loginDirectory: nil
@@ -498,24 +497,24 @@ extension RemoteRoot {
 /// One type for both so a panel has a single notion of "where I am", and so
 /// moving between machines is an ordinary value change the staleness guards
 /// already cover.
-nonisolated enum PanelRoot: Equatable, Hashable, Sendable {
+public nonisolated enum PanelRoot: Equatable, Hashable, Sendable {
     case local(String)
     case remote(RemoteRoot, RemoteShellDestination)
 
-    var remote: RemoteShellDestination? {
+    public var remote: RemoteShellDestination? {
         if case .remote(_, let destination) = self { return destination }
         return nil
     }
 
     /// True only for a local panel that has not been pointed anywhere yet.
-    var isUnset: Bool {
+    public var isUnset: Bool {
         if case .local(let path) = self { return path.isEmpty }
         return false
     }
 
     /// The best name available without asking the host anything — what a
     /// header can show before ``directory()`` has run.
-    var provisionalPath: String {
+    public var provisionalPath: String {
         switch self {
         case .local(let path): path
         case .remote(let root, _): root.locatedPath ?? ""
@@ -524,7 +523,7 @@ nonisolated enum PanelRoot: Equatable, Hashable, Sendable {
 
     /// The directory to actually run Git in. Reaches the host for a remote
     /// panel, so it belongs off the main actor.
-    func directory() -> GitDirectory {
+    public func directory() -> GitDirectory {
         switch self {
         case .local(let path):
             return GitDirectory(path)
@@ -536,7 +535,7 @@ nonisolated enum PanelRoot: Equatable, Hashable, Sendable {
     /// True when the panel is on a remote host that could not say where the
     /// terminal is, so the repository is looked for wherever an ssh command
     /// lands rather than where the user actually is.
-    var isRemoteLoginFallback: Bool {
+    public var isRemoteLoginFallback: Bool {
         if case .remote(let root, _) = self, root.locatedPath == nil { return true }
         return false
     }

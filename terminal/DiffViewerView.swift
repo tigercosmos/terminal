@@ -8,6 +8,7 @@ import Combine
 import Foundation
 import PierreDiffsSwift
 import SwiftUI
+import TerminalCore
 
 /// Observable inputs for a diff tab's web view. Owned by `DiffTab` and also
 /// retained by the tab's long-lived hosting view, so it must never reference

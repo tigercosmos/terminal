@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TerminalCore
 
 /// Who last touched one line, and in which commit.
 nonisolated struct BlameLine: Equatable, Sendable {
