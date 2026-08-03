@@ -1,26 +1,26 @@
 //
 //  GitBlame.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
 import TerminalCore
 
 /// Who last touched one line, and in which commit.
-nonisolated struct BlameLine: Equatable, Sendable {
-    let oid: String
-    let author: String
-    let summary: String
+public nonisolated struct BlameLine: Equatable, Sendable {
+    public let oid: String
+    public let author: String
+    public let summary: String
     /// Author time as the commit itself recorded it, along with the offset it
     /// was written in. Kept apart from a `Date` so the annotation can show the
     /// commit's own wall clock rather than the reader's.
     let authorTime: TimeInterval
     let authorTimeZone: String
 
-    var shortOID: String { String(oid.prefix(8)) }
+    public var shortOID: String { String(oid.prefix(8)) }
 
     /// Git's sentinel OID for a line that is in no commit yet.
-    var isUncommitted: Bool {
+    public var isUncommitted: Bool {
         !oid.isEmpty && oid.allSatisfy { $0 == "0" }
     }
 
@@ -40,7 +40,7 @@ nonisolated struct BlameLine: Equatable, Sendable {
     }
 
     /// `YYYY-MM-DD HH:MM ±ZZZZ`, for the hover.
-    var fullDate: String {
+    public var fullDate: String {
         guard authorTime > 0 else { return "" }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
@@ -68,10 +68,10 @@ nonisolated struct BlameLine: Equatable, Sendable {
     }
 
     /// The end-of-line annotation: `Author, YYYY-MM-DD • summary`.
-    var inlineAnnotation: String {
+    public var inlineAnnotation: String {
         guard !isUncommitted else {
             return String(
-                localized: "Not committed yet",
+                localized: "Not committed yet", bundle: .module,
                 comment: "Blame annotation for a line that is not in any commit."
             )
         }
@@ -90,11 +90,11 @@ nonisolated struct BlameLine: Equatable, Sendable {
 /// contents rather than the file on disk, so the annotation keeps naming the
 /// right commit while the user types — and a line they just wrote reads as
 /// uncommitted instead of borrowing its neighbour's history.
-nonisolated enum GitBlame {
+public nonisolated enum GitBlame {
     /// `revision` blames the file as of a commit instead of the working tree —
     /// what the read-only column of a comparison is showing. It is mutually
     /// exclusive with `contents`, which Git rejects alongside a revision.
-    static func line(
+    static public func line(
         _ line: Int, path: String, contents: String?,
         revision: String? = nil, in root: GitDirectory
     ) -> BlameLine? {
@@ -151,7 +151,7 @@ nonisolated enum GitBlame {
         return BlameLine(
             oid: String(oid),
             author: author.isEmpty
-                ? String(localized: "Unknown author") : author,
+                ? String(localized: "Unknown author", bundle: .module) : author,
             summary: summary,
             authorTime: authorTime,
             authorTimeZone: authorTimeZone

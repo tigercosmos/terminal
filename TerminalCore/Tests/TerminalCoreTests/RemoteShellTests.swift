@@ -146,51 +146,68 @@ struct RemoteShellDestinationTests {
 /// `String(localized:)` per target and never reaches into package sources from
 /// the app's. That split has one failure mode a build cannot catch: a string
 /// moved into the package while its translations stayed behind in the app's
-/// catalog, which ships as untranslated English to every non-English user.
+/// catalog, which ships as untranslated English to non-English users only.
 struct PackageLocalizationTests {
     private let languages = ["ja", "zh-Hans"]
 
     /// Every key the package's catalog carries must be translated into every
-    /// language the app ships, and the translation must have made it into the
-    /// built bundle.
+    /// language the app ships.
+    ///
+    /// The catalog's own record is what is checked, rather than whether the
+    /// translation differs from the English — `"%@…"` is the same string in
+    /// every language, and a comparison would call it untranslated forever.
     @Test func everyPackageStringIsTranslatedIntoEveryShippedLanguage() throws {
-        for key in try catalogKeys() {
+        for (key, entry) in try catalog() {
+            if entry["shouldTranslate"] as? Bool == false { continue }
+            let localizations = entry["localizations"] as? [String: Any] ?? [:]
             for language in languages {
-                let bundle = try #require(
-                    Bundle.module.path(forResource: language, ofType: "lproj")
-                        .flatMap(Bundle.init(path:)),
-                    "the package bundle has no \(language) resources"
-                )
-                let translated = bundle.localizedString(
-                    forKey: key, value: nil, table: "Localizable"
-                )
-                #expect(
-                    translated != key,
-                    "\(language) has no translation for \"\(key)\""
-                )
+                guard let localization = localizations[language] as? [String: Any] else {
+                    Issue.record("\(language) has no entry for \"\(key)\"")
+                    continue
+                }
+                // Either one string or a set of plural variations, and in the
+                // simple case it has to actually say something.
+                if let unit = localization["stringUnit"] as? [String: Any] {
+                    #expect(
+                        (unit["value"] as? String)?.isEmpty == false,
+                        "\(language) has an empty translation for \"\(key)\""
+                    )
+                } else {
+                    #expect(
+                        localization["variations"] != nil,
+                        "\(language) has neither a translation nor variations for \"\(key)\""
+                    )
+                }
             }
         }
     }
 
-    /// Guards the test above from passing vacuously if the catalog stops being
-    /// found or stops being read.
+    /// The translations have to reach the built bundle, not only the catalog —
+    /// a package that forgets `defaultLocalization` compiles and ships English.
+    @Test func theBuiltBundleCarriesEveryLanguage() throws {
+        for language in languages {
+            #expect(
+                Bundle.module.path(forResource: language, ofType: "lproj") != nil,
+                "the package bundle has no \(language) resources"
+            )
+        }
+    }
+
+    /// Guards the tests above from passing vacuously if the catalog stops
+    /// being found or stops being read.
     @Test func theCatalogIsNotEmpty() throws {
-        #expect(try !catalogKeys().isEmpty)
+        #expect(try catalog().count > 1)
     }
 
     /// The catalog is read from the source tree — the built bundle carries
-    /// only the compiled `.strings` it becomes, which is the other half of what
-    /// these tests compare.
-    private func catalogKeys() throws -> [String] {
+    /// only the compiled `.strings` it becomes.
+    private func catalog() throws -> [String: [String: Any]] {
         let url = URL(filePath: #filePath)
             .deletingLastPathComponent()      // TerminalCoreTests
             .deletingLastPathComponent()      // Tests
             .deletingLastPathComponent()      // TerminalCore
             .appending(path: "Sources/TerminalCore/Resources/Localizable.xcstrings")
-        let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
-        let strings = try #require(
-            (catalog as? [String: Any])?["strings"] as? [String: Any]
-        )
-        return Array(strings.keys)
+        let parsed = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
+        return try #require((parsed as? [String: Any])?["strings"] as? [String: [String: Any]])
     }
 }

@@ -1,6 +1,6 @@
 //
 //  GitStatusModel.swift
-//  terminal
+//  TerminalCore
 //
 
 import Combine
@@ -11,24 +11,24 @@ import TerminalCore
 /// Loads repository state in response to explicit UI events and performs
 /// source-control operations without blocking the UI.
 @MainActor
-final class GitStatusModel: nonisolated ObservableObject {
-    nonisolated struct Entry: Identifiable, Equatable, Sendable {
-        var id: String { path }
+public final class GitStatusModel: nonisolated ObservableObject {
+    nonisolated public struct Entry: Identifiable, Equatable, Sendable {
+        public var id: String { path }
         /// Relative to the repository root, as porcelain v2 reports it.
-        let path: String
+        public let path: String
         /// Index (staged) status letter, "." when clean, "?" for untracked.
-        let staged: Character
+        public let staged: Character
         /// Worktree (unstaged) status letter.
-        let unstaged: Character
+        public let unstaged: Character
         var isConflict = false
         /// Previous path for renames/copies (porcelain "2" entries).
-        var origPath: String?
+        public var origPath: String?
         /// Canonical repo that produced this snapshot. Mutations reject stale
         /// rows after the active terminal moves to another repository.
-        var repositoryRoot = ""
+        public var repositoryRoot = ""
 
-        var fileName: String { (path as NSString).lastPathComponent }
-        var directory: String {
+        public var fileName: String { (path as NSString).lastPathComponent }
+        public var directory: String {
             let dir = (path as NSString).deletingLastPathComponent
             return dir.isEmpty ? "" : dir
         }
@@ -36,21 +36,21 @@ final class GitStatusModel: nonisolated ObservableObject {
         /// from the empty index blob would truncate user content, so destructive
         /// handling treats it like an untracked file and uses the Trash.
         var isIntentToAdd: Bool { staged == "." && unstaged == "A" }
-        var isUntracked: Bool { staged == "?" || isIntentToAdd }
-        var isWorktreeRename: Bool { unstaged == "R" && origPath != nil }
-        var isWorktreeCopy: Bool { unstaged == "C" && origPath != nil }
+        public var isUntracked: Bool { staged == "?" || isIntentToAdd }
+        public var isWorktreeRename: Bool { unstaged == "R" && origPath != nil }
+        public var isWorktreeCopy: Bool { unstaged == "C" && origPath != nil }
 
         // A file can sit in two sections at once (for example, "MM"). Rows in
         // the same lazy stack need distinct identities or SwiftUI drops one.
-        var mergeRowID: String { "merge/" + path }
-        var stagedRowID: String { "staged/" + path }
-        var changedRowID: String { "changed/" + path }
+        public var mergeRowID: String { "merge/" + path }
+        public var stagedRowID: String { "staged/" + path }
+        public var changedRowID: String { "changed/" + path }
     }
 
     /// Compact Explorer-style decoration for a path in the active repository.
     /// The file tree maps these semantic states to both a color and a visible
     /// status badge, so color is never the only indication.
-    nonisolated enum FileDecoration: Equatable, Sendable {
+    nonisolated public enum FileDecoration: Equatable, Sendable {
         case modified
         case added
         case untracked
@@ -76,84 +76,86 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
     }
 
-    nonisolated struct RecentCommit: Identifiable, Equatable, Sendable {
-        var id: String { hash }
-        let hash: String
-        let shortHash: String
-        let subject: String
-        let author: String
+    nonisolated public struct RecentCommit: Identifiable, Equatable, Sendable {
+        public var id: String { hash }
+        public let hash: String
+        public let shortHash: String
+        public let subject: String
+        public let author: String
         let date: Date
 
-        var relativeDate: String {
+        public var relativeDate: String {
             date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
         }
     }
 
-    nonisolated struct Operation: Identifiable, Equatable, Sendable {
-        enum State: Equatable, Sendable {
+    nonisolated public struct Operation: Identifiable, Equatable, Sendable {
+        public enum State: Equatable, Sendable {
             case running
             case succeeded
             case failed(exitCode: Int32)
         }
 
-        let id: UUID
+        public let id: UUID
         let label: String
-        var state: State
-        var output: String
+        public var state: State
+        public var output: String
         let startedAt: Date
         var finishedAt: Date?
 
-        var isRunning: Bool { state == .running }
+        public var isRunning: Bool { state == .running }
         var isSuccess: Bool { state == .succeeded }
 
-        var statusLabel: String {
+        public var statusLabel: String {
             switch state {
             case .running:
-                return String(localized: "\(label)…", comment: "A Git operation that is still running.")
+                return String(localized: "\(label)…", bundle: .module, comment: "A Git operation that is still running.")
             case .succeeded:
-                return String(localized: "\(label) completed", comment: "A Git operation that completed successfully.")
+                return String(localized: "\(label) completed", bundle: .module, comment: "A Git operation that completed successfully.")
             case .failed:
-                return String(localized: "\(label) failed", comment: "A Git operation that failed.")
+                return String(localized: "\(label) failed", bundle: .module, comment: "A Git operation that failed.")
             }
         }
     }
 
-    @Published private(set) var rootPath = ""
+    @Published public private(set) var rootPath = ""
     /// Where the panel has been pointed, and on which machine.
-    @Published private(set) var panelRoot = PanelRoot.local("")
+    @Published public private(set) var panelRoot = PanelRoot.local("")
     /// Stable canonical repository root, used by the UI to key drafts. It is
     /// preserved while a cwd change is being resolved inside the same repo.
-    @Published private(set) var repositoryIdentity = ""
-    @Published private(set) var isRepo = false
-    @Published private(set) var fileDecorations: [String: FileDecoration] = [:]
+    @Published public private(set) var repositoryIdentity = ""
+    @Published public private(set) var isRepo = false
+    @Published public private(set) var fileDecorations: [String: FileDecoration] = [:]
     /// Relative porcelain paths. Directory records retain their trailing slash
     /// so expanded descendants can inherit the ignored state.
-    @Published private(set) var ignoredPaths: Set<String> = []
-    @Published private(set) var branch: String?
-    @Published private(set) var headOID: String?
-    @Published private(set) var hasHead = true
-    @Published private(set) var upstream: String?
-    @Published private(set) var ahead = 0
-    @Published private(set) var behind = 0
-    @Published private(set) var hasUpstream = false
-    @Published private(set) var mergeEntries: [Entry] = []
-    @Published private(set) var stagedEntries: [Entry] = []
-    @Published private(set) var changedEntries: [Entry] = []
-    @Published private(set) var branches: [String] = []
-    @Published private(set) var remotes: [String] = []
-    @Published private(set) var recentCommits: [RecentCommit] = []
-    @Published private(set) var repositoryOperation: String?
-    @Published private(set) var stashCount = 0
-    @Published private(set) var isRefreshing = false
+    @Published public private(set) var ignoredPaths: Set<String> = []
+    @Published public private(set) var branch: String?
+    @Published public private(set) var headOID: String?
+    @Published public private(set) var hasHead = true
+    @Published public private(set) var upstream: String?
+    @Published public private(set) var ahead = 0
+    @Published public private(set) var behind = 0
+    @Published public private(set) var hasUpstream = false
+    @Published public private(set) var mergeEntries: [Entry] = []
+    @Published public private(set) var stagedEntries: [Entry] = []
+    @Published public private(set) var changedEntries: [Entry] = []
+    @Published public private(set) var branches: [String] = []
+    @Published public private(set) var remotes: [String] = []
+    @Published public private(set) var recentCommits: [RecentCommit] = []
+    @Published public private(set) var repositoryOperation: String?
+    @Published public private(set) var stashCount = 0
+    @Published public private(set) var isRefreshing = false
     /// True once a status load has completed for the current `rootPath`. The
     /// UI keeps showing resolved content during later event-driven refreshes
     /// instead of flashing a loading placeholder.
-    @Published private(set) var hasResolvedStatus = false
-    @Published private(set) var statusError: String?
+    @Published public private(set) var hasResolvedStatus = false
+    @Published public private(set) var statusError: String?
     /// True while a user-initiated Git operation runs.
-    @Published private(set) var isBusy = false
-    @Published private(set) var operation: Operation?
-    @Published var lastError: String?
+    @Published public private(set) var isBusy = false
+    @Published public private(set) var operation: Operation?
+    @Published public var lastError: String?
+
+    public init() {}
 
     /// Absolute repository root. Porcelain paths are relative to this path,
     /// not necessarily to the terminal's current working directory.
@@ -172,28 +174,28 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// Keeps a mutation globally exclusive even if the terminal changes cwd
     /// while its Git process is still running.
     private var runningOperationID: UUID?
-    var totalChangeCount: Int {
+    public var totalChangeCount: Int {
         mergeEntries.count + stagedEntries.count + changedEntries.count
     }
 
     /// True while the first status load for the current directory is still in
     /// flight, so later event-driven refreshes do not replace resolved content
     /// with a loading state.
-    var isResolvingInitialStatus: Bool {
+    public var isResolvingInitialStatus: Bool {
         isRefreshing && !hasResolvedStatus
     }
 
-    var repoRoot: String {
+    public var repoRoot: String {
         topLevel.isEmpty ? rootPath : topLevel
     }
 
     /// The ssh connection the repository sits behind, when the terminal has
     /// followed one onto another machine. Nil for a repository on this Mac.
-    var remote: RemoteShellDestination? { panelRoot.remote }
+    public var remote: RemoteShellDestination? { panelRoot.remote }
 
     /// The repository, and the machine it is on. Everything the panel runs goes
     /// through this rather than through ``repoRoot`` alone.
-    var repoDirectory: GitDirectory {
+    public var repoDirectory: GitDirectory {
         GitDirectory(repoRoot, on: remote)
     }
 
@@ -208,12 +210,12 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// actually in will not be found from there unless it happens to be the
     /// login directory, so the panel says so rather than reporting no
     /// repository at all.
-    var isSearchingRemoteLoginDirectory: Bool {
+    public var isSearchingRemoteLoginDirectory: Bool {
         panelRoot.isRemoteLoginFallback && !isRepo
     }
 
     /// The host whose repository is shown, when it is not this machine's.
-    var remoteHost: String? { remote?.host }
+    public var remoteHost: String? { remote?.host }
 
     /// Whether Terminal can act on this repository from the panel.
     ///
@@ -221,27 +223,27 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// what the Git actions ultimately reach for — the Trash for a discarded
     /// untracked file, a credential helper for a push — is on this Mac and
     /// belongs to a different machine's checkout.
-    var isEditable: Bool { remote == nil }
+    public var isEditable: Bool { remote == nil }
 
     /// What the panel calls the directory it is describing, host-qualified when
     /// the repository is on another machine.
-    var displayPath: String {
+    public var displayPath: String {
         GitDirectory(isRepo ? repoRoot : rootPath, on: remote).displayPath
     }
 
-    func absolutePath(for entry: Entry) -> String {
+    public func absolutePath(for entry: Entry) -> String {
         let base = entry.repositoryRoot.isEmpty ? repoRoot : entry.repositoryRoot
         return (base as NSString).appendingPathComponent(entry.path)
     }
 
-    func isCurrent(_ entry: Entry) -> Bool {
+    public func isCurrent(_ entry: Entry) -> Bool {
         entry.repositoryRoot.isEmpty || entry.repositoryRoot == repoRoot
     }
 
     /// Returns a Git decoration only when `absolutePath` belongs to the
     /// currently resolved repository. Plain folders therefore keep the normal
     /// file-tree appearance, even when their names resemble ignored paths.
-    func fileDecoration(for absolutePath: String, isDirectory: Bool) -> FileDecoration? {
+    public func fileDecoration(for absolutePath: String, isDirectory: Bool) -> FileDecoration? {
         guard isRepo, !topLevel.isEmpty else { return nil }
         let repositoryPath = (topLevel as NSString).standardizingPath
         let itemPath = (absolutePath as NSString).standardizingPath
@@ -281,7 +283,7 @@ final class GitStatusModel: nonisolated ObservableObject {
     ///
     /// `polling` marks a tick from the panel's timer rather than something the
     /// user did; see ``refreshIfStale()``.
-    func sync(root: PanelRoot, polling: Bool = false) {
+    public func sync(root: PanelRoot, polling: Bool = false) {
         var moved = false
         if root != panelRoot {
             let sameMachine = root.remote == panelRoot.remote
@@ -323,7 +325,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         refresh()
     }
 
-    func refresh() {
+    public func refresh() {
         let root = panelRoot
         let generation = contextGeneration
         guard !root.isUnset else { return }
@@ -359,7 +361,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
     }
 
-    func dismissOperation() {
+    public func dismissOperation() {
         guard operation?.isRunning != true else { return }
         operation = nil
         lastError = nil
@@ -367,44 +369,44 @@ final class GitStatusModel: nonisolated ObservableObject {
 
     // MARK: - File operations
 
-    func stage(_ entry: Entry) {
+    public func stage(_ entry: Entry) {
         guard validate(entry) else { return }
         let original = entry.unstaged == "R" ? entry.origPath.map { [$0] } ?? [] : []
         let paths = [entry.path] + original
         perform(
-            label: String(localized: "Stage \(entry.fileName)"),
+            label: String(localized: "Stage \(entry.fileName)", bundle: .module),
             commands: [["--literal-pathspecs", "add", "--"] + paths]
         )
     }
 
-    func unstage(_ entry: Entry) {
+    public func unstage(_ entry: Entry) {
         guard validate(entry) else { return }
         let original = entry.staged == "R" ? entry.origPath.map { [$0] } ?? [] : []
         let paths = [entry.path] + original
         let args = hasHead
             ? ["--literal-pathspecs", "restore", "--staged", "--"] + paths
             : ["--literal-pathspecs", "rm", "--cached", "-f", "--"] + paths
-        perform(label: String(localized: "Unstage \(entry.fileName)"), commands: [args])
+        perform(label: String(localized: "Unstage \(entry.fileName)", bundle: .module), commands: [args])
     }
 
-    func stageAll() {
-        perform(label: String(localized: "Stage all changes"), commands: [["add", "-A"]])
+    public func stageAll() {
+        perform(label: String(localized: "Stage all changes", bundle: .module), commands: [["add", "-A"]])
     }
 
-    func unstageAll() {
+    public func unstageAll() {
         let args = hasHead
             ? ["restore", "--staged", "--", "."]
             : ["rm", "--cached", "-r", "-f", "--", "."]
-        perform(label: String(localized: "Unstage all changes"), commands: [args])
+        perform(label: String(localized: "Unstage all changes", bundle: .module), commands: [args])
     }
 
     /// Restores a tracked file from the index, or moves an untracked file to
     /// the Trash. The UI confirms before calling this.
-    func discard(_ entry: Entry) {
+    public func discard(_ entry: Entry) {
         guard validate(entry) else { return }
         if entry.isIntentToAdd {
             perform(
-                label: String(localized: "Remove intent-to-add for \(entry.fileName)"),
+                label: String(localized: "Remove intent-to-add for \(entry.fileName)", bundle: .module),
                 commands: [[
                     "--literal-pathspecs", "rm", "--cached", "-f", "--", entry.path,
                 ]]
@@ -412,30 +414,30 @@ final class GitStatusModel: nonisolated ObservableObject {
                 guard success else { return }
                 self?.trash(
                     paths: [entry.path],
-                    label: String(localized: "Move \(entry.fileName) to Trash"),
-                    completedBefore: String(localized: "Removed the intent-to-add index entry.")
+                    label: String(localized: "Move \(entry.fileName) to Trash", bundle: .module),
+                    completedBefore: String(localized: "Removed the intent-to-add index entry.", bundle: .module)
                 )
             }
         } else if entry.isUntracked || entry.isWorktreeCopy {
             trash(
                 paths: [entry.path],
-                label: String(localized: "Move \(entry.fileName) to Trash")
+                label: String(localized: "Move \(entry.fileName) to Trash", bundle: .module)
             )
         } else if entry.isWorktreeRename, let original = entry.origPath {
             perform(
-                label: String(localized: "Restore \((original as NSString).lastPathComponent)"),
+                label: String(localized: "Restore \((original as NSString).lastPathComponent)", bundle: .module),
                 commands: [["--literal-pathspecs", "restore", "--worktree", "--", original]]
             ) { [weak self] success in
                 guard success else { return }
                 self?.trash(
                     paths: [entry.path],
-                    label: String(localized: "Move \(entry.fileName) to Trash"),
-                    completedBefore: String(localized: "Restored \((original as NSString).lastPathComponent).")
+                    label: String(localized: "Move \(entry.fileName) to Trash", bundle: .module),
+                    completedBefore: String(localized: "Restored \((original as NSString).lastPathComponent).", bundle: .module)
                 )
             }
         } else {
             perform(
-                label: String(localized: "Discard changes in \(entry.fileName)"),
+                label: String(localized: "Discard changes in \(entry.fileName)", bundle: .module),
                 commands: [["--literal-pathspecs", "restore", "--worktree", "--", entry.path]]
             )
         }
@@ -449,7 +451,7 @@ final class GitStatusModel: nonisolated ObservableObject {
 
     /// Discards only the confirmed snapshot. This prevents new files written
     /// by an agent while the dialog is open from joining a bulk destructive action.
-    func discardChanges(_ entries: [Entry]) {
+    public func discardChanges(_ entries: [Entry]) {
         guard !entries.isEmpty else { return }
         guard entries.allSatisfy(isCurrent) else {
             cancelStaleDiscard()
@@ -475,38 +477,38 @@ final class GitStatusModel: nonisolated ObservableObject {
         guard !commands.isEmpty || !untracked.isEmpty else { return }
 
         if commands.isEmpty {
-            trash(paths: untracked, label: String(localized: "Move untracked files to Trash"))
+            trash(paths: untracked, label: String(localized: "Move untracked files to Trash", bundle: .module))
         } else {
             var completedSteps: [String] = []
             if !tracked.isEmpty {
                 completedSteps.append(
-                    String(localized: "Restored \(tracked.count) tracked paths.")
+                    String(localized: "Restored \(tracked.count) tracked paths.", bundle: .module)
                 )
             }
             if !intentToAdd.isEmpty {
                 completedSteps.append(
-                    String(localized: "Removed \(intentToAdd.count) intent-to-add index entries.")
+                    String(localized: "Removed \(intentToAdd.count) intent-to-add index entries.", bundle: .module)
                 )
             }
-            perform(label: String(localized: "Discard all changes"), commands: commands) { [weak self] success in
+            perform(label: String(localized: "Discard all changes", bundle: .module), commands: commands) { [weak self] success in
                 guard success, !untracked.isEmpty else { return }
                 self?.trash(
                     paths: untracked,
-                    label: String(localized: "Finish discarding all changes"),
+                    label: String(localized: "Finish discarding all changes", bundle: .module),
                     completedBefore: completedSteps.joined(separator: "\n")
                 )
             }
         }
     }
 
-    func cancelStaleDiscard() {
-        failImmediately(String(localized: "Files changed while the confirmation was open. Review them and try again."))
+    public func cancelStaleDiscard() {
+        failImmediately(String(localized: "Files changed while the confirmation was open. Review them and try again.", bundle: .module))
     }
 
     // MARK: - Commit and remote operations
 
     /// Commits only the index unless `includeAll` explicitly requests `git add -A`.
-    func commit(
+    public func commit(
         message: String,
         includeAll: Bool,
         amend: Bool = false,
@@ -514,11 +516,11 @@ final class GitStatusModel: nonisolated ObservableObject {
     ) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            failImmediately(String(localized: "Enter a commit message"), completion: completion)
+            failImmediately(String(localized: "Enter a commit message", bundle: .module), completion: completion)
             return
         }
         guard includeAll || !stagedEntries.isEmpty || amend else {
-            failImmediately(String(localized: "Stage changes before committing"), completion: completion)
+            failImmediately(String(localized: "Stage changes before committing", bundle: .module), completion: completion)
             return
         }
 
@@ -529,150 +531,150 @@ final class GitStatusModel: nonisolated ObservableObject {
         commitArgs += ["-m", trimmed]
         commands.append(commitArgs)
         let label = amend
-            ? String(localized: "Amend commit")
+            ? String(localized: "Amend commit", bundle: .module)
             : (includeAll
-                ? String(localized: "Stage all and commit")
-                : String(localized: "Commit staged changes"))
+                ? String(localized: "Stage all and commit", bundle: .module)
+                : String(localized: "Commit staged changes", bundle: .module))
         perform(label: label, commands: commands, completion: completion)
     }
 
     /// Compatibility for older call sites. The behavior remains explicit in
     /// the new panel, which uses the overload above.
-    func commit(message: String) {
+    public func commit(message: String) {
         commit(message: message, includeAll: stagedEntries.isEmpty)
     }
 
-    func fetch() {
+    public func fetch() {
         guard !remotes.isEmpty else {
-            failImmediately(String(localized: "No Git remote is configured"))
+            failImmediately(String(localized: "No Git remote is configured", bundle: .module))
             return
         }
         perform(
-            label: String(localized: "Fetch"),
+            label: String(localized: "Fetch", bundle: .module),
             commands: [["fetch", "--all", "--prune"]],
             requiresStableHead: false
         )
     }
 
-    func pull() {
+    public func pull() {
         guard hasUpstream else {
-            failImmediately(String(localized: "This branch has no upstream to pull from"))
+            failImmediately(String(localized: "This branch has no upstream to pull from", bundle: .module))
             return
         }
         perform(
-            label: String(localized: "Pull"),
+            label: String(localized: "Pull", bundle: .module),
             commands: [["pull", "--ff-only"]],
             requiresStableUpstream: true
         )
     }
 
-    func push() {
+    public func push() {
         guard branch != "detached HEAD" || hasUpstream else {
-            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD"))
+            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD", bundle: .module))
             return
         }
         if hasUpstream {
-            perform(label: String(localized: "Push"), commands: [["push"]], requiresStableUpstream: true)
+            perform(label: String(localized: "Push", bundle: .module), commands: [["push"]], requiresStableUpstream: true)
             return
         }
         guard let remote = unambiguousRemote else {
             failImmediately(remotes.isEmpty
-                ? String(localized: "Add a Git remote before publishing this branch")
-                : String(localized: "Choose which remote should receive this branch"))
+                ? String(localized: "Add a Git remote before publishing this branch", bundle: .module)
+                : String(localized: "Choose which remote should receive this branch", bundle: .module))
             return
         }
-        perform(label: String(localized: "Publish branch"), commands: [["push", "-u", remote, "HEAD"]])
+        perform(label: String(localized: "Publish branch", bundle: .module), commands: [["push", "-u", remote, "HEAD"]])
     }
 
-    func publish(to remote: String) {
+    public func publish(to remote: String) {
         guard branch != "detached HEAD" else {
-            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD"))
+            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD", bundle: .module))
             return
         }
         guard remotes.contains(remote) else {
-            failImmediately(String(localized: "The selected Git remote is no longer available"))
+            failImmediately(String(localized: "The selected Git remote is no longer available", bundle: .module))
             return
         }
         perform(
-            label: String(localized: "Publish branch to \(remote)"),
+            label: String(localized: "Publish branch to \(remote)", bundle: .module),
             commands: [["push", "-u", remote, "HEAD"]]
         )
     }
 
-    func syncChanges() {
+    public func syncChanges() {
         guard branch != "detached HEAD" || hasUpstream else {
-            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD"))
+            failImmediately(String(localized: "Create or switch to a branch before publishing detached HEAD", bundle: .module))
             return
         }
         if hasUpstream {
             perform(
-                label: String(localized: "Sync changes"),
+                label: String(localized: "Sync changes", bundle: .module),
                 commands: [["pull", "--ff-only"], ["push"]],
                 requiresStableUpstream: true
             )
         } else {
             guard let remote = unambiguousRemote else {
                 failImmediately(remotes.isEmpty
-                    ? String(localized: "Add a Git remote before publishing this branch")
-                    : String(localized: "Choose which remote should receive this branch"))
+                    ? String(localized: "Add a Git remote before publishing this branch", bundle: .module)
+                    : String(localized: "Choose which remote should receive this branch", bundle: .module))
                 return
             }
-            perform(label: String(localized: "Publish branch"), commands: [["push", "-u", remote, "HEAD"]])
+            perform(label: String(localized: "Publish branch", bundle: .module), commands: [["push", "-u", remote, "HEAD"]])
         }
     }
 
     // MARK: - Branches, stash, and repository setup
 
-    func switchBranch(to name: String, completion: (@MainActor (Bool) -> Void)? = nil) {
+    public func switchBranch(to name: String, completion: (@MainActor (Bool) -> Void)? = nil) {
         guard !name.isEmpty, name != branch else {
             completion?(name == branch)
             return
         }
         perform(
-            label: String(localized: "Switch to \(name)"),
+            label: String(localized: "Switch to \(name)", bundle: .module),
             commands: [["switch", name]],
             completion: completion
         )
     }
 
-    func createBranch(named name: String, completion: (@MainActor (Bool) -> Void)? = nil) {
+    public func createBranch(named name: String, completion: (@MainActor (Bool) -> Void)? = nil) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            failImmediately(String(localized: "Enter a branch name"), completion: completion)
+            failImmediately(String(localized: "Enter a branch name", bundle: .module), completion: completion)
             return
         }
         perform(
-            label: String(localized: "Create branch \(trimmed)"),
+            label: String(localized: "Create branch \(trimmed)", bundle: .module),
             commands: [["switch", "-c", trimmed]],
             completion: completion
         )
     }
 
-    func stash(includeUntracked: Bool = true) {
+    public func stash(includeUntracked: Bool = true) {
         guard totalChangeCount > 0 else {
-            failImmediately(String(localized: "There are no changes to stash"))
+            failImmediately(String(localized: "There are no changes to stash", bundle: .module))
             return
         }
         var args = ["stash", "push"]
         if includeUntracked { args.append("--include-untracked") }
-        perform(label: String(localized: "Stash changes"), commands: [args])
+        perform(label: String(localized: "Stash changes", bundle: .module), commands: [args])
     }
 
-    func stashPop() {
+    public func stashPop() {
         guard stashCount > 0 else {
-            failImmediately(String(localized: "There are no stashes to pop"))
+            failImmediately(String(localized: "There are no stashes to pop", bundle: .module))
             return
         }
-        perform(label: String(localized: "Pop stash"), commands: [["stash", "pop"]])
+        perform(label: String(localized: "Pop stash", bundle: .module), commands: [["stash", "pop"]])
     }
 
-    func initializeRepository(completion: (@MainActor (Bool) -> Void)? = nil) {
+    public func initializeRepository(completion: (@MainActor (Bool) -> Void)? = nil) {
         guard !rootPath.isEmpty else {
-            failImmediately(String(localized: "Open a terminal directory first"), completion: completion)
+            failImmediately(String(localized: "Open a terminal directory first", bundle: .module), completion: completion)
             return
         }
         perform(
-            label: String(localized: "Initialize repository"),
+            label: String(localized: "Initialize repository", bundle: .module),
             commands: [["init"]],
             directory: rootPath,
             completion: completion
@@ -687,7 +689,7 @@ final class GitStatusModel: nonisolated ObservableObject {
 
     private func validate(_ entry: Entry) -> Bool {
         guard isCurrent(entry) else {
-            failImmediately(String(localized: "Repository changed; refresh and try the Git action again"))
+            failImmediately(String(localized: "Repository changed; refresh and try the Git action again", bundle: .module))
             return false
         }
         return true
@@ -703,7 +705,7 @@ final class GitStatusModel: nonisolated ObservableObject {
     ) -> Bool {
         guard !isEditable else { return true }
         failImmediately(
-            String(localized: "This repository is on \(remoteHost ?? ""), which Terminal shows but does not change."),
+            String(localized: "This repository is on \(remoteHost ?? ""), which Terminal shows but does not change.", bundle: .module),
             completion: completion
         )
         return false
@@ -720,7 +722,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         guard validateEditable(completion: completion) else { return }
         if directory == nil && !isRepo {
             failImmediately(
-                String(localized: "Repository changed; review the current directory and try the Git action again."),
+                String(localized: "Repository changed; review the current directory and try the Git action again.", bundle: .module),
                 completion: completion
             )
             return
@@ -761,7 +763,7 @@ final class GitStatusModel: nonisolated ObservableObject {
 
                 if let expectedRepositoryRoot {
                     guard Self.resolveRepositoryRoot(in: validationRoot) == expectedRepositoryRoot else {
-                        let message = String(localized: "Repository changed before the Git action could run. Review the current changes and try again.")
+                        let message = String(localized: "Repository changed before the Git action could run. Review the current changes and try again.", bundle: .module)
                         return CommandBatchResult(
                             output: message, failureCode: -1, failureMessage: message
                         )
@@ -779,8 +781,8 @@ final class GitStatusModel: nonisolated ObservableObject {
                               live.branch == expectedBranch,
                               !requiresStableUpstream || live.upstream == expectedUpstream else {
                             let message = requiresStableUpstream
-                                ? String(localized: "Branch, HEAD, or upstream changed before the Git action could run. Review the current changes and try again.")
-                                : String(localized: "Branch or HEAD changed before the Git action could run. Review the current changes and try again.")
+                                ? String(localized: "Branch, HEAD, or upstream changed before the Git action could run. Review the current changes and try again.", bundle: .module)
+                                : String(localized: "Branch or HEAD changed before the Git action could run. Review the current changes and try again.", bundle: .module)
                             return CommandBatchResult(
                                 output: message, failureCode: -1, failureMessage: message
                             )
@@ -801,7 +803,7 @@ final class GitStatusModel: nonisolated ObservableObject {
                         .joined(separator: "\n")
                     if !text.isEmpty { transcript.append(text) }
                     if run.status != 0 {
-                        let fallback = String(localized: "Git command failed")
+                        let fallback = String(localized: "Git command failed", bundle: .module)
                         failureCode = run.status
                         failureMessage = text.isEmpty ? fallback : text
                         break
@@ -845,7 +847,7 @@ final class GitStatusModel: nonisolated ObservableObject {
                     label: label,
                     state: .succeeded,
                     output: batch.output.isEmpty
-                        ? String(localized: "Completed successfully.")
+                        ? String(localized: "Completed successfully.", bundle: .module)
                         : batch.output,
                     startedAt: self.operation?.startedAt ?? finishedAt,
                     finishedAt: finishedAt
@@ -867,7 +869,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         lastError = message
         operation = Operation(
             id: UUID(),
-            label: String(localized: "Git action"),
+            label: String(localized: "Git action", bundle: .module),
             state: .failed(exitCode: -1),
             output: message,
             startedAt: Date(),
@@ -900,7 +902,7 @@ final class GitStatusModel: nonisolated ObservableObject {
                 guard Self.resolveRepositoryRoot(in: validationRoot) == expectedRepositoryRoot else {
                     return TrashResult(
                         moved: [],
-                        failure: String(localized: "Repository changed before the file action could run. Review the current changes and try again.")
+                        failure: String(localized: "Repository changed before the file action could run. Review the current changes and try again.", bundle: .module)
                     )
                 }
                 let liveStatus = GitCommand.run(
@@ -913,7 +915,7 @@ final class GitStatusModel: nonisolated ObservableObject {
                       live.branch == expectedBranch else {
                     return TrashResult(
                         moved: [],
-                        failure: String(localized: "Branch or HEAD changed before the file action could run. Review the current changes and try again.")
+                        failure: String(localized: "Branch or HEAD changed before the file action could run. Review the current changes and try again.", bundle: .module)
                     )
                 }
                 var moved: [String] = []
@@ -945,13 +947,13 @@ final class GitStatusModel: nonisolated ObservableObject {
                 let completedResult = completedBefore.map { $0 + "\n" } ?? ""
                 let partialResult = result.moved.isEmpty
                     ? ""
-                    : "\n\n" + String(localized: "Moved to Trash before the failure:") + "\n"
+                    : "\n\n" + String(localized: "Moved to Trash before the failure:", bundle: .module) + "\n"
                         + result.moved.joined(separator: "\n")
                 let output = completedResult + failure + partialResult
                 self.lastError = result.moved.isEmpty
                     ? completedResult + failure
                     : completedResult + String(
-                        localized: "\(failure) (\(result.moved.count) items were already moved to Trash.)"
+                        localized: "\(failure) (\(result.moved.count) items were already moved to Trash.)", bundle: .module
                     )
                 self.operation = Operation(
                     id: operationID, label: label, state: .failed(exitCode: -1),
@@ -961,7 +963,7 @@ final class GitStatusModel: nonisolated ObservableObject {
             } else {
                 let output = [
                     completedBefore,
-                    String(localized: "Moved to Trash:") + "\n"
+                    String(localized: "Moved to Trash:", bundle: .module) + "\n"
                         + result.moved.joined(separator: "\n"),
                 ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
                 self.operation = Operation(
@@ -976,7 +978,7 @@ final class GitStatusModel: nonisolated ObservableObject {
     }
 
     private nonisolated struct CommandBatchResult: Sendable {
-        let output: String
+        public let output: String
         let failureCode: Int32?
         let failureMessage: String?
     }
@@ -1125,18 +1127,18 @@ final class GitStatusModel: nonisolated ObservableObject {
     }
 
     nonisolated struct StatusResult: Equatable, Sendable {
-        var branch: String?
+        public var branch: String?
         var headOID: String?
         var hasHead = true
         var upstream: String?
         var ahead = 0
         var behind = 0
         var topLevel = ""
-        var entries: [Entry] = []
+        public var entries: [Entry] = []
         var ignoredPaths: Set<String> = []
         var branches: [String] = []
         var remotes: [String] = []
-        var recentCommits: [RecentCommit] = []
+        public var recentCommits: [RecentCommit] = []
         var repositoryOperation: String?
         var stashCount = 0
         var loadedDetails = false
@@ -1149,7 +1151,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         guard top.status == 0 else {
             let failure = gitFailureMessage(
                 top,
-                fallback: String(localized: "Unable to locate the Git repository.")
+                fallback: String(localized: "Unable to locate the Git repository.", bundle: .module)
             )
             if top.status == 128,
                failure.localizedCaseInsensitiveContains("not a git repository"),
@@ -1160,7 +1162,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
         let resolvedRoot = strippingTrailingLineEnding(top.stdout)
         guard !resolvedRoot.isEmpty else {
-            return .failed(String(localized: "Git returned an empty repository path."))
+            return .failed(String(localized: "Git returned an empty repository path.", bundle: .module))
         }
         let repoRoot = root.directory(resolvedRoot)
         let status = GitCommand.run(
@@ -1174,7 +1176,7 @@ final class GitStatusModel: nonisolated ObservableObject {
             return .failed(
                 gitFailureMessage(
                     status,
-                    fallback: String(localized: "Unable to read Git status.")
+                    fallback: String(localized: "Unable to read Git status.", bundle: .module)
                 )
             )
         }
@@ -1381,19 +1383,19 @@ final class GitStatusModel: nonisolated ObservableObject {
         func exists(_ name: String) -> Bool { present.contains(name) }
 
         if exists("rebase-merge") || exists("rebase-apply") {
-            return String(localized: "Rebase in progress")
+            return String(localized: "Rebase in progress", bundle: .module)
         }
         if exists("MERGE_HEAD") {
-            return String(localized: "Merge in progress")
+            return String(localized: "Merge in progress", bundle: .module)
         }
         if exists("CHERRY_PICK_HEAD") {
-            return String(localized: "Cherry-pick in progress")
+            return String(localized: "Cherry-pick in progress", bundle: .module)
         }
         if exists("REVERT_HEAD") {
-            return String(localized: "Revert in progress")
+            return String(localized: "Revert in progress", bundle: .module)
         }
         if exists("BISECT_LOG") {
-            return String(localized: "Bisect in progress")
+            return String(localized: "Bisect in progress", bundle: .module)
         }
         return nil
     }

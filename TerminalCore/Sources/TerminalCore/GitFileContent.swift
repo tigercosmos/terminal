@@ -1,6 +1,6 @@
 //
 //  GitFileContent.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
@@ -16,7 +16,7 @@ import TerminalCore
 /// empty text by the other. A repository on the host a terminal has ssh'd into
 /// is read under exactly the same rules, over the same connection the file tree
 /// already uses.
-nonisolated enum GitFileContent {
+public nonisolated enum GitFileContent {
     /// Ceiling for either side of a diff. Past this the caller reports the file
     /// as too large instead of loading it.
     static let maxBytes = 5 << 20
@@ -31,7 +31,7 @@ nonisolated enum GitFileContent {
     /// Content of the first spec that exists, so a caller can express a
     /// preference order (our side of a conflict, then the merge base, …).
     /// Reports binary/too-large through `error` and yields an empty side.
-    static func firstBlob(
+    static public func firstBlob(
         _ specs: [String], in root: GitDirectory, error: inout String?
     ) -> String {
         for spec in specs {
@@ -41,10 +41,10 @@ nonisolated enum GitFileContent {
             case .content(let content):
                 return content
             case .binary:
-                error = String(localized: "Binary file")
+                error = String(localized: "Binary file", bundle: .module)
                 return ""
             case .tooLarge:
-                error = String(localized: "File is too large to diff")
+                error = String(localized: "File is too large to diff", bundle: .module)
                 return ""
             }
         }
@@ -71,7 +71,7 @@ nonisolated enum GitFileContent {
     /// looks like in a diff — while a file that is there but unreadable is
     /// reported instead, because an empty side is itself a claim about the
     /// content.
-    static func worktreeFile(
+    static public func worktreeFile(
         root: GitDirectory, path: String, error: inout String?
     ) -> String {
         guard let remote = root.remote else {
@@ -94,7 +94,7 @@ nonisolated enum GitFileContent {
             return ""
         default:
             error = String(
-                localized: "Unable to read file: \(RemoteFileService.sanitized(result.stderr, maxLines: 3))",
+                localized: "Unable to read file: \(RemoteFileService.sanitized(result.stderr, maxLines: 3))", bundle: .module,
                 comment: "Diff error followed by the remote host's own description."
             )
             return ""
@@ -110,7 +110,7 @@ nonisolated enum GitFileContent {
             var target = String(decoding: body, as: UTF8.self)
             if target.hasSuffix("\n") { target.removeLast() }
             guard target.utf8.count <= maxBytes else {
-                error = String(localized: "File is too large to diff")
+                error = String(localized: "File is too large to diff", bundle: .module)
                 return ""
             }
             return target
@@ -119,9 +119,9 @@ nonisolated enum GitFileContent {
         case .content(let text):
             return text
         case .binary:
-            error = String(localized: "Binary file")
+            error = String(localized: "Binary file", bundle: .module)
         case .tooLarge:
-            error = String(localized: "File is too large to diff")
+            error = String(localized: "File is too large to diff", bundle: .module)
         case .missing:
             break
         }
@@ -160,7 +160,7 @@ nonisolated enum GitFileContent {
         let fm = FileManager.default
         if let destination = try? fm.destinationOfSymbolicLink(atPath: url.path) {
             guard destination.utf8.count <= maxBytes else {
-                error = String(localized: "File is too large to diff")
+                error = String(localized: "File is too large to diff", bundle: .module)
                 return ""
             }
             return destination
@@ -173,7 +173,7 @@ nonisolated enum GitFileContent {
             defer { try? handle.close() }
             let initialSize = try handle.seekToEnd()
             guard initialSize <= UInt64(maxBytes) else {
-                error = String(localized: "File is too large to diff")
+                error = String(localized: "File is too large to diff", bundle: .module)
                 return ""
             }
             try handle.seek(toOffset: 0)
@@ -188,13 +188,13 @@ nonisolated enum GitFileContent {
             }
             let finalSize = try handle.seekToEnd()
             guard finalSize <= UInt64(maxBytes) else {
-                error = String(localized: "File is too large to diff")
+                error = String(localized: "File is too large to diff", bundle: .module)
                 return ""
             }
             guard !data.contains(0),
                   let text = String(data: data, encoding: .utf8)
             else {
-                error = String(localized: "Binary file")
+                error = String(localized: "Binary file", bundle: .module)
                 return ""
             }
             return text
@@ -204,7 +204,7 @@ nonisolated enum GitFileContent {
             return ""
         } catch let fileError {
             error = String(
-                localized: "Unable to read file: \(fileError.localizedDescription)",
+                localized: "Unable to read file: \(fileError.localizedDescription)", bundle: .module,
                 comment: "Diff error followed by a system-provided error description."
             )
             return ""

@@ -1,6 +1,6 @@
 //
 //  GitCompareModel.swift
-//  terminal
+//  TerminalCore
 //
 
 import Combine
@@ -16,10 +16,10 @@ import TerminalCore
 /// tree. Never target → index: the files stay live and editable, and what the
 /// user sees on the right of a compare diff is what is on disk right now.
 @MainActor
-final class GitCompareModel: nonisolated ObservableObject {
+public final class GitCompareModel: nonisolated ObservableObject {
     /// What the working tree is being compared against.
-    nonisolated struct Target: Equatable, Sendable {
-        enum Kind: Equatable, Sendable {
+    nonisolated public struct Target: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
             /// A branch, local or remote-tracking. Re-resolved to its tip on
             /// every refresh, so the comparison follows the branch as it moves.
             case branch
@@ -31,16 +31,16 @@ final class GitCompareModel: nonisolated ObservableObject {
 
         let kind: Kind
         /// What the user picked, and what the UI shows.
-        let name: String
+        public let name: String
         /// The commit the comparison currently reads from.
-        var oid: String
+        public var oid: String
 
-        var shortOID: String { String(oid.prefix(7)) }
-        var tracksTip: Bool { kind == .branch }
+        public var shortOID: String { String(oid.prefix(7)) }
+        public var tracksTip: Bool { kind == .branch }
 
         /// Header label: a branch stands on its own, while a revision carries
         /// the commit it resolved to — `HEAD~2` means nothing a day later.
-        var displayName: String {
+        public var displayName: String {
             guard !tracksTip, name != oid, !oid.hasPrefix(name) else { return name }
             return "\(name) (\(shortOID))"
         }
@@ -50,7 +50,7 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// action can refuse to run against something that has changed since the
     /// user confirmed it. Terminal's premise is that an agent may be writing in
     /// the same tree while a confirmation sheet is open.
-    nonisolated struct FileFingerprint: Equatable, Sendable {
+    nonisolated public struct FileFingerprint: Equatable, Sendable {
         let exists: Bool
         let size: UInt64
         let modified: Date?
@@ -77,68 +77,70 @@ final class GitCompareModel: nonisolated ObservableObject {
     }
 
     /// One file that differs between the target and the working tree.
-    nonisolated struct Entry: Identifiable, Equatable, Sendable {
-        var id: String { path }
+    nonisolated public struct Entry: Identifiable, Equatable, Sendable {
+        public var id: String { path }
         /// Repo-relative, as `git diff --name-status -z` reports it.
-        let path: String
+        public let path: String
         /// `A`/`M`/`D`/`R`/`C`/`T` from name-status, or `?` for a file that
         /// exists only in the working tree.
-        let status: Character
+        public let status: Character
         /// The file's path *at the target* when this row is a rename or a copy.
-        var origPath: String?
+        public var origPath: String?
         /// Canonical repo that produced this snapshot, so a revert can reject a
         /// stale row after the panel moves to another repository.
-        var repositoryRoot = ""
+        public var repositoryRoot = ""
 
-        var fileName: String { (path as NSString).lastPathComponent }
-        var directory: String {
+        public var fileName: String { (path as NSString).lastPathComponent }
+        public var directory: String {
             let dir = (path as NSString).deletingLastPathComponent
             return dir.isEmpty ? "" : dir
         }
 
         /// Absent from the target's tree, so reverting means removing it.
-        var isAddition: Bool { status == "A" || status == "?" }
-        var isDeletion: Bool { status == "D" }
+        public var isAddition: Bool { status == "A" || status == "?" }
+        public var isDeletion: Bool { status == "D" }
         /// Only a true rename carries the old path forward on revert. A copy's
         /// old path is an unrelated file that may hold edits the user never
         /// asked to discard, so it is deliberately excluded.
         var isRename: Bool { status == "R" }
-        var isUntracked: Bool { status == "?" }
+        public var isUntracked: Bool { status == "?" }
     }
 
-    @Published private(set) var rootPath = ""
+    @Published public private(set) var rootPath = ""
     /// Where the panel has been pointed, and on which machine.
-    @Published private(set) var panelRoot = PanelRoot.local("")
+    @Published public private(set) var panelRoot = PanelRoot.local("")
     /// Stable canonical repository root, used to key the remembered target.
-    @Published private(set) var repositoryIdentity = ""
-    @Published private(set) var isRepo = false
-    @Published private(set) var branch: String?
-    @Published private(set) var target: Target?
-    @Published private(set) var entries: [Entry] = []
+    @Published public private(set) var repositoryIdentity = ""
+    @Published public private(set) var isRepo = false
+    @Published public private(set) var branch: String?
+    @Published public private(set) var target: Target?
+    @Published public private(set) var entries: [Entry] = []
     /// Local branches first, then remote-tracking ones, for the target picker.
-    @Published private(set) var localBranches: [String] = []
-    @Published private(set) var remoteBranches: [String] = []
-    @Published private(set) var recentCommits: [GitStatusModel.RecentCommit] = []
-    @Published private(set) var isRefreshing = false
+    @Published public private(set) var localBranches: [String] = []
+    @Published public private(set) var remoteBranches: [String] = []
+    @Published public private(set) var recentCommits: [GitStatusModel.RecentCommit] = []
+    @Published public private(set) var isRefreshing = false
     /// True once a comparison has resolved for the current target, so later
     /// event-driven refreshes keep showing the list instead of flashing a
     /// loading placeholder.
-    @Published private(set) var hasResolvedList = false
-    @Published private(set) var statusError: String?
+    @Published public private(set) var hasResolvedList = false
+    @Published public private(set) var statusError: String?
     /// Set when the chosen target no longer resolves — a deleted branch, a
     /// commit that a rewrite dropped. The target is kept so the message can
     /// name it and the user can retry after a fetch.
-    @Published private(set) var targetError: String?
+    @Published public private(set) var targetError: String?
     /// True while a revert runs.
-    @Published private(set) var isBusy = false
-    @Published var lastError: String?
+    @Published public private(set) var isBusy = false
+    @Published public var lastError: String?
+
+    public init() {}
     /// Paths whose working-tree contents match the active content search, or
     /// nil when no search is running. Only the changed set is read, so the
     /// search stays bounded by the comparison rather than by the repository.
-    @Published private(set) var searchMatches: Set<String>?
+    @Published public private(set) var searchMatches: Set<String>?
     /// Why a regex query would not compile, shown under the search field.
-    @Published private(set) var searchError: String?
-    @Published private(set) var isSearching = false
+    @Published public private(set) var searchError: String?
+    @Published public private(set) var isSearching = false
 
     /// Absolute repository root; every path in `entries` is relative to it.
     private var topLevel = ""
@@ -159,22 +161,22 @@ final class GitCompareModel: nonisolated ObservableObject {
     private var searchRequestID: UInt = 0
     private var activeSearch: CompareFilter?
 
-    var repoRoot: String {
+    public var repoRoot: String {
         topLevel.isEmpty ? rootPath : topLevel
     }
 
     /// The ssh connection the repository sits behind, when the terminal has
     /// followed one onto another machine. Nil for a repository on this Mac.
-    var remote: RemoteShellDestination? { panelRoot.remote }
+    public var remote: RemoteShellDestination? { panelRoot.remote }
 
     /// True when the comparison is looking wherever an ssh command lands
     /// because the remote shell has never said where it is.
-    var isSearchingRemoteLoginDirectory: Bool {
+    public var isSearchingRemoteLoginDirectory: Bool {
         panelRoot.isRemoteLoginFallback && !isRepo
     }
 
     /// The repository, and the machine it is on.
-    var repoDirectory: GitDirectory {
+    public var repoDirectory: GitDirectory {
         GitDirectory(repoRoot, on: remote)
     }
 
@@ -185,16 +187,16 @@ final class GitCompareModel: nonisolated ObservableObject {
     }
 
     /// The host whose repository is compared, when it is not this machine's.
-    var remoteHost: String? { remote?.host }
+    public var remoteHost: String? { remote?.host }
 
     /// Whether a revert can run. A remote comparison is read-only for the same
     /// reason the remote file tree is: reverting a working-tree addition means
     /// moving it to the Trash, which is a thing on this Mac.
-    var isEditable: Bool { remote == nil }
+    public var isEditable: Bool { remote == nil }
 
     /// What the panel calls the directory it is describing, host-qualified when
     /// the repository is on another machine.
-    var displayPath: String {
+    public var displayPath: String {
         GitDirectory(isRepo ? repoRoot : rootPath, on: remote).displayPath
     }
 
@@ -204,20 +206,20 @@ final class GitCompareModel: nonisolated ObservableObject {
         repoDirectory.displayPath
     }
 
-    var hasTarget: Bool { target != nil }
+    public var hasTarget: Bool { target != nil }
 
     /// True while the first comparison for the current target is still in
     /// flight.
-    var isResolvingInitialList: Bool {
+    public var isResolvingInitialList: Bool {
         isRefreshing && !hasResolvedList
     }
 
-    func absolutePath(for entry: Entry) -> String {
+    public func absolutePath(for entry: Entry) -> String {
         let base = entry.repositoryRoot.isEmpty ? repoRoot : entry.repositoryRoot
         return (base as NSString).appendingPathComponent(entry.path)
     }
 
-    func isCurrent(_ entry: Entry) -> Bool {
+    public func isCurrent(_ entry: Entry) -> Bool {
         entry.repositoryRoot.isEmpty || entry.repositoryRoot == repoRoot
     }
 
@@ -226,7 +228,7 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// Points the panel at `root`, on this Mac or on the host a terminal has
     /// ssh'd into. `polling` marks a tick from the panel's timer rather than
     /// something the user did; see ``refreshIfStale()``.
-    func sync(root: PanelRoot, polling: Bool = false) {
+    public func sync(root: PanelRoot, polling: Bool = false) {
         var moved = false
         if root != panelRoot {
             let sameMachine = root.remote == panelRoot.remote
@@ -260,7 +262,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         refresh()
     }
 
-    func refresh() {
+    public func refresh() {
         let root = panelRoot
         let generation = contextGeneration
         guard !root.isUnset else { return }
@@ -301,15 +303,15 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// Points the comparison at `revision`. A branch name keeps tip-tracking
     /// semantics; anything else — a tag, a SHA, `HEAD~2` — is pinned to the
     /// commit it resolves to right now.
-    func setTarget(_ revision: String, kind: Target.Kind) {
+    public func setTarget(_ revision: String, kind: Target.Kind) {
         let trimmed = revision.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard Self.isSafeRef(trimmed) else {
-            lastError = String(localized: "A revision cannot begin with “-”.")
+            lastError = String(localized: "A revision cannot begin with “-”.", bundle: .module)
             return
         }
         guard isRepo else {
-            lastError = String(localized: "Open a Git repository first")
+            lastError = String(localized: "Open a Git repository first", bundle: .module)
             return
         }
         let root = repoDirectory
@@ -330,7 +332,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             self.isRefreshing = false
             guard let resolved else {
                 self.lastError = String(
-                    localized: "“\(trimmed)” is not a revision in this repository.",
+                    localized: "“\(trimmed)” is not a revision in this repository.", bundle: .module,
                     comment: "Error shown when a typed comparison target does not resolve."
                 )
                 return
@@ -347,7 +349,7 @@ final class GitCompareModel: nonisolated ObservableObject {
     }
 
     /// Drops the comparison. The panel goes back to asking for a target.
-    func clearTarget() {
+    public func clearTarget() {
         // Invalidates an in-flight `setTarget`, which would otherwise land
         // after this and quietly bring the comparison back.
         loadRequestID &+= 1
@@ -367,24 +369,24 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// dropped from the index and moved to the Trash. The UI confirms first.
     /// The file as it was when the confirmation was raised. `revert` refuses to
     /// run if it no longer matches.
-    func fingerprint(for entry: Entry) -> FileFingerprint {
+    public func fingerprint(for entry: Entry) -> FileFingerprint {
         .of(absolutePath(for: entry))
     }
 
-    func revert(_ entry: Entry, confirmedAs confirmed: FileFingerprint? = nil) {
+    public func revert(_ entry: Entry, confirmedAs confirmed: FileFingerprint? = nil) {
         guard let target else { return }
         // Checked here rather than trusting the panel to have hidden the
         // action: a revert writes, and the panel can be showing a repository on
         // another machine one refresh after it was showing a local one.
         guard isEditable else {
             failImmediately(
-                String(localized: "This repository is on \(remoteHost ?? ""), which Terminal compares but does not change.")
+                String(localized: "This repository is on \(remoteHost ?? ""), which Terminal compares but does not change.", bundle: .module)
             )
             return
         }
         guard isCurrent(entry) else {
             failImmediately(
-                String(localized: "Repository changed; refresh and try the revert again")
+                String(localized: "Repository changed; refresh and try the revert again", bundle: .module)
             )
             return
         }
@@ -397,7 +399,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         let renameFrom = entry.isRename ? entry.origPath : nil
         let path = entry.path
         let absolutePath = absolutePath(for: entry)
-        let label = String(localized: "Revert \(entry.fileName)")
+        let label = String(localized: "Revert \(entry.fileName)", bundle: .module)
         let operationID = UUID()
         invalidateLoad()
         runningOperationID = operationID
@@ -407,18 +409,18 @@ final class GitCompareModel: nonisolated ObservableObject {
         Task { [weak self] in
             let failure = await Task.detached(priority: .userInitiated) { () -> String? in
                 guard Self.resolveRepositoryRoot(in: root) == root.path else {
-                    return String(localized: "Repository changed before the revert could run. Review the current changes and try again.")
+                    return String(localized: "Repository changed before the revert could run. Review the current changes and try again.", bundle: .module)
                 }
                 // The pinned commit must still be there: a rewrite or a prune
                 // between listing and reverting would otherwise check out
                 // nothing and leave the file untouched while reporting success.
                 guard Self.resolveCommit(oid, in: root) == oid else {
-                    return String(localized: "The comparison target is no longer in this repository. Refresh and try again.")
+                    return String(localized: "The comparison target is no longer in this repository. Refresh and try again.", bundle: .module)
                 }
                 // Checked here rather than at the confirmation, so a write that
                 // lands while the sheet is up cannot be discarded unseen.
                 if let confirmed, FileFingerprint.of(absolutePath) != confirmed {
-                    return String(localized: "\(path) changed while the confirmation was open, so nothing was reverted. Review it and try again.")
+                    return String(localized: "\(path) changed while the confirmation was open, so nothing was reverted. Review it and try again.", bundle: .module)
                 }
                 return Self.revertToTarget(
                     path: path, renameFrom: renameFrom, oid: oid, in: root
@@ -521,7 +523,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             // Keep the target so the message can name it and a fetch can bring
             // it back; drop the list, which no longer describes anything.
             targetError = String(
-                localized: "“\(target?.name ?? "")” is no longer in this repository.",
+                localized: "“\(target?.name ?? "")” is no longer in this repository.", bundle: .module,
                 comment: "Shown when a chosen comparison target stops resolving."
             )
             entries = []
@@ -533,7 +535,7 @@ final class GitCompareModel: nonisolated ObservableObject {
     /// Runs `filter`'s query across the working-tree contents of the changed
     /// files. A filter with no query clears any previous result rather than
     /// leaving a stale one narrowing the list.
-    func applySearch(_ filter: CompareFilter) {
+    public func applySearch(_ filter: CompareFilter) {
         guard filter.hasQuery else {
             activeSearch = nil
             searchRequestID &+= 1
@@ -617,14 +619,14 @@ final class GitCompareModel: nonisolated ObservableObject {
 
     private nonisolated struct Loaded: Sendable {
         var topLevel = ""
-        var branch: String?
-        var localBranches: [String] = []
-        var remoteBranches: [String] = []
-        var recentCommits: [GitStatusModel.RecentCommit] = []
+        public var branch: String?
+        public var localBranches: [String] = []
+        public var remoteBranches: [String] = []
+        public var recentCommits: [GitStatusModel.RecentCommit] = []
         /// Where the target resolved this time round — a branch's current tip,
         /// or the pinned commit re-verified. Nil when it no longer resolves.
         var resolvedOID: String?
-        var entries: [Entry] = []
+        public var entries: [Entry] = []
     }
 
     private nonisolated static func load(root: GitDirectory, target: Target?) -> LoadResult {
@@ -633,7 +635,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             let message = [top.stderr, top.stdout]
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first { !$0.isEmpty }
-                ?? String(localized: "Unable to locate the Git repository.")
+                ?? String(localized: "Unable to locate the Git repository.", bundle: .module)
             if top.status == 128, message.localizedCaseInsensitiveContains("not a git repository") {
                 return .notRepository
             }
@@ -641,7 +643,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         }
         let resolvedRoot = trimmedLine(top.stdout)
         guard !resolvedRoot.isEmpty else {
-            return .failed(String(localized: "Git returned an empty repository path."))
+            return .failed(String(localized: "Git returned an empty repository path.", bundle: .module))
         }
         let repoRoot = root.directory(resolvedRoot)
 
@@ -709,7 +711,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         )
         guard diff.status == 0 else {
             throw LoadFailure.message(
-                failure(diff, path: String(localized: "the comparison"))
+                failure(diff, path: String(localized: "the comparison", bundle: .module))
             )
         }
         var entries = parseNameStatus(diff.stdout)
@@ -719,7 +721,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         )
         guard untracked.status == 0 else {
             throw LoadFailure.message(
-                failure(untracked, path: String(localized: "the untracked files"))
+                failure(untracked, path: String(localized: "the untracked files", bundle: .module))
             )
         }
         if untracked.status == 0 {
@@ -871,7 +873,7 @@ final class GitCompareModel: nonisolated ObservableObject {
         case .unknown(let message):
             // Never guess. Guessing "absent" here deletes the file.
             return String(
-                localized: "Could not tell whether \(path) exists at the comparison target, so nothing was changed: \(message)",
+                localized: "Could not tell whether \(path) exists at the comparison target, so nothing was changed: \(message)", bundle: .module,
                 comment: "Revert aborted because Git could not read the target's tree."
             )
         case .absent:
@@ -925,7 +927,7 @@ final class GitCompareModel: nonisolated ObservableObject {
             .lazy
             .map { RemoteFileService.sanitized($0, maxLines: 8) }
             .first { !$0.isEmpty }
-        return text ?? String(localized: "Unable to revert \(path)")
+        return text ?? String(localized: "Unable to revert \(path)", bundle: .module)
     }
 
     private nonisolated static func trimmedLine(_ value: String) -> String {
