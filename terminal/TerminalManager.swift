@@ -10,18 +10,6 @@ import SwiftUI
 import TerminalCore
 import WebKit
 
-/// One Find menu command, routed from the menu bar to whichever find
-/// implementation the focused pane owns: Ghostty's own search in a terminal,
-/// `NSTextFinder`'s find bar in a file editor.
-enum FindAction {
-    case show
-    case replace
-    case hide
-    case next
-    case previous
-    case useSelection
-}
-
 /// Owns the list of projects and the current selection. Each project holds
 /// its own terminal sessions; the "selected session" is the selected
 /// project's selected session.

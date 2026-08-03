@@ -1,11 +1,42 @@
 //
 //  TerminalFind.swift
-//  terminal
+//  TerminalCore
 //
 
-import AppKit
 import Combine
 import Foundation
+
+/// One Find menu command, routed from the menu bar to whichever find
+/// implementation the focused pane owns: the backend's own search in a
+/// terminal, `NSTextFinder`'s find bar in a file editor.
+public enum FindAction {
+    case show
+    case replace
+    case hide
+    case next
+    case previous
+    case useSelection
+}
+
+/// What ``TerminalFind`` needs of the surface it drives — the backend's own
+/// search, and nothing else. The app's `TerminalBackendSurface` conforms; this
+/// narrow spelling is what lets the state machine below be driven by a stub.
+public protocol TerminalFindSurface: AnyObject {
+    /// Whether anything is selected in the grid.
+    var hasSelection: Bool { get }
+
+    /// Starts or replaces the find for `needle`.
+    func beginFind(_ needle: String)
+
+    /// Ends the active find and clears its highlights.
+    func endFind()
+
+    /// Moves the selection to the next or previous match.
+    func stepFind(forward: Bool)
+
+    /// Starts a find for whatever is selected in the grid.
+    func findSelection()
+}
 
 /// Find-in-terminal state for one session.
 ///
@@ -15,12 +46,12 @@ import Foundation
 /// forwards the user's intent as surface find actions. Match counts arrive
 /// back asynchronously through `TerminalBackendEvents`.
 @MainActor
-final class TerminalFind: nonisolated ObservableObject {
-    @Published private(set) var isPresented = false
+public final class TerminalFind: nonisolated ObservableObject {
+    @Published public private(set) var isPresented = false
 
     /// The needle. Every edit restarts the backend's search, so the bar
     /// searches as you type.
-    @Published var query = "" {
+    @Published public var query = "" {
         didSet {
             guard query != oldValue, !isApplyingReportedNeedle else { return }
             runSearch()
@@ -29,18 +60,18 @@ final class TerminalFind: nonisolated ObservableObject {
 
     /// Matches found so far, or nil while a count for the current needle has
     /// not been reported yet.
-    @Published private(set) var total: Int?
+    @Published public private(set) var total: Int?
     /// Zero-based index of the highlighted match, nil when none is.
-    @Published private(set) var selected: Int?
+    @Published public private(set) var selected: Int?
 
     /// Bumped whenever the bar should take (or retake) keyboard focus, so ⌘F
     /// on an already-open bar re-selects the term the way the system find bar
     /// does. A counter rather than a flag: repeated requests must each land.
-    @Published private(set) var focusRequest = 0
+    @Published public private(set) var focusRequest = 0
 
     /// The session owning this also owns the surface, so an unowned reference
     /// is safe and keeps the session's object graph acyclic.
-    private unowned let surface: any TerminalBackendSurface
+    public unowned let surface: any TerminalFindSurface
 
     /// Set while a needle the backend resolved for us (⌘E's selection) is
     /// being written into `query`, so echoing it back as a fresh search —
@@ -54,13 +85,13 @@ final class TerminalFind: nonisolated ObservableObject {
     /// Whether the current needle has already jumped to a match.
     private var hasRevealedMatch = false
 
-    init(surface: any TerminalBackendSurface) {
+    public init(surface: any TerminalFindSurface) {
         self.surface = surface
     }
 
     // MARK: - Find menu
 
-    func perform(_ action: FindAction) {
+    public func perform(_ action: FindAction) {
         switch action {
         case .show: present()
         case .hide: dismiss()
@@ -77,7 +108,7 @@ final class TerminalFind: nonisolated ObservableObject {
 
     /// Shows the bar and focuses its field. The needle survives a close, so
     /// reopening offers the previous term again, pre-selected.
-    func present() {
+    public func present() {
         isPresented = true
         focusRequest += 1
         runSearch()
@@ -85,30 +116,14 @@ final class TerminalFind: nonisolated ObservableObject {
 
     /// Closes the bar, clears the backend's highlights, and hands typing back
     /// to the terminal.
-    func dismiss() {
+    public func dismiss() {
         guard isPresented else { return }
         isPresented = false
         clearCounts()
         surface.endFind()
     }
 
-    /// Returns first responder to the terminal. Called once the find bar has
-    /// actually left the view tree, because claiming it any earlier loses the
-    /// race with SwiftUI tearing down the find field: AppKit resigns that
-    /// field editor afterwards and the window is left without a first
-    /// responder, so the terminal silently stops receiving keystrokes.
-    func restoreTerminalFocus() {
-        DispatchQueue.main.async { [surface] in
-            guard NSApp.isActive,
-                  let window = surface.window,
-                  window.isKeyWindow,
-                  window.firstResponder !== surface
-            else { return }
-            window.makeFirstResponder(surface)
-        }
-    }
-
-    func navigate(forward: Bool) {
+    public func navigate(forward: Bool) {
         guard !query.isEmpty else { return }
         // ⌘G with the bar closed resumes the last search rather than doing
         // nothing, matching how Find Next behaves elsewhere on macOS.
@@ -122,14 +137,14 @@ final class TerminalFind: nonisolated ObservableObject {
     /// ⌘E. The backend resolves the needle from the grid selection and reports
     /// it back through ``started(needle:)``, so the selection never has to be
     /// read out and re-escaped here.
-    func searchSelection() {
+    public func searchSelection() {
         guard surface.hasSelection else { return }
         surface.findSelection()
     }
 
     // MARK: - Reports from the backend
 
-    func started(needle: String) {
+    public func started(needle: String) {
         // Only claim keyboard focus when this actually opens the bar. A
         // backend may report a start for a search already under way, and
         // re-selecting the field mid-edit would eat what the user is typing.
@@ -145,17 +160,17 @@ final class TerminalFind: nonisolated ObservableObject {
 
     /// The backend ended the search on its own. Mirror it without sending
     /// an end straight back at it.
-    func ended() {
+    public func ended() {
         isPresented = false
         clearCounts()
     }
 
-    func update(total: Int?) {
+    public func update(total: Int?) {
         self.total = total
         revealFirstMatchIfNeeded()
     }
 
-    func update(selected: Int?) {
+    public func update(selected: Int?) {
         self.selected = selected
     }
 

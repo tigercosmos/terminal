@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TerminalCore
 
 /// Which terminal emulator draws and drives Terminal's panes.
 ///
@@ -147,7 +148,7 @@ struct TerminalLaunch {
 /// terminal reports back travels the other way, through
 /// ``TerminalBackendEvents``.
 @MainActor
-protocol TerminalBackendSurface: NSView {
+protocol TerminalBackendSurface: NSView, TerminalFindSurface {
     /// The session listening to this surface. Implementations hold it weakly:
     /// the session owns the surface, not the reverse.
     var events: (any TerminalBackendEvents)? { get set }

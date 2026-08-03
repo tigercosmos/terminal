@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TerminalCore
 
 /// Compact find bar floating over a terminal pane's top-right corner. Ghostty
 /// draws the match highlights inside the grid itself, so this only carries the

@@ -5,6 +5,7 @@
 
 import AppKit
 import STTextView
+import TerminalCore
 
 /// Find and replace inside a file tab's editor.
 ///

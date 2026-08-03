@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import Darwin
 import Foundation
+import TerminalCore
 
 /// One long-lived terminal process rendered by one terminal surface. Normally
 /// that process is the user's login shell; a CLI-created project can instead
