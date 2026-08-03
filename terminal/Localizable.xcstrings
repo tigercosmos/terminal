@@ -340,22 +340,6 @@
         }
       }
     },
-    "A name can’t contain “/” or be “.” or “..”." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名前に「/」は使えません。また「.」や「..」にはできません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名称不能包含“/”，也不能是“.”或“..”。"
-          }
-        }
-      }
-    },
     "A program is attempting to read from the clipboard. The current clipboard contents are shown below." : {
       "localizations" : {
         "ja" : {
@@ -448,22 +432,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修订上次提交"
-          }
-        }
-      }
-    },
-    "An item named “%@” already exists here." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」という名前の項目がすでに存在します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这里已有名为“%@”的项目。"
           }
         }
       }
@@ -1500,71 +1468,6 @@
         }
       }
     },
-    "Couldn’t create “%@”." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」を作成できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法创建“%@”。"
-          }
-        }
-      }
-    },
-    "Couldn’t create the file." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ファイルを作成できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法创建文件。"
-          }
-        }
-      }
-    },
-    "Couldn’t create the folder." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フォルダを作成できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法创建文件夹。"
-          }
-        }
-      }
-    },
-    "Couldn’t move “%@” to the Trash." : {
-      "comment" : "File operation error. The placeholder is a file or folder name.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」をゴミ箱に移動できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法将“%@”移到废纸篓。"
-          }
-        }
-      }
-    },
     "Couldn’t Relaunch Terminal" : {
       "localizations" : {
         "ja" : {
@@ -1577,22 +1480,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法重新启动 Terminal"
-          }
-        }
-      }
-    },
-    "Couldn’t rename to “%@”." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」に名前を変更できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法重命名为“%@”。"
           }
         }
       }
@@ -2785,22 +2672,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在终端中插入绝对路径"
-          }
-        }
-      }
-    },
-    "It could not be written to disk." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ディスクに書き込めませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法写入磁盘。"
           }
         }
       }

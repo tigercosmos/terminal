@@ -1,33 +1,46 @@
 //
 //  FileTreeModel.swift
-//  terminal
+//  TerminalCore
 //
 
-import AppKit
 import Combine
 import Foundation
-import TerminalCore
 
 /// Flattened, lazily-expanded view of a directory tree, on this machine or on
 /// the host a terminal has ssh'd into.
 @MainActor
-final class FileTreeModel: nonisolated ObservableObject {
-    struct Item: Identifiable, Equatable {
-        var id: String { path }
-        let name: String
-        let path: String
-        let isDirectory: Bool
-        let depth: Int
+public final class FileTreeModel: nonisolated ObservableObject {
+    /// How the tree tells the user an operation failed — a rename onto a name
+    /// that is taken, a folder that could not be written.
+    ///
+    /// Injected rather than put up here, because an alert is the view layer's
+    /// business and because a rename against a temp directory has to be
+    /// checkable without one. There is no default: a model that silently
+    /// swallowed its failures would look like a rename that did nothing.
+    public typealias FailureReporter = @MainActor (_ message: String, _ detail: String) -> Void
+
+    private let reportFailure: FailureReporter
+
+    public init(reportFailure: @escaping FailureReporter) {
+        self.reportFailure = reportFailure
+    }
+
+    public struct Item: Identifiable, Equatable {
+        public var id: String { path }
+        public let name: String
+        public let path: String
+        public let isDirectory: Bool
+        public let depth: Int
         /// True for the transient inline "new file/folder" input row, which
         /// has no backing file yet.
-        var isDraft = false
+        public var isDraft = false
     }
 
     /// A pending inline "new file/folder": an input row shown inside
     /// `parentDir` until the user names it (Enter) or cancels (Escape/blur).
-    struct Draft: Equatable {
+    public struct Draft: Equatable {
         let parentDir: String
-        let isDirectory: Bool
+        public let isDirectory: Bool
     }
 
     /// Which machine the rows describe.
@@ -37,13 +50,13 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// microseconds, and the panel already re-reads on a two-second timer. A
     /// remote tree cannot work that way — every listing is an ssh round trip —
     /// so its rows come from a cache that fills in behind the view.
-    enum Source: Equatable {
+    public enum Source: Equatable {
         case local
         case remote(RemoteShellDestination)
     }
 
     /// What the panel has to say beyond its rows.
-    enum Status: Equatable {
+    public enum Status: Equatable {
         case ready
         /// A remote listing is in flight and there is nothing to show yet.
         case loading
@@ -53,14 +66,14 @@ final class FileTreeModel: nonisolated ObservableObject {
         case unreachable(String)
     }
 
-    @Published private(set) var rootPath = ""
-    @Published private(set) var items: [Item] = []
-    @Published private(set) var source = Source.local
-    @Published private(set) var status = Status.ready
+    @Published public private(set) var rootPath = ""
+    @Published public private(set) var items: [Item] = []
+    @Published public private(set) var source = Source.local
+    @Published public private(set) var status = Status.ready
     /// Path of the row currently being renamed inline, if any.
-    @Published private(set) var renamingPath: String?
+    @Published public private(set) var renamingPath: String?
     /// The pending new-file/folder input row, if any.
-    @Published private(set) var draft: Draft?
+    @Published public private(set) var draft: Draft?
     private var expanded: Set<String> = []
 
     /// Listings fetched from a remote host, with when they arrived. Cleared
@@ -85,32 +98,32 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// is exactly what the local read produces, so there is nothing to convert.
     private typealias Entry = RemoteFileService.Entry
 
-    var rootName: String {
+    public var rootName: String {
         (rootPath as NSString).lastPathComponent
     }
 
     /// The connection the rows come from, when they do not come from this
     /// machine. Passed along when a row is opened so the tab reads the file
     /// over the same connection.
-    var remoteDestination: RemoteShellDestination? {
+    public var remoteDestination: RemoteShellDestination? {
         guard case .remote(let destination) = source else { return nil }
         return destination
     }
 
     /// The host whose files are shown, when they are not this machine's.
-    var remoteHost: String? { remoteDestination?.host }
+    public var remoteHost: String? { remoteDestination?.host }
 
     /// Whether the tree can be edited. Terminal only creates, renames, and
     /// trashes files it can reach through the file system.
-    var isEditable: Bool { source == .local }
+    public var isEditable: Bool { source == .local }
 
-    func isExpanded(_ item: Item) -> Bool {
+    public func isExpanded(_ item: Item) -> Bool {
         expanded.contains(item.path)
     }
 
     /// Points the tree at `root` on this machine (collapsing everything if it
     /// moved) and re-reads visible directories. Cheap when nothing changed.
-    func sync(root: String) {
+    public func sync(root: String) {
         leaveHost(unless: .local)
         move(to: root, source: .local)
         rebuild()
@@ -123,7 +136,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// When it could not be established the tree roots at the directory an ssh
     /// login lands in: the far side of the connection is still browsable, it
     /// just does not follow the remote `cd`.
-    func sync(remote destination: RemoteShellDestination, directory: String?) {
+    public func sync(remote destination: RemoteShellDestination, directory: String?) {
         leaveHost(unless: .remote(destination))
         guard let root = directory ?? loginDirectory else {
             move(to: "", source: .remote(destination))
@@ -155,7 +168,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// Tries the host again after a failure. The tree is otherwise left alone
     /// once a connection fails, so a host that is down does not become an ssh
     /// attempt every two seconds for as long as the panel is open.
-    func retry() {
+    public func retry() {
         guard case .unreachable = status else { return }
         status = .ready
         remoteListings = [:]
@@ -186,7 +199,7 @@ final class FileTreeModel: nonisolated ObservableObject {
         generation &+= 1
     }
 
-    func toggle(_ item: Item) {
+    public func toggle(_ item: Item) {
         guard item.isDirectory else { return }
         if !expanded.insert(item.path).inserted {
             expanded.remove(item.path)
@@ -200,7 +213,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// the panel to have hidden them: a remote row's path is an absolute path
     /// on the *other* machine, and running one of these against it would
     /// quietly rename or trash whatever happens to sit at the same path here.
-    func moveToTrash(_ item: Item) {
+    public func moveToTrash(_ item: Item) {
         guard isEditable else { return }
         do {
             try FileManager.default.trashItem(
@@ -210,7 +223,7 @@ final class FileTreeModel: nonisolated ObservableObject {
         } catch {
             presentError(
                 String(
-                    localized: "Couldn’t move “\(item.name)” to the Trash.",
+                    localized: "Couldn’t move “\(item.name)” to the Trash.", bundle: .module,
                     comment: "File operation error. The placeholder is a file or folder name."
                 ),
                 error.localizedDescription
@@ -221,12 +234,12 @@ final class FileTreeModel: nonisolated ObservableObject {
 
     // MARK: - Rename
 
-    func beginRename(_ item: Item) {
+    public func beginRename(_ item: Item) {
         guard isEditable else { return }
         renamingPath = item.path
     }
 
-    func cancelRename() {
+    public func cancelRename() {
         renamingPath = nil
     }
 
@@ -235,15 +248,15 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// absolute path when the file actually moved, so callers can follow it
     /// (e.g. re-point open tabs).
     @discardableResult
-    func rename(_ item: Item, to newName: String) -> String? {
+    public func rename(_ item: Item, to newName: String) -> String? {
         renamingPath = nil
         guard isEditable else { return nil }
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != item.name else { return nil }
         guard !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
             presentError(
-                String(localized: "Couldn’t rename to “\(trimmed)”."),
-                String(localized: "A name can’t contain “/” or be “.” or “..”.")
+                String(localized: "Couldn’t rename to “\(trimmed)”.", bundle: .module),
+                String(localized: "A name can’t contain “/” or be “.” or “..”.", bundle: .module)
             )
             return nil
         }
@@ -255,8 +268,8 @@ final class FileTreeModel: nonisolated ObservableObject {
         let caseOnlyChange = trimmed.lowercased() == item.name.lowercased()
         guard caseOnlyChange || !fm.fileExists(atPath: dest) else {
             presentError(
-                String(localized: "Couldn’t rename to “\(trimmed)”."),
-                String(localized: "An item named “\(trimmed)” already exists here.")
+                String(localized: "Couldn’t rename to “\(trimmed)”.", bundle: .module),
+                String(localized: "An item named “\(trimmed)” already exists here.", bundle: .module)
             )
             return nil
         }
@@ -264,7 +277,7 @@ final class FileTreeModel: nonisolated ObservableObject {
             try fm.moveItem(atPath: item.path, toPath: dest)
             remapExpanded(from: item.path, to: dest)
         } catch {
-            presentError(String(localized: "Couldn’t rename to “\(trimmed)”."), error.localizedDescription)
+            presentError(String(localized: "Couldn’t rename to “\(trimmed)”.", bundle: .module), error.localizedDescription)
             return nil
         }
         rebuild()
@@ -288,12 +301,12 @@ final class FileTreeModel: nonisolated ObservableObject {
     // MARK: - Create (inline draft)
 
     /// Opens an inline input row for a new file inside `directory`.
-    func beginNewFile(in directory: String) {
+    public func beginNewFile(in directory: String) {
         startDraft(in: directory, isDirectory: false)
     }
 
     /// Opens an inline input row for a new folder inside `directory`.
-    func beginNewFolder(in directory: String) {
+    public func beginNewFolder(in directory: String) {
         startDraft(in: directory, isDirectory: true)
     }
 
@@ -306,7 +319,7 @@ final class FileTreeModel: nonisolated ObservableObject {
         rebuild()
     }
 
-    func cancelDraft() {
+    public func cancelDraft() {
         guard draft != nil else { return }
         draft = nil
         rebuild()
@@ -316,7 +329,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     /// cancels (matching VS Code). Returns the new file's path — for files
     /// only — so the caller can open it.
     @discardableResult
-    func commitDraft(name: String) -> String? {
+    public func commitDraft(name: String) -> String? {
         guard let draft else { return nil }
         self.draft = nil
         guard isEditable else { return nil }
@@ -324,8 +337,8 @@ final class FileTreeModel: nonisolated ObservableObject {
         guard !trimmed.isEmpty else { rebuild(); return nil }
         guard !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
             presentError(
-                String(localized: "Couldn’t create “\(trimmed)”."),
-                String(localized: "A name can’t contain “/” or be “.” or “..”.")
+                String(localized: "Couldn’t create “\(trimmed)”.", bundle: .module),
+                String(localized: "A name can’t contain “/” or be “.” or “..”.", bundle: .module)
             )
             rebuild()
             return nil
@@ -334,8 +347,8 @@ final class FileTreeModel: nonisolated ObservableObject {
         let fm = FileManager.default
         guard !fm.fileExists(atPath: dest) else {
             presentError(
-                String(localized: "Couldn’t create “\(trimmed)”."),
-                String(localized: "An item named “\(trimmed)” already exists here.")
+                String(localized: "Couldn’t create “\(trimmed)”.", bundle: .module),
+                String(localized: "An item named “\(trimmed)” already exists here.", bundle: .module)
             )
             rebuild()
             return nil
@@ -345,14 +358,14 @@ final class FileTreeModel: nonisolated ObservableObject {
             do {
                 try fm.createDirectory(atPath: dest, withIntermediateDirectories: false)
             } catch {
-                presentError(String(localized: "Couldn’t create the folder."), error.localizedDescription)
+                presentError(String(localized: "Couldn’t create the folder.", bundle: .module), error.localizedDescription)
             }
         } else if fm.createFile(atPath: dest, contents: nil) {
             createdFile = dest
         } else {
             presentError(
-                String(localized: "Couldn’t create the file."),
-                String(localized: "It could not be written to disk.")
+                String(localized: "Couldn’t create the file.", bundle: .module),
+                String(localized: "It could not be written to disk.", bundle: .module)
             )
         }
         rebuild()
@@ -360,11 +373,7 @@ final class FileTreeModel: nonisolated ObservableObject {
     }
 
     private func presentError(_ messageText: String, _ informativeText: String) {
-        let alert = NSAlert()
-        alert.messageText = messageText
-        alert.informativeText = informativeText
-        alert.alertStyle = .warning
-        alert.runModal()
+        reportFailure(messageText, informativeText)
     }
 
     private func rebuild() {

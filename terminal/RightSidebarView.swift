@@ -7,13 +7,25 @@ import AppKit
 import SwiftUI
 import TerminalCore
 
+/// How the file tree reports a failed rename, create, or delete. The model
+/// itself has no window — see ``FileTreeModel/FailureReporter`` — so the alert
+/// lives out here with the rest of the view layer.
+@MainActor
+private func presentFileTreeFailure(_ message: String, _ detail: String) {
+    let alert = NSAlert()
+    alert.messageText = message
+    alert.informativeText = detail
+    alert.alertStyle = .warning
+    alert.runModal()
+}
+
 /// Right sidebar: hidden by default, toggled from the terminal's corner
 /// button or ⇧⌘B. Files/Git switch via tabs along its top, otty-style.
 struct RightSidebarView: View {
     @ObservedObject var manager: TerminalManager
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
-    @StateObject private var fileTree = FileTreeModel()
+    @StateObject private var fileTree = FileTreeModel(reportFailure: presentFileTreeFailure)
     @StateObject private var git = GitStatusModel()
     @StateObject private var compare = GitCompareModel()
     @StateObject private var info = SessionInfoModel()
@@ -71,19 +83,7 @@ struct RightSidebarView: View {
                     tabBar
                     switch manager.panelTab {
                     case .files:
-                        FileTreePanel(
-                            model: fileTree,
-                            git: git,
-                            session: manager.selectedSession,
-                            rootBadge: rootBadge,
-                            currentFilePath: openFilePath,
-                            openFile: { manager.openFile($0, remote: fileTree.remoteDestination) },
-                            openToSide: {
-                                manager.openFileToSide($0, remote: fileTree.remoteDestination)
-                            },
-                            onRename: { manager.fileRenamed(from: $0, to: $1) },
-                            refreshGitStatus: { git.refresh() }
-                        )
+                        filesPanel
                     case .git:
                         GitPanel(
                             model: git,
@@ -183,6 +183,22 @@ struct RightSidebarView: View {
         // Native button and control labels without a designed hierarchy use
         // the configured base size directly.
         .environment(\.font, .system(size: CGFloat(settings.sidebarFontSize)))
+    }
+
+    /// Built here rather than inline in the panel switch: as one branch of that
+    /// expression it is large enough for the type checker to give up on.
+    private var filesPanel: some View {
+        FileTreePanel(
+            model: fileTree,
+            git: git,
+            session: manager.selectedSession,
+            rootBadge: rootBadge,
+            currentFilePath: openFilePath,
+            openFile: { manager.openFile($0, remote: fileTree.remoteDestination) },
+            openToSide: { manager.openFileToSide($0, remote: fileTree.remoteDestination) },
+            onRename: { manager.fileRenamed(from: $0, to: $1) },
+            refreshGitStatus: { git.refresh() }
+        )
     }
 
     private var tabBar: some View {
