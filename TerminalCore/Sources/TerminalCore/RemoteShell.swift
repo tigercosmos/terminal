@@ -1,6 +1,6 @@
 //
 //  RemoteShell.swift
-//  terminal
+//  TerminalCore
 //
 
 import Darwin
@@ -13,22 +13,22 @@ import Foundation
 /// being their shell — so the panels open a second connection to the same
 /// place. What keeps that from being a second login is connection
 /// multiplexing; see ``RemoteFileService``.
-nonisolated struct RemoteShellDestination: Equatable, Hashable, Sendable {
+public nonisolated struct RemoteShellDestination: Equatable, Hashable, Sendable {
     /// The destination operand exactly as the user wrote it: a bare host, a
     /// `user@host`, or an alias their `ssh_config` resolves.
-    let destination: String
+    public let destination: String
 
     /// The part of the user's own ssh command line that decides *which* host
     /// is reached and how it authenticates. Options that shape the interactive
     /// session instead — a forwarded port, a pseudo-terminal, a background
     /// master — are dropped: they do nothing for a one-shot command, and `-N`
     /// would refuse to run one at all.
-    let reachOptions: [String]
+    public let reachOptions: [String]
 
     /// The hostname alone, for the panel header. Best-effort: an `ssh_config`
     /// alias is shown as the user typed it, since only ssh knows what it
     /// resolves to.
-    var host: String {
+    public var host: String {
         var value = destination
         var hasScheme = false
         if let scheme = value.range(of: "://") {
@@ -58,7 +58,7 @@ nonisolated struct RemoteShellDestination: Equatable, Hashable, Sendable {
     /// resolving names, and a false match only means the panels believe a
     /// directory the remote shell reported, which is where they are pointed
     /// anyway.
-    func matches(reportedHost: String) -> Bool {
+    public func matches(reportedHost: String) -> Bool {
         func firstLabel(_ name: String) -> Substring {
             name.prefix { $0 != "." }
         }
@@ -82,7 +82,7 @@ nonisolated struct RemoteShellDestination: Equatable, Hashable, Sendable {
 /// connection. The arguments themselves come from a command the user ran in
 /// their own shell, and are only ever passed to ssh as an argument vector —
 /// never through a shell of Terminal's own.
-func remoteShellDestination(foregroundPid pid: pid_t) -> RemoteShellDestination? {
+public func remoteShellDestination(foregroundPid pid: pid_t) -> RemoteShellDestination? {
     guard pid > 0,
           let executable = processExecutablePath(pid: pid),
           (executable as NSString).lastPathComponent == "ssh",
@@ -99,15 +99,15 @@ func remoteShellDestination(foregroundPid pid: pid_t) -> RemoteShellDestination?
 /// what ties a shell over there to a terminal over here. The addresses are
 /// deliberately not part of it: a connection that crossed a NAT is described by
 /// one address here and another there, and the ports are what survive.
-nonisolated struct SSHConnectionPorts: Equatable, Hashable, Sendable {
-    let client: Int
-    let server: Int
+public nonisolated struct SSHConnectionPorts: Equatable, Hashable, Sendable {
+    public let client: Int
+    public let server: Int
 }
 
 /// Enough about a terminal's ssh process to recognize, on the far side, the
 /// shell it is talking to.
-nonisolated struct SSHConnection: Equatable, Hashable, Sendable {
-    let ports: [SSHConnectionPorts]
+public nonisolated struct SSHConnection: Equatable, Hashable, Sendable {
+    public let ports: [SSHConnectionPorts]
 
     /// How long the ssh process has been running. A shell the host started for
     /// this connection cannot be older than the connection, which is what
@@ -115,14 +115,14 @@ nonisolated struct SSHConnection: Equatable, Hashable, Sendable {
     /// of whichever connection started it, days ago and now long gone — a
     /// distinction the ports alone cannot make, since the kernel hands out the
     /// same ephemeral port numbers again eventually.
-    let age: TimeInterval
+    public let age: TimeInterval
 }
 
 /// The connections `pid` holds open, if it holds any.
 ///
 /// Read from the kernel rather than by running `lsof`: this is asked again
 /// every few seconds while a terminal sits inside ssh, and it is two syscalls.
-func sshConnection(pid: pid_t) -> SSHConnection? {
+public func sshConnection(pid: pid_t) -> SSHConnection? {
     guard pid > 0, let started = processStartTime(pid: pid) else { return nil }
     let ports = establishedTCPPorts(pid: pid)
     guard !ports.isEmpty else { return nil }
@@ -136,7 +136,7 @@ func sshConnection(pid: pid_t) -> SSHConnection? {
 /// way round. Read fresh rather than cached because macOS renames a machine
 /// out from under itself when it joins a network, and a stale answer would
 /// leave a perfectly local shell looking like a remote one.
-func isLocalHostname(_ name: String) -> Bool {
+public func isLocalHostname(_ name: String) -> Bool {
     let reported = name.prefix { $0 != "." }
     guard !reported.isEmpty else { return true }
     if reported.compare("localhost", options: .caseInsensitive) == .orderedSame { return true }
@@ -172,7 +172,7 @@ private let sshReachFlags: Set<Character> = ["4", "6", "C"]
 /// Splits an ssh argument vector into the destination and the options that
 /// reach it. Returns nil when there is no destination operand — `ssh -V`, or
 /// a command line Terminal could not follow.
-private func parseSSHArguments(_ arguments: [String]) -> RemoteShellDestination? {
+func parseSSHArguments(_ arguments: [String]) -> RemoteShellDestination? {
     var reachOptions: [String] = []
     var index = 1
     while index < arguments.count {
@@ -321,7 +321,7 @@ extension RemoteShellDestination {
     /// against the way the user spelled it, so an `ssh_config` alias places a
     /// directory correctly. A shell one ssh further out answers with a third
     /// name and is still refused, which is the case the comparison exists for.
-    nonisolated func namesSameHost(reported: String, confirmed: String) -> Bool {
+    public nonisolated func namesSameHost(reported: String, confirmed: String) -> Bool {
         func firstLabel(_ name: String) -> Substring { name.prefix { $0 != "." } }
         let reportedLabel = firstLabel(reported)
         return !reportedLabel.isEmpty

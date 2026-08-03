@@ -10,6 +10,7 @@ import GhosttyTheme
 import IOSurface
 import Metal
 import QuartzCore
+import TerminalCore
 
 /// Terminal's Alacritty backend: a `TerminalBackendSurface` rendered with Metal
 /// from a CoreText glyph atlas on top of the `alacritty_terminal` crate.

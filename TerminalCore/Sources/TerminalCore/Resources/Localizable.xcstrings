@@ -1,0 +1,89 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Terminal couldn’t connect to this host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal はこのホストに接続できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 无法连接到此主机。"
+          }
+        }
+      }
+    },
+    "That path couldn’t be read on the remote host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートホスト上でそのパスを読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在远程主机上读取该路径。"
+          }
+        }
+      }
+    },
+    "The remote shell did not report a directory." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートシェルはディレクトリを報告しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程 Shell 未报告目录。"
+          }
+        }
+      }
+    },
+    "…and %lld more lines" : {
+      "comment" : "Appended when a remote command's output is shortened before being shown. The placeholder is the number of lines left out.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "…and %lld more line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "…and %lld more lines"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…他 %lld 行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "…另有 %lld 行"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

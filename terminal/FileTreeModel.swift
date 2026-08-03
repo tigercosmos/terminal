@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import Foundation
+import TerminalCore
 
 /// Flattened, lazily-expanded view of a directory tree, on this machine or on
 /// the host a terminal has ssh'd into.

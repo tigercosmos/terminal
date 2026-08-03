@@ -1,6 +1,6 @@
 //
 //  ProcessWorkingDirectory.swift
-//  terminal
+//  TerminalCore
 //
 
 import Darwin
@@ -11,7 +11,7 @@ import Foundation
 /// A backend that reports OSC 7 tells Terminal where the shell thinks it is, which
 /// is authoritative and free. This is the fallback while a backend is waiting
 /// for its first report, and the backstop for shells with no OSC 7 integration.
-func processWorkingDirectory(pid: pid_t) -> String? {
+public func processWorkingDirectory(pid: pid_t) -> String? {
     guard pid > 0 else { return nil }
     var info = proc_vnodepathinfo()
     let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)

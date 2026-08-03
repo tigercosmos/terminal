@@ -1,6 +1,6 @@
 //
 //  RemoteFileService.swift
-//  terminal
+//  TerminalCore
 //
 
 import Foundation
@@ -18,22 +18,27 @@ import Foundation
 /// Nothing here is stateful: a destination's socket path is derived from the
 /// destination itself, so a master left running by an earlier launch is picked
 /// up again rather than replaced.
-enum RemoteFileService {
-    struct Entry: Equatable, Sendable {
-        let name: String
-        let isDirectory: Bool
+public enum RemoteFileService {
+    public struct Entry: Equatable, Sendable {
+        public let name: String
+        public let isDirectory: Bool
+
+        public init(name: String, isDirectory: Bool) {
+            self.name = name
+            self.isDirectory = isDirectory
+        }
     }
 
     /// A directory's contents together with the absolute path the host
     /// resolved it to. The path is what lets a caller ask for a directory it
     /// cannot yet name — `.` right after connecting — and learn where it
     /// landed from the same answer that carries the rows.
-    struct Listing: Equatable, Sendable {
-        let directory: String
-        let entries: [Entry]
+    public struct Listing: Equatable, Sendable {
+        public let directory: String
+        public let entries: [Entry]
     }
 
-    enum Failure: Error, Equatable, Sendable {
+    public enum Failure: Error, Equatable, Sendable {
         /// ssh could not reach the host, or would have had to ask the user
         /// something to get there. The panel shows this in place of the tree.
         case unreachable(String)
@@ -45,7 +50,7 @@ enum RemoteFileService {
     /// Runs one of these calls off the main actor and hands back something
     /// that can cross back: a bare `Error` cannot, so anything unexpected is
     /// folded into ``Failure`` rather than escaping as an existential.
-    nonisolated static func attempt<Value: Sendable>(
+    public nonisolated static func attempt<Value: Sendable>(
         _ work: () throws -> Value
     ) -> Result<Value, Failure> {
         do {
@@ -62,7 +67,7 @@ enum RemoteFileService {
     ///
     /// A symlink is reported as whatever it points at, so a link to a folder
     /// expands like the folder it is — which is what `ls -p` would not do.
-    nonisolated static func entries(
+    public nonisolated static func entries(
         in directory: String, on destination: RemoteShellDestination
     ) throws -> Listing {
         let output = try run(script: listScript, arguments: [directory], on: destination)
@@ -85,7 +90,8 @@ enum RemoteFileService {
         }
         guard let resolved, resolved.hasPrefix("/") else {
             throw Failure.pathUnavailable(
-                String(localized: "The remote shell did not report a directory.")
+                String(localized: "The remote shell did not report a directory.",
+                       bundle: .module)
             )
         }
         return Listing(directory: resolved, entries: entries)
@@ -106,7 +112,7 @@ enum RemoteFileService {
 
     /// The first `maxBytes` of `path`, and whether the file went past them.
     /// The ceiling is the caller's, so a file that opens locally opens here.
-    nonisolated static func contents(
+    public nonisolated static func contents(
         of path: String, on destination: RemoteShellDestination, maxBytes: Int
     ) throws -> (data: Data, isTruncated: Bool) {
         // The redirect rather than an argument keeps a name that begins with
@@ -126,7 +132,7 @@ enum RemoteFileService {
     /// Closes the multiplexed master, if Terminal opened one. Called when the
     /// panels stop following a destination, so a connection does not outlive
     /// the reason it existed by the whole `ControlPersist` window.
-    nonisolated static func disconnect(from destination: RemoteShellDestination) {
+    public nonisolated static func disconnect(from destination: RemoteShellDestination) {
         guard let controlPath = controlPath(for: destination) else { return }
         _ = runSSH(
             arguments: ["-o", "ControlPath=\(controlPath)", "-O", "exit", destination.destination]
@@ -142,7 +148,7 @@ enum RemoteFileService {
     /// how to quote unusual names, and because `[ -d ]` follows symlinks while
     /// `ls -p` does not. The unmatched-glob case is caught by the existence
     /// test: a shell with no matches passes the pattern through literally.
-    private static let listScript = """
+    private nonisolated static let listScript = """
         cd -- "$1" 2>/dev/null || exit 3; \
         printf "p%s\\0" "$(pwd)"; \
         for entry in .* *; do \
@@ -165,7 +171,7 @@ enum RemoteFileService {
     /// `maxBytes`, when set, caps how much of stdout is retained; the pipe is
     /// drained past it either way, because a remote command nobody reads
     /// eventually blocks. `input` is fed to the command's stdin.
-    nonisolated static func execute(
+    public nonisolated static func execute(
         script: String, arguments: [String], maxBytes: Int? = nil,
         input: Data? = nil, on destination: RemoteShellDestination
     ) -> (status: Int32, stdout: Data, stderr: String) {
@@ -229,12 +235,14 @@ enum RemoteFileService {
         case 255, -1:
             throw Failure.unreachable(
                 message(from: result.stderr)
-                    ?? String(localized: "Terminal couldn’t connect to this host.")
+                    ?? String(localized: "Terminal couldn’t connect to this host.",
+                              bundle: .module)
             )
         default:
             throw Failure.pathUnavailable(
                 message(from: result.stderr)
-                    ?? String(localized: "That path couldn’t be read on the remote host.")
+                    ?? String(localized: "That path couldn’t be read on the remote host.",
+                              bundle: .module)
             )
         }
     }
@@ -351,14 +359,15 @@ enum RemoteFileService {
     /// control characters come out and both the line count and each line's
     /// length are capped; a banner, a motd, or a hostile diagnostic should not
     /// be able to redraw the panel or run it out of memory.
-    nonisolated static func sanitized(_ text: String, maxLines: Int = 20) -> String {
+    public nonisolated static func sanitized(_ text: String, maxLines: Int = 20) -> String {
         let lines = visibleLines(of: text)
         let kept = lines.prefix(maxLines).map { line in
             line.count > 500 ? String(line.prefix(500)) + "…" : line
         }
         let elided = lines.count - kept.count
         return elided > 0
-            ? (kept + [String(localized: "…and \(elided) more lines")]).joined(separator: "\n")
+            ? (kept + [String(localized: "…and \(elided) more lines", bundle: .module)])
+                .joined(separator: "\n")
             : kept.joined(separator: "\n")
     }
 

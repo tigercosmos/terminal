@@ -245,6 +245,8 @@ with Japanese and Simplified Chinese maintained in String Catalogs. See
 - Mark user content, file names, and terminal output `Text(verbatim:)` so they
   are not treated as lookup keys.
 - After adding text, build once, then translate the new entry.
+- `TerminalCore` has its own catalog, so a `String(localized:)` there passes
+  `bundle: .module`. `make test-swift` fails on an untranslated key in it.
 
 ## Untrusted input
 
@@ -299,7 +301,8 @@ the app's logic that compiles against Foundation alone, and `swift test
 no signing, no launch. Prefer a test there over a manual pass whenever the
 behavior can be reached without a window: a diff alignment, a glob, a signed
 request. Code that reaches AppKit stays in the app target until the AppKit part
-can be lifted out of it.
+can be lifted out of it; text a user reads does not stop a move, but it does
+mean the strings move too — see [LOCALIZATION.md](LOCALIZATION.md).
 
 The Rust bridge has `cargo test` suites colocated with the code in
 `#[cfg(test)]` modules (`make test-rust`), and `web/` is type-checked

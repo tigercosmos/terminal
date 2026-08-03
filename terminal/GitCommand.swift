@@ -5,6 +5,7 @@
 
 import Dispatch
 import Foundation
+import TerminalCore
 
 /// A directory Git runs in, together with the machine it is on.
 ///

@@ -12,6 +12,10 @@ import PackageDescription
 // — so a file moving in or out of here compiles the same way on both sides.
 let package = Package(
     name: "TerminalCore",
+    // The package owns a second String Catalog: Xcode extracts
+    // `String(localized:)` per target and never reaches into package sources
+    // from the app's catalog. See LOCALIZATION.md.
+    defaultLocalization: "en",
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "TerminalCore", targets: ["TerminalCore"])
@@ -19,6 +23,7 @@ let package = Package(
     targets: [
         .target(
             name: "TerminalCore",
+            resources: [.process("Resources/Localizable.xcstrings")],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(

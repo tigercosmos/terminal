@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TerminalCore
 
 /// Reads the bytes a diff needs — out of a Git object or off the working tree —
 /// under the rules a diff view depends on: a size ceiling, no embedded NULs,
