@@ -23,7 +23,7 @@ public enum RemoteFileService {
         public let name: String
         public let isDirectory: Bool
 
-        public init(name: String, isDirectory: Bool) {
+        public nonisolated init(name: String, isDirectory: Bool) {
             self.name = name
             self.isDirectory = isDirectory
         }

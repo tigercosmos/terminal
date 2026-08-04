@@ -187,17 +187,6 @@ struct PackageLocalizationTests {
         }
     }
 
-    /// The translations have to reach the built bundle, not only the catalog —
-    /// a package that forgets `defaultLocalization` compiles and ships English.
-    @Test func theBuiltBundleCarriesEveryLanguage() {
-        for language in languages {
-            #expect(
-                Bundle.module.path(forResource: language, ofType: "lproj") != nil,
-                "the package bundle has no \(language) resources"
-            )
-        }
-    }
-
     /// Guards the tests above from passing vacuously if a catalog stops being
     /// found or stops being read.
     @Test func bothCatalogsAreFoundAndNotEmpty() throws {

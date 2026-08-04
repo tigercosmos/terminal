@@ -6,7 +6,6 @@
 import Combine
 import Dispatch
 import Foundation
-import TerminalCore
 
 /// Loads repository state in response to explicit UI events and performs
 /// source-control operations without blocking the UI.
