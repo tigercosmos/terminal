@@ -15,6 +15,10 @@ import TerminalCore
 ///
 /// Everything here is behind `#if DEBUG` *and* `TERMINAL_AUTOMATION=1` on the
 /// app's launch. See ``TerminalCLIAutomation`` for why both.
+///
+/// The failure messages are deliberately not localized: they are read by
+/// whoever is running the driver, never by a user of the app, and putting them
+/// in the catalog would put developer text in front of translators.
 extension TerminalCLIService {
     /// Handles `request` if it is an automation request, and says whether it
     /// did. Called from the ordinary request handler, after the signature and

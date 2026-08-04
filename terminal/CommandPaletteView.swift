@@ -104,7 +104,6 @@ private final class PalettePointerSelectionController: ObservableObject {
 /// automation action that drifted from the real command would be worse than
 /// no automation at all. `openSettings` is the one entry a view has and a
 /// CLI request does not; it is omitted when there is nothing to call.
-@MainActor
 func paletteCommands(
     manager: TerminalManager, openSettings: (() -> Void)? = nil
 ) -> [PaletteCommand] {

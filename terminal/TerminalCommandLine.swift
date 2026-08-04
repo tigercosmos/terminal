@@ -160,7 +160,7 @@ private final class AppConnection {
         guard let replyURL = TerminalCLIAutomation.replyURL(
             stateURL: stateURL, nonce: request.nonce
         ) else {
-            throw CLIError.message(String(localized: "Could not name a reply file."))
+            throw CLIError.message("Could not name a reply file.")
         }
         try? FileManager.default.removeItem(at: replyURL)
         send(request)
@@ -177,7 +177,7 @@ private final class AppConnection {
             return reply.text ?? ""
         }
         throw CLIError.message(
-            String(localized: "Terminal did not answer. Was it launched with TERMINAL_AUTOMATION=1?")
+            "Terminal did not answer. Was it launched with TERMINAL_AUTOMATION=1?"
         )
     }
     #endif
@@ -590,9 +590,10 @@ private func run() throws {
             let names = TerminalCLIAutomationAction.allCases
                 .map { $0.rawValue.replacingOccurrences(of: "automation.", with: "") }
                 .joined(separator: ", ")
-            throw CLIError.message(
-                String(localized: "Usage: terminal +automation <\(names)> [argument]")
-            )
+            // Not localized: everything under `+automation` is debug-only
+            // developer text, and putting it in the catalog would put it in
+            // front of translators.
+            throw CLIError.message("Usage: terminal +automation <\(names)> [argument]")
         }
         let output = try AppConnection().automate(
             action: action.rawValue, payload: Array(rest.dropFirst())

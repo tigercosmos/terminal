@@ -10,7 +10,6 @@ import TerminalCore
 /// How the file tree reports a failed rename, create, or delete. The model
 /// itself has no window — see ``FileTreeModel/FailureReporter`` — so the alert
 /// lives out here with the rest of the view layer.
-@MainActor
 private func presentFileTreeFailure(_ message: String, _ detail: String) {
     let alert = NSAlert()
     alert.messageText = message

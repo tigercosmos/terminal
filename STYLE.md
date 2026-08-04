@@ -246,7 +246,8 @@ with Japanese and Simplified Chinese maintained in String Catalogs. See
   are not treated as lookup keys.
 - After adding text, build once, then translate the new entry.
 - `TerminalCore` has its own catalog, so a `String(localized:)` there passes
-  `bundle: .module`. `make test-swift` fails on an untranslated key in it.
+  `bundle: .module`. Moving code across moves its catalog entry too;
+  `make test-swift` fails on one left half way.
 
 ## Untrusted input
 

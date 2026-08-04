@@ -28,8 +28,11 @@ way — Xcode shows it under the package in the project navigator. Two catalogs
 rather than one because Xcode extracts `String(localized:)` per target and
 never reaches into a package’s sources from the app’s catalog: a string that
 moved into the package and left its entry behind would ship as untranslated
-English with nothing to warn you. `make test-swift` fails when a key in the
-package’s catalog has no translation, which is that warning.
+English with nothing to warn you. `make test-swift` reads both catalogs and
+fails when a key the package uses still has its translations in the app’s, or
+when one language was moved across and another was not. Text that is simply
+new and not yet translated does not fail — that is the ordinary “build once,
+then translate the new entry” rule, and it is the same on both sides.
 
 Keep placeholders such as `%@` and `%lld` intact. Preserve product and
 technology names such as Terminal, Git, Finder, and VS Code, as well as keyboard
@@ -45,8 +48,8 @@ the source code.
 1. In the project editor, add the language under **Info → Localizations**.
 2. Add that language to all three app String Catalogs and to `TerminalCore`’s,
    and add it to `languages` in
-   `TerminalCore/Tests/TerminalCoreTests/RemoteShellTests.swift` so the
-   package’s catalog is checked against it too.
+   `TerminalCore/Tests/TerminalCoreTests/RemoteShellTests.swift` so a
+   half-moved entry is caught for it too.
 3. Translate every entry, including plural variants and the privacy prompt.
 4. Run the app in that language and check menus, settings, the sidebars,
    dialogs, and `terminal +themes`.
