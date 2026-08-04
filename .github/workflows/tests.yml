@@ -19,18 +19,23 @@ concurrency:
 jobs:
   swift:
     name: TerminalCore
-    runs-on: macos-15
+    # A hosted image rather than the `xcode-27` runner `release.yml` uses: the
+    # package needs a Swift 6.2 toolchain and nothing else — no Xcode project,
+    # no signing, no submodules — and proving that on a stock runner is the
+    # point of having moved the logic there. `macos-26` is the first hosted
+    # image new enough; `macos-15` ships Swift 6.1 and cannot read the
+    # manifest's tools version.
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
-      # No submodules and no Xcode project: the package is a package, which is
-      # what keeps this job to a few seconds.
+      - uses: actions/checkout@v6
       - run: swift test --package-path TerminalCore
 
   rust:
     name: Alacritty bridge
+    # Needs no Xcode at all, so it stays on the image it was proven on.
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: cargo test --locked --manifest-path Vendor/alacritty-bridge/Cargo.toml
       - run: cargo clippy --locked --manifest-path Vendor/alacritty-bridge/Cargo.toml --all-targets -- -D warnings
         # The bridge carries a couple of long-standing findings; report them
@@ -41,7 +46,7 @@ jobs:
     name: Website
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: cd web && bun run build && bun run typecheck
