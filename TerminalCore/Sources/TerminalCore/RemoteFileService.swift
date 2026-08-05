@@ -286,13 +286,16 @@ public enum RemoteFileService {
         let outData = PipeData()
         let errData = PipeData()
         let readers = DispatchGroup()
+        // Read at the caller's priority: it blocks on these below, so pinning
+        // them to utility inverts the priority of a user-initiated listing.
+        let readerQoS = DispatchQoS.QoSClass(rawValue: qos_class_self()) ?? .utility
         readers.enter()
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: readerQoS).async {
             outData.value = read(stdout.fileHandleForReading, retaining: maxBytes)
             readers.leave()
         }
         readers.enter()
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: readerQoS).async {
             errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }

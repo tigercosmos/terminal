@@ -33,6 +33,11 @@ enum PaneContent: nonisolated Identifiable {
         if case .diff = self { return true }
         return false
     }
+
+    var isFile: Bool {
+        if case .file = self { return true }
+        return false
+    }
 }
 
 extension PaneContent {

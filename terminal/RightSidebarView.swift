@@ -1406,15 +1406,19 @@ private struct GitPanel: View {
                     return .handled
                 }
 
-            HStack(spacing: 4) {
-                actionButton(
-                    icon: "checkmark",
-                    title: commitButtonTitle,
-                    enabled: canCommit(includeAll: false),
-                    help: String(localized: "Commit staged changes (⌘Return)"),
-                    action: performPrimaryAction
-                )
-                commitMenu
+            // With nothing staged and a sync waiting, Commit is a dead button
+            // above the one action there is to take. Drop it and let Sync lead.
+            if !showSyncButton || canCommit(includeAll: false) {
+                HStack(spacing: 4) {
+                    actionButton(
+                        icon: "checkmark",
+                        title: commitButtonTitle,
+                        enabled: canCommit(includeAll: false),
+                        help: String(localized: "Commit staged changes (⌘Return)"),
+                        action: performPrimaryAction
+                    )
+                    commitMenu
+                }
             }
 
             if showSyncButton {

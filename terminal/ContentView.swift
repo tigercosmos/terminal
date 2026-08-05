@@ -272,6 +272,11 @@ private struct BottomToolbarView: View {
         return branches
     }
 
+    private var changesAccessibilityValue: String {
+        guard model.totalChangeCount > 0 else { return String(localized: "Clean") }
+        return String(localized: "+\(model.lineAdditions), −\(model.lineDeletions)")
+    }
+
     var body: some View {
         HStack(spacing: 9) {
             if model.isRepo {
@@ -370,12 +375,20 @@ private struct BottomToolbarView: View {
     private var changesButton: some View {
         Button(action: toggleGitPanel) {
             HStack(spacing: 8) {
-                Text(verbatim: "+\(model.lineAdditions)")
-                    .foregroundStyle(Color(red: 0.25, green: 0.73, blue: 0.31))
-                Text(verbatim: "−\(model.lineDeletions)")
-                    .foregroundStyle(Color(red: 1.0, green: 0.48, blue: 0.45))
+                if model.totalChangeCount == 0 {
+                    Circle()
+                        .fill(Color(red: 0.25, green: 0.73, blue: 0.31))
+                        .frame(width: 6, height: 6)
+                    Text("Clean")
+                } else {
+                    Text(verbatim: "+\(model.lineAdditions)")
+                        .foregroundStyle(Color(red: 0.25, green: 0.73, blue: 0.31))
+                        .monospacedDigit()
+                    Text(verbatim: "−\(model.lineDeletions)")
+                        .foregroundStyle(Color(red: 1.0, green: 0.48, blue: 0.45))
+                        .monospacedDigit()
+                }
             }
-            .monospacedDigit()
             .padding(.horizontal, 6)
             .frame(height: 24)
             .background {
@@ -388,7 +401,7 @@ private struct BottomToolbarView: View {
         .onHover { isChangesButtonHovered = $0 }
         .help("Open Changes")
         .accessibilityLabel("Open Changes")
-        .accessibilityValue("+\(model.lineAdditions), −\(model.lineDeletions)")
+        .accessibilityValue(changesAccessibilityValue)
     }
 
     private var branchPicker: some View {
@@ -1158,6 +1171,11 @@ private struct SessionTabsView: View {
             .disabled(project.tabs.count <= 1)
         Button("Close Tabs to the Right") { project.closeToRight(of: tab) }
             .disabled(project.tabs.last?.id == tab.id)
+        Divider()
+        Button("Close Files") { project.closeFiles() }
+            .disabled(!project.hasFiles)
+        Button("Close Diffs") { project.closeDiffs() }
+            .disabled(!project.hasDiffs)
         Divider()
         Button("Close All") { project.closeAll() }
     }

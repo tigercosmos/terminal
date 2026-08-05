@@ -219,13 +219,17 @@ public nonisolated enum GitCommand {
         let outData = PipeData()
         let errData = PipeData()
         let readers = DispatchGroup()
+        // These readers are on the synchronous completion path below. Match
+        // the caller so a user-initiated Git request never waits on utility
+        // threads, while background refreshes keep their lower priority.
+        let readerQoS = DispatchQoS.QoSClass(rawValue: qos_class_self()) ?? .utility
         readers.enter()
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: readerQoS).async {
             outData.value = read(stdout.fileHandleForReading, retaining: maxBytes)
             readers.leave()
         }
         readers.enter()
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: readerQoS).async {
             errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }

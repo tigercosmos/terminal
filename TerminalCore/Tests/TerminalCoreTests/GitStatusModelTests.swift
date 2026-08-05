@@ -64,6 +64,47 @@ struct GitStatusParsingTests {
         #expect(totals.deletions == 0)
     }
 
+    /// `git diff` never reports untracked files, so their lines are counted by
+    /// reading them. A file that Git would call binary contributes nothing,
+    /// and a final line without a trailing newline still counts.
+    @Test func untrackedTextFilesAreCountedAndBinariesAreNot() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("numstat-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try "a\nb\nc\n".write(to: root.appendingPathComponent("three.txt"),
+                              atomically: true, encoding: .utf8)
+        try "no trailing newline".write(to: root.appendingPathComponent("one.txt"),
+                                        atomically: true, encoding: .utf8)
+        try Data([0x89, 0x50, 0x00, 0x01]).write(to: root.appendingPathComponent("blob.bin"))
+
+        let entries = ["three.txt", "one.txt", "blob.bin"].map {
+            GitStatusModel.Entry(path: $0, staged: "?", unstaged: "?")
+        }
+        let total = GitStatusModel.untrackedLineAdditions(for: entries, in: root.path)
+
+        #expect(total == 4)
+    }
+
+    /// A porcelain path is repository text and may try to escape the root.
+    @Test func anUntrackedPathOutsideTheRootIsIgnored() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("numstat-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let outside = root.deletingLastPathComponent()
+            .appendingPathComponent("escaped-\(UUID().uuidString).txt")
+        try "x\ny\n".write(to: outside, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: outside) }
+
+        let entry = GitStatusModel.Entry(
+            path: "../\(outside.lastPathComponent)", staged: "?", unstaged: "?"
+        )
+        #expect(GitStatusModel.untrackedLineAdditions(for: [entry], in: root.path) == 0)
+    }
+
     /// A repository with no commit yet reports `(initial)`, which is not an
     /// OID and must not be shown as one.
     @Test func anUnbornBranchHasNoHead() {
