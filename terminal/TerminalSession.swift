@@ -405,9 +405,10 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
             let path = shellQuote(replayFileURL.path)
             commands.append("if [ -r \(path) ]; then /bin/cat \(path); /bin/rm -f \(path); fi")
         }
-        // Many terminal tools use TERM_PROGRAM as a capability hint. Each
-        // backend advertises a compatible identity so tools select protocols
-        // that Terminal can actually render.
+        // TERMINAL_TERM exposes the actual surface. TERM_PROGRAM remains a
+        // capability hint so tools select protocols Terminal can actually
+        // render.
+        commands.append("export TERMINAL_TERM=\(shellQuote(backend.environmentName))")
         let termProgram = backend.termProgram
         commands.append("export TERM_PROGRAM=\(shellQuote(termProgram.name))")
         if !termProgram.version.isEmpty {
@@ -498,7 +499,10 @@ extension TerminalSession: TerminalBackendEvents {
     func terminalDidRingBell() {
         NSSound.beep()
         guard !surface.hasEffectiveTerminalFocus else { return }
-        TerminalNotificationService.shared.post(message: String(localized: "Terminal bell"))
+        TerminalNotificationService.shared.post(
+            message: String(localized: "Terminal bell"),
+            sessionID: id
+        )
         if !NSApp.isActive {
             NSApp.requestUserAttention(.informationalRequest)
         }
@@ -539,7 +543,7 @@ extension TerminalSession: TerminalBackendEvents {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
-        TerminalNotificationService.shared.post(message: message)
+        TerminalNotificationService.shared.post(message: message, sessionID: id)
     }
 
     /// Schemes a terminal link may open without asking. Everything else is

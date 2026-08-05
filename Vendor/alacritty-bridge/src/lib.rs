@@ -225,9 +225,10 @@ pub struct TerminalConfig {
 // MARK: - OSC interception
 
 /// `alacritty_terminal` handles OSC sequences that mutate its grid, but does
-/// not expose host events for working directories or OSC 9. Termy solves this
-/// at the PTY boundary; Terminal uses the same seam so the emulator still receives
-/// every sequence it understands while app integrations are lifted out first.
+/// not expose host events for working directories or desktop notifications.
+/// Termy solves this at the PTY boundary; Terminal uses the same seam so the
+/// emulator still receives every sequence it understands while app
+/// integrations are lifted out first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OscEvent {
     WorkingDirectory(String),
@@ -346,8 +347,11 @@ impl OscInterceptor {
     }
 
     fn should_consume_payload(&self) -> bool {
-        std::str::from_utf8(&self.buffer)
-            .is_ok_and(|payload| payload.starts_with("7;") || payload.starts_with("9;"))
+        std::str::from_utf8(&self.buffer).is_ok_and(|payload| {
+            payload.starts_with("7;")
+                || payload.starts_with("9;")
+                || payload.starts_with("777;notify;")
+        })
     }
 
     fn parse_payload(&self) -> Option<OscEvent> {
@@ -359,6 +363,10 @@ impl OscInterceptor {
 
         if let Some(value) = payload.strip_prefix("133;") {
             return parse_shell_integration(value);
+        }
+
+        if let Some(value) = payload.strip_prefix("777;notify;") {
+            return parse_osc777_notification(value);
         }
 
         let rest = payload.strip_prefix("9;")?;
@@ -516,6 +524,15 @@ fn parse_progress(value: &str) -> Option<OscEvent> {
         .and_then(|value| value.parse::<u8>().ok())
         .map(|value| value.min(100));
     Some(OscEvent::Progress { state, percent })
+}
+
+/// Rxvt/VTE/Ghostty desktop notifications use
+/// `OSC 777 ; notify ; title ; body ST`. Terminal presents its own app title,
+/// so prefer the body and fall back to the protocol title when no body is sent.
+fn parse_osc777_notification(value: &str) -> Option<OscEvent> {
+    let (title, body) = value.split_once(';').unwrap_or((value, ""));
+    let message = if body.is_empty() { title } else { body };
+    clean_terminal_text(message, 4096).map(OscEvent::Notification)
 }
 
 /// FinalTerm semantic prompt markers, also emitted by modern shell
@@ -2211,6 +2228,7 @@ mod tests {
             "\x1b]7;file://host/Users/example/My%20Project\x07",
             "\x1b]9;4;1;150\x1b\\",
             "\x1b]9;Build complete\x07",
+            "\x1b]777;notify;Grok;Turn complete\x1b\\",
             "\x1b]133;A\x07",
             "\x1b]133;B\x1b\\",
             "\x1b]133;C\x07",
@@ -2229,10 +2247,30 @@ mod tests {
                     percent: Some(100),
                 },
                 OscEvent::Notification("Build complete".to_owned()),
+                OscEvent::Notification("Turn complete".to_owned()),
                 OscEvent::ShellPromptStart,
                 OscEvent::ShellCommandStart,
                 OscEvent::ShellCommandExecuting,
                 OscEvent::ShellCommandFinished(Some(0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_parses_osc777_notification_variants() {
+        let mut interceptor = OscInterceptor::default();
+        let input = concat!(
+            "\x1b]777;notify;Grok;Approval required\x07",
+            "\x1b]777;notify;Task complete\x1b\\",
+        );
+        let (output, events) = intercept(&mut interceptor, input.as_bytes());
+
+        assert!(output.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                OscEvent::Notification("Approval required".to_owned()),
+                OscEvent::Notification("Task complete".to_owned()),
             ]
         );
     }
