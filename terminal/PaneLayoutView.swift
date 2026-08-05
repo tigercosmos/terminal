@@ -12,6 +12,7 @@ import TerminalCore
 /// combined freely. Only the selected tab's layout is ever mounted.
 struct PaneLayoutView: View {
     @ObservedObject var tab: PaneTab
+    @ObservedObject var tabSplitDrag: TabSplitDragCoordinator
     @ObservedObject private var themeChanges = Theme.changes
     /// Splits the focused pane on the given edge — from a pane's context menu.
     var onSplit: (PaneDropEdge) -> Void = { _ in }
@@ -92,7 +93,13 @@ struct PaneLayoutView: View {
         // tiles, so a split tab has even breathing room on every side. A
         // single-pane tab stays full-bleed, exactly as before splits existed.
         .padding(tab.hasMultiplePanes ? gap : 0)
-        .onPreferenceChange(PaneFramePreferenceKey.self) { paneFrames = $0 }
+        .onPreferenceChange(PaneFramePreferenceKey.self) { frames in
+            paneFrames = frames
+            tabSplitDrag.updatePaneFrames(frames, for: tab.id)
+        }
+        .onDisappear {
+            tabSplitDrag.clearPaneFrames(for: tab.id)
+        }
         // A divider or pane-move drag can't deliver its ending callback once
         // toggling zoom unmounts its view — drop any in-flight drag state so a
         // stale snapshot never sticks around.
@@ -119,8 +126,7 @@ struct PaneLayoutView: View {
                         showFocusRing: tab.hasMultiplePanes,
                         allowsMove: true,
                         isMoveSource: paneDrag?.sourceID == placement.pane.id,
-                        dropEdge: paneDrag?.targetID == placement.pane.id
-                            ? paneDrag?.edge : nil,
+                        dropEdge: dropEdge(for: placement.pane.id),
                         onMove: {
                             updateDropTarget(
                                 source: placement.pane.id, location: $0
@@ -171,8 +177,58 @@ struct PaneLayoutView: View {
                         )
                         .allowsHitTesting(false)
                 }
+
+                // Tab-strip drags use the same directional preview as pane
+                // moves. The compact label follows the pointer only while it
+                // is over a valid destination pane.
+                if let tabDrag = tabSplitDrag.drag,
+                   tabDrag.targetTabID == tab.id,
+                   tabDrag.targetPaneID != nil {
+                    let origin = geo.frame(in: .global).origin
+                    draggedTabLabel(tabDrag)
+                        .offset(
+                            x: tabDrag.location.x - origin.x - 110,
+                            y: tabDrag.location.y - origin.y - 22
+                        )
+                        .allowsHitTesting(false)
+                }
             }
         }
+    }
+
+    private func draggedTabLabel(_ drag: TabSplitDragCoordinator.Drag) -> some View {
+        HStack(spacing: 7) {
+            if let fileIconPath = drag.fileIconPath {
+                MaterialFileIconView(path: fileIconPath, size: 14)
+            } else {
+                Image(systemName: drag.systemImage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(nsColor: Theme.accent))
+            }
+            Text(drag.title)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+            if drag.paneCount > 1 {
+                Text("\(drag.paneCount)")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.1)))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(width: 220, height: 44, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color(nsColor: Theme.background))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color(nsColor: Theme.accent), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .opacity(0.92)
     }
 
     // MARK: - Resizing
@@ -207,6 +263,17 @@ struct PaneLayoutView: View {
     }
 
     // MARK: - Moving panes
+
+    /// Pane moves and tab-to-pane moves share the same drop highlight. A pane
+    /// move wins if both states ever overlap during gesture teardown.
+    private func dropEdge(for paneID: UUID) -> PaneDropEdge? {
+        if paneDrag?.targetID == paneID {
+            return paneDrag?.edge
+        }
+        guard tabSplitDrag.drag?.targetTabID == tab.id,
+              tabSplitDrag.drag?.targetPaneID == paneID else { return nil }
+        return tabSplitDrag.drag?.edge
+    }
 
     /// Tracks a pane-move drag: `location` is the pointer in global space. The
     /// drop target is whichever *other* pane's frame contains it (none over a
@@ -384,35 +451,39 @@ private struct PaneView: View {
     var body: some View {
         // A split pane gets focus-aware chrome and its own header. Single-pane
         // tabs render their content without pane chrome.
-        if showFocusRing {
-            VStack(spacing: 0) {
-                PaneHeaderView(
-                    content: pane.content,
-                    isFocused: isFocused,
-                    allowsMove: allowsMove,
-                    focus: focus,
-                    onMove: onMove,
-                    onMoveEnded: onMoveEnded,
-                    onSplit: splitFromMenu
-                )
-                // The tooltip hangs into the terminal below. Keep the header
-                // above that AppKit-backed sibling so its material and text
-                // aren't covered while only the shadow remains visible.
-                .zIndex(1)
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        Group {
+            if showFocusRing {
+                VStack(spacing: 0) {
+                    PaneHeaderView(
+                        content: pane.content,
+                        isFocused: isFocused,
+                        allowsMove: allowsMove,
+                        focus: focus,
+                        onMove: onMove,
+                        onMoveEnded: onMoveEnded,
+                        onSplit: splitFromMenu
+                    )
+                    // The tooltip hangs into the terminal below. Keep the header
+                    // above that AppKit-backed sibling so its material and text
+                    // aren't covered while only the shadow remains visible.
+                    .zIndex(1)
+                    content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
                 // Deliberately no clip: masking an AppKit view forces an
                 // offscreen recomposite that flickers on live resize. The
                 // content background matches the surrounding gaps, so square
                 // content corners blend in and only the rounded stroke reads.
                 .overlay { focusRing }
-                .overlay { dropHighlight }
-                .opacity(isMoveSource ? 0.55 : 1)
-                .background(frameReporter)
-        } else {
-            content
+            } else {
+                content
+            }
         }
+        .overlay { dropHighlight }
+        .opacity(isMoveSource ? 0.55 : 1)
+        // Single-pane tabs report their full-bleed frame too, making their
+        // content a valid target for a tab dragged down from the strip.
+        .background(frameReporter)
     }
 
     /// Focuses this pane, then splits it — the context menu acts on the pane it

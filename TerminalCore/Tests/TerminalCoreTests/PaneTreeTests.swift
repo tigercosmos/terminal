@@ -89,6 +89,42 @@ struct PaneTreeTests {
         #expect(tree.allPanes == [a])
     }
 
+    /// Dragging a tab that is itself split grafts its whole tree in. Flattening
+    /// it would lose both the inner arrangement and its divider position, so
+    /// the inserted subtree has to survive intact as one branch.
+    @Test func insertingASubtreeKeepsItsShapeAndFraction() {
+        let dragged = PaneTreeSplit(
+            axis: .vertical, fraction: 0.25, first: .pane(b), second: .pane(c)
+        )
+        let tree = Tree.pane(a).inserting(.split(dragged), toward: .right, beside: a.id)
+
+        #expect(tree.allPanes == [a, b, c])
+        guard case .split(let outer) = tree, case .split(let inner) = outer.second else {
+            Issue.record("the dragged subtree should have become the second child")
+            return
+        }
+        #expect(outer.axis == .horizontal)
+        #expect(outer.first.allPanes == [a])
+        #expect(inner.axis == .vertical)
+        #expect(inner.fraction == 0.25)
+    }
+
+    /// The same graft on the leading edge puts the subtree first, matching how
+    /// a left/top drop reads.
+    @Test func insertingASubtreeTowardTheLeadingEdgeGoesFirst() {
+        let dragged = PaneTreeSplit(
+            axis: .vertical, fraction: 0.5, first: .pane(b), second: .pane(c)
+        )
+        let tree = Tree.pane(a).inserting(.split(dragged), toward: .left, beside: a.id)
+
+        #expect(tree.allPanes == [b, c, a])
+        guard case .split(let outer) = tree else {
+            Issue.record("inserting should replace the leaf with a split")
+            return
+        }
+        #expect(outer.second.allPanes == [a])
+    }
+
     // MARK: - Removing
 
     /// Closing one side of a split has to leave the sibling in the split's

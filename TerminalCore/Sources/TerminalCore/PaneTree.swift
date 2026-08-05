@@ -72,6 +72,15 @@ public indirect enum PaneTree<Leaf: Identifiable> where Leaf.ID == UUID {
     public func inserting(
         _ pane: Leaf, toward edge: PaneDropEdge, beside target: UUID
     ) -> PaneTree {
+        inserting(.pane(pane), toward: edge, beside: target)
+    }
+
+    /// Replaces `target` with a split containing it and another pane tree.
+    /// Keeping the inserted tree intact lets a dragged split tab become one
+    /// branch of the destination without flattening or losing its fractions.
+    public func inserting(
+        _ node: PaneTree, toward edge: PaneDropEdge, beside target: UUID
+    ) -> PaneTree {
         switch self {
         case .pane(let existing):
             guard existing.id == target else { return self }
@@ -81,14 +90,14 @@ public indirect enum PaneTree<Leaf: Identifiable> where Leaf.ID == UUID {
             return .split(PaneTreeSplit(
                 axis: axis,
                 fraction: 0.5,
-                first: .pane(insertedFirst ? pane : existing),
-                second: .pane(insertedFirst ? existing : pane)
+                first: insertedFirst ? node : .pane(existing),
+                second: insertedFirst ? .pane(existing) : node
             ))
         case .split(var split):
             if split.first.contains(target) {
-                split.first = split.first.inserting(pane, toward: edge, beside: target)
+                split.first = split.first.inserting(node, toward: edge, beside: target)
             } else if split.second.contains(target) {
-                split.second = split.second.inserting(pane, toward: edge, beside: target)
+                split.second = split.second.inserting(node, toward: edge, beside: target)
             }
             return .split(split)
         }

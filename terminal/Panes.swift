@@ -312,6 +312,20 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
         focusedPaneID = pane.id
     }
 
+    /// Inserts another tab's complete layout beside a pane in this tab. The
+    /// dragged tab's focused pane becomes focused here after the move.
+    func insert(
+        _ insertedLayout: PaneNode,
+        focusedPaneID insertedFocus: UUID,
+        toward edge: PaneDropEdge,
+        beside target: UUID
+    ) {
+        guard layout.contains(target), insertedLayout.contains(insertedFocus) else { return }
+        unzoom()
+        layout = layout.inserting(insertedLayout, toward: edge, beside: target)
+        focusedPaneID = insertedFocus
+    }
+
     /// Moves `dragged` next to `target` on the given edge — the drag-to-split
     /// gesture. The target leaf is subdivided on that edge, exactly like a new
     /// split. The moved pane takes half the target's space and focus follows it.
