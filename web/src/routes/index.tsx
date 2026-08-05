@@ -186,7 +186,8 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       },
       {
         name: 'Inline diffs',
-        detail: 'click a changed file to read its diff in place, without leaving the window',
+        detail:
+          'click a changed file to read its diff in place, side by side with your live file — fix it right there and press Cmd+S, without leaving the window',
       },
       {
         name: 'Branch work',

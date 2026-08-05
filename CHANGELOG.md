@@ -16,6 +16,14 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Clicking a changed file in the Git panel now opens it in the same
+  side-by-side view Compare uses. An unstaged change sits beside your live
+  file, so you can read it and fix it in the same place and press ⌘S — and it
+  follows a terminal over ssh the way the panels do. A staged change shows
+  what you staged against the last commit, without folding in edits you have
+  made since. Diffs are ordinary panes now: split them, or drag one into a
+  split. The separate diff layout is gone, so diffs no longer offer a unified
+  view
 - A toolbar under the active tab shows the repository the terminal is working
   in: its branch, and the lines added and deleted so far — or a green Clean
   when there is nothing pending. The branch opens a searchable switcher that

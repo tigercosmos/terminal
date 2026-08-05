@@ -132,25 +132,30 @@ Not taken:
 - `a787cc8`, `09d860c` — upstream's `web/src/routes/changelog.tsx` contributor
   fetch. This fork's site is hand-written and has no such page.
 
-**Deferred — still owed, and the reason.** These are the diff viewer and Git
-panel reworks, which land in files this fork has rewritten rather than
-extended. They need porting the same way the rest of this sync was, and are
-listed here rather than dropped:
+**Taken as the idea, not the code.** Upstream's diff-viewer work all improves
+its WKWebView renderer, which this fork no longer has:
 
-- `dd14529`, `17bb787`, `db9a061`, `0a253ba` — editing live worktree changes
-  directly in the diff view, with remembered Review/Edit and Unified/Split
-  controls, and diff appearance following the system theme. Needs
-  PierreDiffsSwift 1.5.0 (the bump was reverted rather than left dangling
-  without the feature that uses it). This fork's `DiffViewerView.swift` is 430
-  lines against upstream's 580 and loads diffs through `TerminalCore` so they
-  work over ssh, so upstream's ~300 added lines do not transplant.
-- `1da3345` — keeping visited project diffs mounted. This fork already mounts
-  unselected diffs from `ContentView`; upstream's version has to be reconciled
-  with that rather than applied.
+- `dd14529`, `17bb787`, `db9a061`, `0a253ba`, `1da3345` — editing live worktree
+  changes in the diff view, remembered Review/Edit and Unified/Split controls,
+  diff appearance following the system theme, and keeping visited diffs
+  mounted. Upstream was converging its read-only web diff on what this fork's
+  Compare view already did natively, and porting it would have left two
+  editable diff surfaces on two rendering stacks. Instead the Git panel's
+  diffs now open in the Compare renderer against `HEAD` and the index (see
+  `CompareSides`), which gets editing, blame, and ssh support for free and
+  deletes `DiffViewerView.swift` and the PierreDiffsSwift dependency. The
+  always-mounted diff stack and the "a diff is always its own tab" rule went
+  with it — both existed only because a WKWebView cannot be unmounted.
+  Upstream's unified layout is the one thing lost; side-by-side is now the
+  only diff layout.
+
+**Deferred — still owed, and the reason.** Both land in
+`RightSidebarView.swift`, which is 2,725 lines here against upstream's, and
+neither is a rendering change this fork can shortcut:
+
 - `212ea0a`, `17caef1` — the reworked Recent Commits view (a new ~770-line
   file) and its page size of 30.
-- `dae03e9` — Git operation progress and error feedback, ~460 lines into a
-  `RightSidebarView.swift` that is 2,725 lines here.
+- `dae03e9` — Git operation progress and error feedback, ~460 lines.
 
 ### 2026-07-31 — `kero/main` at `2163068`
 
