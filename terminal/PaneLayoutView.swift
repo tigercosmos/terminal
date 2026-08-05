@@ -18,6 +18,10 @@ struct PaneLayoutView: View {
     /// Browser creation actions exposed by terminal and file-editor menus.
     var onNewBrowserTab: (String?) -> Void = { _ in }
     var onNewBrowserPane: (String?) -> Void = { _ in }
+    /// File creation actions exposed only for Command-right-clicked paths in
+    /// terminal menus.
+    var onNewFileTab: (String) -> Void = { _ in }
+    var onNewFilePane: (String) -> Void = { _ in }
 
     /// Gap between tiles, which doubles as the divider hit area. The same
     /// value insets the whole grid from the parent, so the spacing around the
@@ -76,7 +80,9 @@ struct PaneLayoutView: View {
                     onMoveEnded: {},
                     onSplit: onSplit,
                     onNewBrowserTab: onNewBrowserTab,
-                    onNewBrowserPane: onNewBrowserPane
+                    onNewBrowserPane: onNewBrowserPane,
+                    onNewFileTab: onNewFileTab,
+                    onNewFilePane: onNewFilePane
                 )
             } else {
                 grid
@@ -123,7 +129,9 @@ struct PaneLayoutView: View {
                         onMoveEnded: { commitPaneMove() },
                         onSplit: onSplit,
                         onNewBrowserTab: onNewBrowserTab,
-                        onNewBrowserPane: onNewBrowserPane
+                        onNewBrowserPane: onNewBrowserPane,
+                        onNewFileTab: onNewFileTab,
+                        onNewFilePane: onNewFilePane
                     )
                     .frame(
                         width: placement.frame.width,
@@ -356,6 +364,8 @@ private struct PaneView: View {
     let onSplit: (PaneDropEdge) -> Void
     let onNewBrowserTab: (String?) -> Void
     let onNewBrowserPane: (String?) -> Void
+    let onNewFileTab: (String) -> Void
+    let onNewFilePane: (String) -> Void
 
     private var isFocused: Bool { tab.focusedPaneID == pane.id }
 
@@ -418,6 +428,16 @@ private struct PaneView: View {
         onNewBrowserPane(initialURL)
     }
 
+    private func newFileTabFromMenu(path: String) {
+        focus()
+        onNewFileTab(path)
+    }
+
+    private func newFilePaneFromMenu(path: String) {
+        focus()
+        onNewFilePane(path)
+    }
+
     @ViewBuilder
     private var content: some View {
         switch pane.content {
@@ -428,7 +448,9 @@ private struct PaneView: View {
                 onFocused: focus,
                 onSplit: splitFromMenu,
                 onNewBrowserTab: newBrowserTabFromMenu,
-                onNewBrowserPane: newBrowserPaneFromMenu
+                onNewBrowserPane: newBrowserPaneFromMenu,
+                onNewFileTab: newFileTabFromMenu,
+                onNewFilePane: newFilePaneFromMenu
             )
                 .background(Color(nsColor: Theme.background))
                 .overlay(alignment: .topTrailing) {
@@ -439,9 +461,7 @@ private struct PaneView: View {
                 file: file,
                 isFocused: isFocused,
                 onFocused: focus,
-                onSplit: splitFromMenu,
-                onNewBrowserTab: newBrowserTabFromMenu,
-                onNewBrowserPane: newBrowserPaneFromMenu
+                onSplit: splitFromMenu
             )
                 .background(Color(nsColor: Theme.background))
         case .browser(let browser):

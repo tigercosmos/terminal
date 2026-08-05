@@ -3099,6 +3099,38 @@
         }
       }
     },
+    "New File Pane" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規ファイルペイン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件窗格"
+          }
+        }
+      }
+    },
+    "New File Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規ファイルタブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件标签页"
+          }
+        }
+      }
+    },
     "New File…" : {
       "localizations" : {
         "ja" : {

@@ -251,6 +251,7 @@ protocol TerminalBackendEvents: AnyObject {
 
     func terminalDidRequestDesktopNotification(title: String, body: String)
     func terminalDidRequestOpenURL(_ url: String)
+    func terminalLinkTarget(for value: String) -> TerminalLinkTarget?
     func terminalDidScroll(_ position: TerminalScrollPosition)
     func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardRequest)
 
@@ -260,6 +261,13 @@ protocol TerminalBackendEvents: AnyObject {
     func terminalDidEndFind()
     func terminalDidUpdateFindTotal(_ total: Int?)
     func terminalDidUpdateFindSelected(_ selected: Int?)
+}
+
+/// A Command-clickable terminal value after the owning session has resolved
+/// it against the pane's live local working directory.
+enum TerminalLinkTarget {
+    case url(URL)
+    case file(URL)
 }
 
 /// Backend-neutral OSC 133 command lifecycle reports. Alacritty extracts all

@@ -171,6 +171,8 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         surface.splitTarget.onSplit = nil
         surface.splitTarget.onNewBrowserTab = nil
         surface.splitTarget.onNewBrowserPane = nil
+        surface.splitTarget.onNewFileTab = nil
+        surface.splitTarget.onNewFilePane = nil
 
         if processAlive {
             _ = shellPid // Cache it before `hasExited` changes.
@@ -560,16 +562,77 @@ extension TerminalSession: TerminalBackendEvents {
     /// untrusted — it comes from remote hosts, files, and agents — so anything
     /// outside ``autoOpenableURLSchemes`` is confirmed against the URL Terminal
     /// would actually open rather than the text that was clicked.
-    func terminalDidRequestOpenURL(_ url: String) {
-        guard let target = URL(string: url),
-              let scheme = target.scheme?.lowercased()
-        else { return }
+    ///
+    /// A path that resolves to a real local file is revealed in Finder instead.
+    /// Selecting a file never hands it to an application, so that path needs no
+    /// confirmation.
+    func terminalDidRequestOpenURL(_ value: String) {
+        guard let target = terminalLinkTarget(for: value) else { return }
 
-        if Self.autoOpenableURLSchemes.contains(scheme) {
-            NSWorkspace.shared.open(target)
-            return
+        switch target {
+        case .file(let fileURL):
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+        case .url(let url):
+            guard let scheme = url.scheme?.lowercased() else { return }
+            if Self.autoOpenableURLSchemes.contains(scheme) {
+                NSWorkspace.shared.open(url)
+                return
+            }
+            confirmOpen(url)
         }
-        confirmOpen(target)
+    }
+
+    /// Classifies a detected terminal link only after proving a local path
+    /// exists or a non-file URL has a scheme. Context menus and Command-click
+    /// use this same answer, so neither offers an action it cannot perform.
+    func terminalLinkTarget(for value: String) -> TerminalLinkTarget? {
+        if let fileURL = existingFileURL(from: value) {
+            return .file(fileURL)
+        }
+        guard let url = URL(string: value),
+              url.scheme != nil,
+              !url.isFileURL
+        else { return nil }
+        return .url(url)
+    }
+
+    /// Resolves terminal links the way the shell would: `file:` URLs are
+    /// already absolute, `~` belongs to the current user, and other paths are
+    /// relative to this pane's live working directory. Diagnostics commonly
+    /// append `:line[:column]`, so try the literal path before peeling those
+    /// numeric locations off.
+    private func existingFileURL(from value: String) -> URL? {
+        let candidate: URL
+        if let url = URL(string: value), url.scheme != nil {
+            guard url.isFileURL else { return nil }
+            candidate = url
+        } else {
+            let decoded = value.removingPercentEncoding ?? value
+            let expanded = (decoded as NSString).expandingTildeInPath
+            if expanded.hasPrefix("/") {
+                candidate = URL(fileURLWithPath: expanded)
+            } else {
+                let basePath = foregroundDirectoryPath ?? currentDirectoryPath
+                candidate = URL(
+                    fileURLWithPath: expanded,
+                    relativeTo: URL(fileURLWithPath: basePath, isDirectory: true)
+                )
+            }
+        }
+
+        var url = candidate.standardizedFileURL
+        while true {
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+            let strippedPath = url.path.replacingOccurrences(
+                of: #":\d+$"#,
+                with: "",
+                options: .regularExpression
+            )
+            guard strippedPath != url.path else { return nil }
+            url = URL(fileURLWithPath: strippedPath).standardizedFileURL
+        }
     }
 
     private func confirmOpen(_ target: URL) {

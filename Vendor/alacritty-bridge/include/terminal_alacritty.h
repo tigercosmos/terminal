@@ -37,6 +37,8 @@ extern "C" {
 #define TERMINAL_EVENT_SHELL_COMMAND_EXECUTING 11u
 /// Four-byte little-endian int32 exit code; -1 when the shell omitted it.
 #define TERMINAL_EVENT_SHELL_COMMAND_FINISHED 12u
+/// UTF-8 OSC 22 pointer-shape name — a CSS cursor keyword such as "pointer".
+#define TERMINAL_EVENT_MOUSE_SHAPE 13u
 
 /// Per-cell attributes in `TerminalCell.flags`.
 #define TERMINAL_CELL_INVERSE (1u << 0)
