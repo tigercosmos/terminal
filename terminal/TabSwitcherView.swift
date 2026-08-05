@@ -569,6 +569,8 @@ private struct TabSwitcherCard: View {
     private var titleIcon: some View {
         if case .browser(let browser) = tab.focusedContent {
             BrowserFaviconView(browser: browser, size: 16)
+        } else if let path = tab.focusedContent?.fileIconPath {
+            MaterialFileIconView(path: path, size: 16)
         } else {
             Image(systemName: tab.focusedContent?.systemImage ?? "rectangle")
         }
@@ -753,9 +755,7 @@ private struct TabPaneThumbnail: View {
                 .padding(5)
         case .unavailable(let reason):
             VStack(spacing: 4) {
-                Image(systemName: "doc")
-                    .font(.system(size: 15, weight: .light))
-                    .foregroundStyle(.tertiary)
+                MaterialFileIconView(path: file.path, size: 18, opacity: 0.82)
                 Text(reason)
                     .font(.system(size: 7))
                     .foregroundStyle(.secondary)

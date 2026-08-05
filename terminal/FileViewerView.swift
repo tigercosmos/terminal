@@ -497,9 +497,7 @@ struct FileViewerView: View {
                 }
             case .unavailable(let reason):
                 VStack(spacing: 8) {
-                    Image(systemName: "doc")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundStyle(.quaternary)
+                    MaterialFileIconView(path: file.path, size: 28, opacity: 0.72)
                     Text(reason)
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)

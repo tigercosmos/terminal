@@ -755,10 +755,15 @@ private struct FileTreeRow: View {
             } else {
                 Spacer().frame(width: 10)
             }
-            Image(systemName: item.isDirectory ? "folder.fill" : "doc.text")
-                .sidebarFont(size: 10)
-                .foregroundStyle(item.isDirectory ? Color(nsColor: Theme.accent).opacity(0.8) : Color.secondary)
-                .frame(width: 14)
+            if item.isDirectory {
+                Image(systemName: "folder.fill")
+                    .sidebarFont(size: 10)
+                    .foregroundStyle(Color(nsColor: Theme.accent).opacity(0.8))
+                    .frame(width: 14)
+            } else {
+                MaterialFileIconView(path: item.path, size: 14)
+                    .frame(width: 14)
+            }
         }
     }
 }
@@ -2196,6 +2201,11 @@ private struct GitEntryRow: View {
                         .sidebarFont(size: 10, weight: .bold, design: .monospaced)
                         .foregroundStyle(statusColor)
                         .frame(width: 12)
+                    MaterialFileIconView(
+                        path: absolutePath,
+                        size: 13,
+                        opacity: status == "D" ? 0.6 : 1
+                    )
                     Text(entry.fileName)
                         .sidebarFont(size: 11.5)
                         .foregroundStyle(.secondary)

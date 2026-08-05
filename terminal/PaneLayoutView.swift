@@ -253,7 +253,11 @@ struct PaneLayoutView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else if let content {
                 HStack(spacing: 6) {
-                    Image(systemName: content.systemImage)
+                    if let path = content.fileIconPath {
+                        MaterialFileIconView(path: path, size: 14)
+                    } else {
+                        Image(systemName: content.systemImage)
+                    }
                     Text(content.title).lineLimit(1)
                 }
                 .font(.system(size: 12, weight: .medium))
@@ -658,6 +662,7 @@ private struct PaneHeaderTitle: View {
         case .diff(let diff):
             PaneHeaderLabel(
                 systemImage: "plus.forwardslash.minus",
+                fileIconPath: diff.path,
                 title: diff.title,
                 isFocused: isFocused
             )
@@ -691,6 +696,7 @@ private struct FilePaneHeaderTitle: View {
     var body: some View {
         PaneHeaderLabel(
             systemImage: "doc.text",
+            fileIconPath: file.path,
             title: file.name,
             isFocused: isFocused,
             isDirty: file.isDirty
@@ -717,6 +723,7 @@ private struct BrowserPaneHeaderTitle: View {
 private struct PaneHeaderLabel: View {
     let systemImage: String
     var browser: BrowserTab? = nil
+    var fileIconPath: String? = nil
     let title: String
     let isFocused: Bool
     var isDirty = false
@@ -726,6 +733,12 @@ private struct PaneHeaderLabel: View {
             if let browser {
                 BrowserFaviconView(browser: browser, size: 12)
                     .foregroundStyle(iconStyle)
+            } else if let fileIconPath {
+                MaterialFileIconView(
+                    path: fileIconPath,
+                    size: 13,
+                    opacity: isFocused ? 1 : 0.8
+                )
             } else {
                 Image(systemName: systemImage)
                     .font(.system(size: 10, weight: .medium))

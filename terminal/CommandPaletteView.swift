@@ -31,6 +31,7 @@ struct PaletteCommand: Identifiable {
     let id: String
     let title: String
     let systemImage: String
+    var fileIconPath: String? = nil
     /// Secondary text shown after the title — a file or session directory.
     var subtitle: String? = nil
     var shortcut: String? = nil
@@ -46,6 +47,7 @@ struct PaletteCommand: Identifiable {
         id: String,
         title: LocalizedStringResource,
         systemImage: String,
+        fileIconPath: String? = nil,
         subtitle: String? = nil,
         shortcut: String? = nil,
         section: PaletteSection = .command,
@@ -55,6 +57,7 @@ struct PaletteCommand: Identifiable {
         self.id = id
         self.title = String(localized: title)
         self.systemImage = systemImage
+        self.fileIconPath = fileIconPath
         self.subtitle = subtitle
         self.shortcut = shortcut
         self.section = section
@@ -66,6 +69,7 @@ struct PaletteCommand: Identifiable {
         id: String,
         verbatimTitle: String,
         systemImage: String,
+        fileIconPath: String? = nil,
         subtitle: String? = nil,
         shortcut: String? = nil,
         section: PaletteSection = .command,
@@ -75,6 +79,7 @@ struct PaletteCommand: Identifiable {
         self.id = id
         self.title = verbatimTitle
         self.systemImage = systemImage
+        self.fileIconPath = fileIconPath
         self.subtitle = subtitle
         self.shortcut = shortcut
         self.section = section
@@ -467,6 +472,7 @@ struct CommandPaletteView: View {
                 id: "file-\(file.absolutePath)",
                 verbatimTitle: file.name,
                 systemImage: "doc",
+                fileIconPath: file.absolutePath,
                 subtitle: file.parentPath,
                 section: .file,
                 searchText: file.relativePath
@@ -650,10 +656,19 @@ struct CommandPaletteView: View {
             run(command)
         } label: {
             HStack(spacing: 9) {
-                Image(systemName: command.systemImage)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color(nsColor: Theme.accent)) : AnyShapeStyle(.secondary))
+                if let fileIconPath = command.fileIconPath {
+                    MaterialFileIconView(
+                        path: fileIconPath,
+                        size: 15,
+                        opacity: isSelected ? 1 : 0.86
+                    )
                     .frame(width: 16)
+                } else {
+                    Image(systemName: command.systemImage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color(nsColor: Theme.accent)) : AnyShapeStyle(.secondary))
+                        .frame(width: 16)
+                }
                 Text(attributedTitle(command, highlightQuery: highlightQuery, isSelected: isSelected))
                     .lineLimit(1)
                 if let subtitle = command.subtitle, !subtitle.isEmpty {

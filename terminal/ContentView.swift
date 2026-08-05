@@ -1208,6 +1208,7 @@ private struct PaneTabItem: View {
             TabRenameChrome(
                 systemImage: tab.focusedContent?.systemImage ?? "terminal",
                 browserIcon: focusedBrowser,
+                fileIconPath: focusedFileIconPath,
                 initialValue: tab.displayTitle ?? "",
                 commit: { name in
                     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1226,6 +1227,7 @@ private struct PaneTabItem: View {
             case .diff(let diff):
                 TabItemChrome(
                     systemImage: "plus.forwardslash.minus",
+                    fileIconPath: diff.path,
                     title: tab.customName ?? diff.title,
                     paneCount: paneCount,
                     isSelected: isSelected,
@@ -1255,6 +1257,10 @@ private struct PaneTabItem: View {
             nil
         }
     }
+
+    private var focusedFileIconPath: String? {
+        tab.focusedContent?.fileIconPath
+    }
 }
 
 /// Inline editor shown in place of a tab while it's renamed — the same
@@ -1264,6 +1270,7 @@ private struct TabRenameChrome: View {
     @ObservedObject private var themeChanges = Theme.changes
     let systemImage: String
     let browserIcon: BrowserTab?
+    let fileIconPath: String?
     let commit: (String) -> Void
     let end: () -> Void
 
@@ -1276,12 +1283,14 @@ private struct TabRenameChrome: View {
     init(
         systemImage: String,
         browserIcon: BrowserTab?,
+        fileIconPath: String?,
         initialValue: String,
         commit: @escaping (String) -> Void,
         end: @escaping () -> Void
     ) {
         self.systemImage = systemImage
         self.browserIcon = browserIcon
+        self.fileIconPath = fileIconPath
         self.commit = commit
         self.end = end
         _draft = State(initialValue: initialValue)
@@ -1293,6 +1302,8 @@ private struct TabRenameChrome: View {
                 BrowserFaviconView(browser: browserIcon, size: 11)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color(nsColor: Theme.accent))
+            } else if let fileIconPath {
+                MaterialFileIconView(path: fileIconPath, size: 12)
             } else {
                 Image(systemName: systemImage)
                     .font(.system(size: 9, weight: .medium))
@@ -1362,6 +1373,7 @@ private struct FileTabLabel: View {
     var body: some View {
         TabItemChrome(
             systemImage: "doc.text",
+            fileIconPath: file.path,
             title: customTitle ?? file.name,
             paneCount: paneCount,
             isSelected: isSelected,
@@ -1439,6 +1451,7 @@ private struct TabItemChrome: View {
     @ObservedObject private var themeChanges = Theme.changes
     let systemImage: String
     var browserIcon: BrowserTab? = nil
+    var fileIconPath: String? = nil
     let title: String
     var paneCount: Int = 1
     let isSelected: Bool
@@ -1460,6 +1473,12 @@ private struct TabItemChrome: View {
                                 : AnyShapeStyle(.tertiary)
                         )
                         .opacity(isSelected ? 1 : 0.78)
+                } else if let fileIconPath {
+                    MaterialFileIconView(
+                        path: fileIconPath,
+                        size: 12,
+                        opacity: isSelected ? 1 : 0.82
+                    )
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 9, weight: .medium))
