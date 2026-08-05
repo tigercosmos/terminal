@@ -159,11 +159,15 @@ struct ContentView: View {
 }
 
 /// Slim bar above the terminal: the selected project's sessions as
-/// horizontal tabs on the left, sidebar toggle on the right. Doubles as
+/// horizontal tabs, with sidebar controls at the outer edges. Doubles as
 /// window-drag space.
 private struct MainHeaderView: View {
     @ObservedObject var manager: TerminalManager
     @ObservedObject private var themeChanges = Theme.changes
+
+    /// Keep an always-available grab target beside the trailing controls,
+    /// even when the session strip is full.
+    private let minimumWindowDragWidth: CGFloat = 100
 
     /// With the left sidebar hidden the header slides under the window's
     /// traffic-light buttons, so inset its content to clear them.
@@ -171,21 +175,43 @@ private struct MainHeaderView: View {
         manager.isLeftSidebarVisible ? 8 : 78
     }
 
+    /// A hidden sidebar moves its toggle into this header. Reserve the
+    /// button and its following HStack spacing before sizing the tab strip.
+    private var hiddenLeftSidebarControlWidth: CGFloat {
+        manager.isLeftSidebarVisible ? 0 : 32
+    }
+
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 8) {
+                if !manager.isLeftSidebarVisible {
+                    ChromeIconButton(
+                        systemImage: "sidebar.left",
+                        tooltip: "Toggle Left Sidebar (⌘B)",
+                        tooltipAlignment: .leading
+                    ) {
+                        manager.toggleLeftSidebar()
+                    }
+                }
                 if let project = manager.selectedProject {
                     // Everything in the header that isn't the scrollable tab
-                    // strip: leading inset + trailing padding (8), HStack
-                    // spacings (16), sidebar toggle (24), "+" and spacing (26),
-                    // and the exit-zoom button (24 + 8 spacing) while shown.
+                    // strip: leading inset, an optional left-sidebar control,
+                    // trailing padding (8), HStack spacings (16), right-sidebar
+                    // toggle (24), "+" and spacing (26), the minimum drag
+                    // target (100), and the exit-zoom button (24 + 8 spacing)
+                    // while shown.
                     SessionTabsView(
                         project: project,
-                        maxStripWidth: max(0, geo.size.width - leadingInset - 74 - (manager.isPaneZoomed ? 32 : 0))
+                        maxStripWidth: max(
+                            0,
+                            geo.size.width - leadingInset - hiddenLeftSidebarControlWidth
+                                - 74 - minimumWindowDragWidth
+                                - (manager.isPaneZoomed ? 32 : 0)
+                        )
                     )
                 }
                 WindowDragArea()
-                    .frame(maxWidth: .infinity)
+                    .frame(minWidth: minimumWindowDragWidth, maxWidth: .infinity)
                 // Zoom indicator: only visible while the selected tab has a
                 // zoomed pane. Styled like the sidebar toggle next to it, with
                 // the accent tint marking the active state. Click restores the
@@ -230,9 +256,13 @@ private struct MainHeaderView: View {
 /// Horizontal tabs for one project — terminal sessions and open files —
 /// plus a "+" button.
 private struct SessionTabsView: View {
+    private let fadeWidth: CGFloat = 20
+    private let tabSpacing: CGFloat = 3
+
     @ObservedObject var project: Project
     let maxStripWidth: CGFloat
     @State private var overflow = StripOverflow()
+    @State private var scrollGeometry = StripScrollGeometry()
     @State private var draggedTabID: UUID?
     @State private var tabFrames: [UUID: CGRect] = [:]
     @State private var tabSizes: [UUID: CGSize] = [:]
@@ -245,11 +275,17 @@ private struct SessionTabsView: View {
         var right = false
     }
 
+    private struct StripScrollGeometry: Equatable {
+        var contentOffsetX: CGFloat = 0
+        var containerWidth: CGFloat = 0
+        var contentWidth: CGFloat = 0
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 3) {
+                HStack(spacing: tabSpacing) {
                     ForEach(project.tabs) { tab in
                         PaneTabItem(
                             tab: tab,
@@ -281,20 +317,28 @@ private struct SessionTabsView: View {
                     }
                 }
             }
-            .onScrollGeometryChange(for: StripOverflow.self) { geo in
-                StripOverflow(
-                    left: geo.contentOffset.x > 0.5,
-                    right: geo.contentOffset.x + geo.containerSize.width < geo.contentSize.width - 0.5
+            .onScrollGeometryChange(for: StripScrollGeometry.self) { geo in
+                StripScrollGeometry(
+                    contentOffsetX: geo.contentOffset.x,
+                    containerWidth: geo.containerSize.width,
+                    contentWidth: geo.contentSize.width
                 )
             } action: { _, new in
-                overflow = new
+                scrollGeometry = new
+                overflow = StripOverflow(
+                    left: new.contentOffsetX > 0.5,
+                    right: new.contentOffsetX + new.containerWidth < new.contentWidth - 0.5
+                )
             }
             // Keep the active tab visible: scrolls the minimum distance to
-            // reveal it (anchor: nil is a no-op when it's already fully in view).
+            // reveal it beyond the fade rather than merely inside the viewport.
             .onChange(of: project.selectedTabID) { _, id in
                 guard let id else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(id)
+                // Preserve ScrollViewReader's reliable minimum reveal first,
+                // then refine it once SwiftUI has advanced the scroll layout.
+                performScroll(to: id, anchor: nil, using: proxy, animated: true)
+                DispatchQueue.main.async {
+                    scrollToSelectedTab(using: proxy, animated: true)
                 }
             }
             // Selection is not the only thing that can hide the active tab.
@@ -303,6 +347,13 @@ private struct SessionTabsView: View {
             // the width of content before it.
             .onChange(of: maxStripWidth) {
                 scrollToSelectedTab(using: proxy)
+            }
+            .onChange(of: scrollGeometry.containerWidth) {
+                // Defer until the tab sizes have settled against the resized
+                // viewport before deciding whether the active tab needs help.
+                DispatchQueue.main.async {
+                    scrollToSelectedTab(using: proxy)
+                }
             }
             .onChange(of: project.tabs.map(\.id)) {
                 scrollToSelectedTab(using: proxy)
@@ -322,13 +373,13 @@ private struct SessionTabsView: View {
                         colors: [overflow.left ? .clear : .black, .black],
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .frame(width: 20)
+                    .frame(width: fadeWidth)
                     Color.black
                     LinearGradient(
                         colors: [.black, overflow.right ? .clear : .black],
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .frame(width: 20)
+                    .frame(width: fadeWidth)
                 }
             }
             .animation(.easeInOut(duration: 0.15), value: overflow)
@@ -355,12 +406,64 @@ private struct SessionTabsView: View {
         }
     }
 
-    /// `anchor: nil` moves only as far as needed and is a no-op when the
-    /// selected tab is already fully inside the strip.
-    private func scrollToSelectedTab(using proxy: ScrollViewProxy) {
+    /// Moves only when the selected tab overlaps an active edge fade. The
+    /// custom anchor places that tab just beyond the fade instead of at the
+    /// viewport edge, where `scrollTo` would leave it partially obscured.
+    private func scrollToSelectedTab(using proxy: ScrollViewProxy, animated: Bool = false) {
         guard let id = project.selectedTabID,
-              project.tabs.contains(where: { $0.id == id }) else { return }
-        proxy.scrollTo(id)
+              let selectedIndex = project.tabs.firstIndex(where: { $0.id == id }) else { return }
+
+        guard scrollGeometry.containerWidth > 0,
+              let selectedSize = tabSizes[id] else {
+            performScroll(to: id, anchor: nil, using: proxy, animated: animated)
+            return
+        }
+
+        var tabMinX = CGFloat(selectedIndex) * tabSpacing
+        for tab in project.tabs[..<selectedIndex] {
+            guard let size = tabSizes[tab.id] else {
+                performScroll(to: id, anchor: nil, using: proxy, animated: animated)
+                return
+            }
+            tabMinX += size.width
+        }
+
+        let tabMaxX = tabMinX + selectedSize.width
+        let safeMinX = scrollGeometry.contentOffsetX + (overflow.left ? fadeWidth : 0)
+        let safeMaxX = scrollGeometry.contentOffsetX + scrollGeometry.containerWidth
+            - (overflow.right ? fadeWidth : 0)
+        let anchor: UnitPoint
+        let availableSpace = max(1, scrollGeometry.containerWidth - selectedSize.width)
+
+        if tabMinX < safeMinX - 0.5 {
+            anchor = UnitPoint(x: min(1, fadeWidth / availableSpace), y: 0.5)
+        } else if tabMaxX > safeMaxX + 0.5 {
+            anchor = UnitPoint(x: max(0, 1 - fadeWidth / availableSpace), y: 0.5)
+        } else {
+            return
+        }
+
+        performScroll(to: id, anchor: anchor, using: proxy, animated: animated)
+    }
+
+    private func performScroll(
+        to id: UUID,
+        anchor: UnitPoint?,
+        using proxy: ScrollViewProxy,
+        animated: Bool
+    ) {
+        let reveal = {
+            if let anchor {
+                proxy.scrollTo(id, anchor: anchor)
+            } else {
+                proxy.scrollTo(id)
+            }
+        }
+        if animated {
+            withAnimation(.easeInOut(duration: 0.2), reveal)
+        } else {
+            reveal()
+        }
     }
 
     /// Reorders immediately as the pointer crosses another tab. This direct

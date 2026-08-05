@@ -305,7 +305,7 @@ private struct SidebarProjectRow: View {
                 if isRenaming {
                     TextField("", text: $renameDraft)
                         .textFieldStyle(.plain)
-                        .font(.system(size: fontSize, weight: .medium))
+                        .font(.system(size: projectTitleFontSize, weight: .medium))
                         .focused($renameFocused)
                         .onSubmit(commitRename)
                         .onExitCommand { isRenaming = false }
@@ -316,7 +316,7 @@ private struct SidebarProjectRow: View {
                         }
                 } else {
                     Text(project.name)
-                        .font(.system(size: fontSize))
+                        .font(.system(size: projectTitleFontSize))
                         .foregroundStyle(isSelected ? .primary : .secondary)
                         .lineLimit(1)
                 }
@@ -380,7 +380,20 @@ private struct SidebarProjectRow: View {
     }
 
     private var supportingFontSize: Double {
-        max(fontSize - 2, AppSettings.sidebarFontSizeRange.lowerBound - 1)
+        10 * sidebarFontScale
+    }
+
+    /// Match the file-tree label's designed 11.5 pt size while following the
+    /// shared sidebar font-size setting, so a project row and the file names
+    /// under it read as one hierarchy.
+    private var projectTitleFontSize: Double {
+        11.5 * sidebarFontScale
+    }
+
+    /// The same ratio `RightSidebarView` publishes as `\.sidebarFontScale`, so
+    /// the designed sizes here track the panels' at every setting.
+    private var sidebarFontScale: Double {
+        fontSize / AppSettings.defaultSidebarFontSize
     }
 
     /// Tracks the ⌘1–9 label's own size rather than the row's, since that is
@@ -388,8 +401,7 @@ private struct SidebarProjectRow: View {
     /// of its text at the top of the range. Never below 1 — the box was laid
     /// out at the default size and shrinking it would clip small fonts too.
     private var badgeScale: Double {
-        let designedSupportingSize = AppSettings.defaultSidebarFontSize - 2
-        return max(supportingFontSize / designedSupportingSize, 1)
+        max(sidebarFontScale, 1)
     }
 }
 

@@ -220,9 +220,10 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
     // MARK: - Sessions
 
-    /// When no directory is given, the new session starts in the current
-    /// session's working directory, then the pinned project directory
-    /// (home when neither is known).
+    /// When no directory is given, the new session starts in the pinned
+    /// project directory, then the current session's working directory
+    /// (home when neither is known). A manual project directory is an
+    /// explicit choice, so it also becomes the default for future terminals.
     @discardableResult
     func newSession(
         directory: String? = nil,
@@ -251,8 +252,8 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     ) -> TerminalSession {
         let session = TerminalSession(
             initialDirectory: directory
-                ?? selectedSession?.currentDirectoryPath
-                ?? customDirectory,
+                ?? customDirectory
+                ?? selectedSession?.currentDirectoryPath,
             restoredHistory: restoredHistory,
             commandArguments: commandArguments,
             environmentPath: environmentPath
