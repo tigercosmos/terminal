@@ -129,12 +129,6 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         tabs.contains { $0.allContents.contains { $0.isDiff } }
     }
 
-    /// Every diff shown anywhere, paired with the id of its containing tab so
-    /// the content view can tell which one is currently on screen.
-    var diffPlacements: [(diff: DiffTab, tabID: UUID)] {
-        tabs.flatMap { tab in tab.diffs.map { (diff: $0, tabID: tab.id) } }
-    }
-
     /// The focused terminal session; while a file, browser, or diff pane is
     /// focused it has no directory of its own, so panels that need a working
     /// directory (file tree, git, info) track a terminal that does: one sharing
@@ -470,24 +464,28 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
     /// Opens a git diff as a new tab, reusing (and reloading) an existing tab
     /// for the same file and stage side.
+    ///
+    /// The Git panel's three cases are the same two-column comparison the
+    /// Compare panel opens, against different revisions — see
+    /// ``CompareTab/Sides``. An unstaged row puts the index beside the live
+    /// file, so a change can be read and fixed in one place.
     func openDiff(
         repository: GitDirectory, path: String, staged: Bool,
         untracked: Bool, origPath: String?
     ) {
+        let sides = CompareSides(staged: staged, untracked: untracked)
         if let (tab, pane) = findDiffPane(
-            repository: repository, path: path, staged: staged
+            repository: repository, path: path, sides: sides
         ), case .diff(let diff) = pane.content {
-            diff.untracked = untracked
-            diff.origPath = origPath
             diff.reload()
+            diff.file.reloadFromDiskIfClean()
             selectedTabID = tab.id
             tab.focusedPaneID = pane.id
             return
         }
         let context = selectedSession
-        let diff = DiffTab(
-            repository: repository, path: path, staged: staged,
-            untracked: untracked, origPath: origPath
+        let diff = CompareTab(
+            repository: repository, path: path, origPath: origPath, sides: sides
         )
         let tab = makeTab(content: .diff(diff))
         tab.contextSession = context
@@ -499,14 +497,14 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// machine is a different file, so it gets its own tab rather than
     /// reloading this one over the wrong connection.
     private func findDiffPane(
-        repository: GitDirectory, path: String, staged: Bool
+        repository: GitDirectory, path: String, sides: CompareTab.Sides
     ) -> (tab: PaneTab, pane: Pane)? {
         for tab in tabs {
             if let pane = tab.allPanes.first(where: {
                 if case .diff(let diff) = $0.content {
                     return diff.repository == repository
                         && diff.path == path
-                        && diff.staged == staged
+                        && diff.sides == sides
                 }
                 return false
             }) {
@@ -541,7 +539,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         let context = selectedSession
         let compare = CompareTab(
             repository: repository, path: path, origPath: origPath,
-            targetOID: targetOID, targetName: targetName
+            sides: .revision(oid: targetOID, name: targetName)
         )
         let tab = makeTab(content: .compare(compare))
         tab.contextSession = context
@@ -758,8 +756,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
     /// Moves a tab into another tab's pane tree at the indicated drop edge.
     /// The source layout is grafted intact, so dragging a tab that already has
-    /// splits preserves those panes and their proportions. Diff tabs stay
-    /// standalone, matching the same constraint as every other split path.
+    /// splits preserves those panes and their proportions.
     @discardableResult
     func moveTab(
         _ draggedID: UUID,
@@ -771,9 +768,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
               let draggedIndex = tabs.firstIndex(where: { $0.id == draggedID }),
               let draggedTab = tabs.first(where: { $0.id == draggedID }),
               let targetTab = tabs.first(where: { $0.id == targetTabID }),
-              !draggedTab.allContents.contains(where: \.isDiff),
-              let targetPane = targetTab.allPanes.first(where: { $0.id == targetPaneID }),
-              !targetPane.content.isDiff
+              targetTab.allPanes.contains(where: { $0.id == targetPaneID })
         else { return false }
 
         targetTab.insert(
@@ -883,16 +878,19 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         case .browser(let url):
             return .browser(makeBrowser(initialURL: url, initialFocus: .none))
         case .diff(let repoRoot, let path, let staged, let untracked, let origPath, let remoteHost):
-            return .diff(DiffTab(
-                repository: GitDirectory(repoRoot), path: path, staged: staged,
-                untracked: untracked, origPath: origPath, disconnectedFrom: remoteHost
+            // The snapshot still records the stage side as two flags, which is
+            // what it always was; they name a `CompareSides` case now.
+            return .diff(CompareTab(
+                repository: GitDirectory(repoRoot), path: path, origPath: origPath,
+                sides: CompareSides(staged: staged, untracked: untracked),
+                disconnectedFrom: remoteHost
             ))
         case .compare(
             let repoRoot, let path, let origPath, let targetOID, let targetName, let remoteHost
         ):
             return .compare(CompareTab(
                 repository: GitDirectory(repoRoot), path: path, origPath: origPath,
-                targetOID: targetOID, targetName: targetName,
+                sides: .revision(oid: targetOID, name: targetName),
                 disconnectedFrom: remoteHost
             ))
         }

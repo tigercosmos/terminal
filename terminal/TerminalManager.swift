@@ -903,8 +903,9 @@ final class TerminalManager: nonisolated ObservableObject {
             return .browser(url: browser.snapshotURL)
         case .diff(let diff):
             return .diff(
-                repoRoot: diff.repository.path, path: diff.path, staged: diff.staged,
-                untracked: diff.untracked, origPath: diff.origPath,
+                repoRoot: diff.repository.path, path: diff.path,
+                staged: diff.sides.isStaged,
+                untracked: diff.sides.isUntracked, origPath: diff.origPath,
                 remoteHost: diff.remoteHost
             )
         case .compare(let compare):

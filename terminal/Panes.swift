@@ -16,7 +16,11 @@ enum PaneContent: nonisolated Identifiable {
     case session(TerminalSession)
     case file(FileTab)
     case browser(BrowserTab)
-    case diff(DiffTab)
+    /// A change from the Git panel. Backed by ``CompareTab`` like `.compare`
+    /// is — the two differ in what they compare against, not in how they are
+    /// read — but kept a separate case so "Close Diffs", tab identity, and the
+    /// session snapshot can still tell the two apart.
+    case diff(CompareTab)
     case compare(CompareTab)
 
     nonisolated var id: UUID {
@@ -162,7 +166,7 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
         allContents.compactMap { if case .session(let session) = $0 { return session }; return nil }
     }
 
-    var diffs: [DiffTab] {
+    var diffs: [CompareTab] {
         allContents.compactMap { if case .diff(let diff) = $0 { return diff }; return nil }
     }
 

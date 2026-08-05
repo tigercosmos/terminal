@@ -100,6 +100,11 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         /// pane says where the file is instead of opening whatever happens to
         /// sit at the same path here.
         case disconnected(host: String)
+        /// Bytes Git handed over — a blob at some revision, or the staged
+        /// version in the index. Not a file on disk at all, so there is
+        /// nothing to write back to and nothing to re-read when the app comes
+        /// forward. `label` names the side in the compare header.
+        case snapshot(label: String)
 
         /// Where a file opened from the Files panel lives: the tree hands over
         /// the connection its rows came from, or nothing for this machine.
@@ -118,8 +123,10 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         case .local: nil
         case .remote(let destination): destination.host
         case .disconnected(let host): host
+        case .snapshot: nil
         }
     }
+
 
     init(path: String, remote: RemoteShellDestination? = nil) {
         self.path = path
@@ -153,6 +160,27 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
             )
         )
         text = ""
+    }
+
+    /// Bytes Git produced rather than a file to open — the staged version of a
+    /// path. Read-only, and never re-read from disk: there is no file behind
+    /// it, so what Git gave is all there is.
+    init(path: String, snapshot snapshotText: String, label: String) {
+        self.path = path
+        location = .snapshot(label: label)
+        content = .text
+        text = snapshotText
+        savedText = snapshotText
+    }
+
+    /// Swaps in a freshly read blob. Bumping `reloadRevision` is what rebuilds
+    /// the compare columns, the same signal a re-read from disk gives them.
+    func replaceSnapshot(with snapshotText: String) {
+        guard case .snapshot = location, text != snapshotText else { return }
+        content = .text
+        text = snapshotText
+        savedText = snapshotText
+        reloadRevision &+= 1
     }
 
     var name: String {
@@ -291,6 +319,10 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
         // Nothing to re-read: the connection that could have fetched it is
         // gone, and the path does not describe anything on this machine.
         case .disconnected:
+            return
+        // A blob Git already handed over. There is no file behind it, and the
+        // diff that owns it re-reads Git itself when the status changes.
+        case .snapshot:
             return
         case .local:
             break

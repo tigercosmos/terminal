@@ -699,7 +699,7 @@ private struct TabPaneThumbnail: View {
             case .browser(let browser):
                 browserPreview(browser)
             case .diff(let diff):
-                diffPreview(diff)
+                comparePreview(diff)
             case .compare(let compare):
                 comparePreview(compare)
             }
@@ -765,24 +765,9 @@ private struct TabPaneThumbnail: View {
         }
     }
 
-    private func diffPreview(_ diff: DiffTab) -> some View {
-        HStack(spacing: 1) {
-            Text(textExcerpt(diff.web.oldContent))
-                .foregroundStyle(Color.red.opacity(0.76))
-                .background(Color.red.opacity(0.07))
-            Text(textExcerpt(diff.web.newContent))
-                .foregroundStyle(Color.green.opacity(0.76))
-                .background(Color.green.opacity(0.07))
-        }
-        .font(.system(size: 4.5, design: .monospaced))
-        .lineSpacing(0)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(4)
-    }
-
-    /// Same two-column shape as the comparison itself: the target on the left,
-    /// the live file on the right.
+    /// Same two-column shape as the comparison itself: the older side on the
+    /// left, the newer on the right. Serves the Git panel's diffs too, which
+    /// are the same view against a different revision.
     private func comparePreview(_ compare: CompareTab) -> some View {
         HStack(spacing: 1) {
             Text(textExcerpt(compare.baseText))

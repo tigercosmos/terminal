@@ -548,10 +548,13 @@ private struct PaneView: View {
                 onNewBrowserPane: newBrowserPaneFromMenu
             )
                 .background(Color(nsColor: Theme.background))
-        case .diff:
-            // Rendered by the always-mounted diff stack behind the layout; stay
-            // transparent and non-interactive so clicks and scrolls reach it.
-            Color.clear.allowsHitTesting(false)
+        case .diff(let diff):
+            CompareDiffView(
+                compare: diff,
+                isFocused: isFocused,
+                onFocused: focus
+            )
+                .background(Color(nsColor: Theme.background))
         case .compare(let compare):
             CompareDiffView(
                 compare: compare,

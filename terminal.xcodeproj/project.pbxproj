@@ -15,7 +15,6 @@
 		AA30000000000000000000A2 /* TreeSitterTSX in Frameworks */ = {isa = PBXBuildFile; productRef = AA30000000000000000000A1 /* TreeSitterTSX */; };
 		AA60000000000000000000A2 /* FuzzyMatch in Frameworks */ = {isa = PBXBuildFile; productRef = AA60000000000000000000A1 /* FuzzyMatch */; };
 		AA70000000000000000000A2 /* TerminalCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA70000000000000000000A1 /* TerminalCore */; };
-		FF519F43300BBE2100D8B982 /* PierreDiffsSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA10000000000000000000D1 /* PierreDiffsSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,7 +48,6 @@
 		FF3FDD70300B6A7400112486 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				FF519F43300BBE2100D8B982 /* PierreDiffsSwift in Frameworks */,
 				AA10000000000000000000B2 /* GhosttyTerminal in Frameworks */,
 				AA10000000000000000000B4 /* GhosttyTheme in Frameworks */,
 				AA10000000000000000000C2 /* STTextView in Frameworks */,
@@ -111,7 +109,6 @@
 				AA10000000000000000000B1 /* GhosttyTerminal */,
 				AA10000000000000000000B3 /* GhosttyTheme */,
 				AA10000000000000000000C1 /* STTextView */,
-				AA10000000000000000000D1 /* PierreDiffsSwift */,
 				AA10000000000000000000E1 /* Sparkle */,
 				AA20000000000000000000A1 /* STTextView-Plugin-Neon */,
 				AA30000000000000000000A1 /* TreeSitterTSX */,
@@ -152,7 +149,6 @@
 				AA10000000000000000000C0 /* XCLocalSwiftPackageReference "Vendor/STTextView" */,
 				AA10000000000000000000B0 /* XCLocalSwiftPackageReference "Vendor/libghostty-spm" */,
 				AA30000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/TreeSitterTSX" */,
-				AA10000000000000000000D0 /* XCRemoteSwiftPackageReference "PierreDiffsSwift" */,
 				AA10000000000000000000E0 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				AA20000000000000000000A0 /* XCRemoteSwiftPackageReference "STTextView-Plugin-Neon" */,
 				AA60000000000000000000A0 /* XCRemoteSwiftPackageReference "FuzzyMatch" */,
@@ -463,14 +459,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		AA10000000000000000000D0 /* XCRemoteSwiftPackageReference "PierreDiffsSwift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/egoist-labs/PierreDiffsSwift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.4.1;
-			};
-		};
 		AA10000000000000000000E0 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -509,11 +497,6 @@
 		AA10000000000000000000C1 /* STTextView */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = STTextView;
-		};
-		AA10000000000000000000D1 /* PierreDiffsSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = AA10000000000000000000D0 /* XCRemoteSwiftPackageReference "PierreDiffsSwift" */;
-			productName = PierreDiffsSwift;
 		};
 		AA10000000000000000000E1 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;

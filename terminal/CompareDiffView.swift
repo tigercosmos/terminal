@@ -16,14 +16,25 @@ import TerminalCore
 // repository rather than on a binary dependency that could move underneath it.
 @_spi(Plugins) import STTextView
 
-/// One file compared against a branch or commit, opened as a pane.
+/// One file with two versions of it side by side, opened as a pane.
 ///
-/// The left column is the file as of the target and is read-only. The right
-/// column is the file on disk, live and editable — that is the whole point:
-/// read the comparison and fix the code in the same view, then save.
+/// This backs both entry points, because they are the same question asked of
+/// different revisions. ⌘⇧C compares the working tree against a branch or
+/// commit the user picks; the Git panel compares it against HEAD and the
+/// index. Every case is "a Git rev spec on the left, and on the right either
+/// the live file or another rev spec" — see ``Sides``.
+///
+/// The left column is always read-only. The right is the file on disk, live
+/// and editable, wherever there is a file on disk to edit — that is the whole
+/// point: read the comparison and fix the code in the same view, then save.
 @MainActor
 final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     nonisolated let id = UUID()
+
+    /// What the two columns read — see ``CompareSides``.
+    typealias Sides = CompareSides
+
+    let sides: Sides
 
     /// The repository the comparison runs in, and the machine it is on.
     let repository: GitDirectory
@@ -45,16 +56,41 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// The file's path *at the target* when it was renamed, so the left column
     /// reads the file's own history instead of showing the whole file as new.
     let origPath: String?
-    /// The commit the left column reads from. Pinned when the tab opens, so a
-    /// branch moving under a comparison cannot silently change what an open
-    /// tab is showing; reopening from the panel picks up the new tip.
-    let targetOID: String
-    /// What to call the target in the header — a branch name, or a revision.
-    let targetName: String
+    /// The commit the left column reads from, for ``Sides/revision``. Pinned
+    /// when the tab opens, so a branch moving under a comparison cannot
+    /// silently change what an open tab is showing; reopening from the panel
+    /// picks up the new tip. Empty for the Git panel's cases, which name a
+    /// place in the repository rather than a commit.
+    var targetOID: String {
+        if case .revision(let oid, _) = sides { return oid }
+        return ""
+    }
+
+    /// What to call the left column in the header.
+    var targetName: String {
+        switch sides {
+        case .revision(_, let name): name
+        case .unstaged: String(localized: "Index")
+        case .staged: "HEAD"
+        case .untracked: String(localized: "New File")
+        }
+    }
+
+    /// What to call the right column in the header. Normally the file's own
+    /// path, since that is what is on disk; a staged diff shows the index.
+    var workingName: String {
+        if case .staged = sides { return String(localized: "Index") }
+        return path
+    }
+
+    /// The commit the left column can be blamed at, or nil where blame would
+    /// lie.
+    var baseBlameRevision: String? { sides.baseBlameRevision }
 
     /// The right column. A real `FileTab`, so saving, the dirty indicator, the
     /// external-change conflict prompt, the find bar, and the prompt on closing
     /// with unsaved changes all behave exactly as in an ordinary editor pane.
+    /// A staged diff puts a read-only snapshot of the index here instead.
     let file: FileTab
 
     @Published private(set) var baseText = ""
@@ -68,27 +104,35 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
 
     init(
         repository: GitDirectory, path: String, origPath: String?,
-        targetOID: String, targetName: String, disconnectedFrom host: String? = nil
+        sides: Sides, disconnectedFrom host: String? = nil
     ) {
         self.repository = repository
         self.path = path
         self.origPath = origPath
-        self.targetOID = targetOID
-        self.targetName = targetName
+        self.sides = sides
         disconnectedHost = host
-        // Reached over the same connection the panel is using, so a comparison
-        // against a repository on another machine opens that machine's file
-        // rather than whatever sits at the same path here. A remote `FileTab`
-        // is read-only, which is what makes the editable column editable only
-        // when there is something local to edit.
-        file = host.map { FileTab(path: repository.appending(path), disconnectedFrom: $0) }
-            ?? FileTab(path: repository.appending(path), remote: repository.remote)
+        if sides.rightSpec(path: path) != nil {
+            // A staged diff has no file on disk to show: `git add` took a copy,
+            // and the working tree may have moved on since. The blob is loaded
+            // by `reload()` and replaces this placeholder.
+            file = FileTab(path: repository.appending(path), snapshot: "", label: "index")
+        } else {
+            // Reached over the same connection the panel is using, so a
+            // comparison against a repository on another machine opens that
+            // machine's file rather than whatever sits at the same path here. A
+            // remote `FileTab` is read-only, which is what makes the editable
+            // column editable only when there is something local to edit.
+            file = host.map { FileTab(path: repository.appending(path), disconnectedFrom: $0) }
+                ?? FileTab(path: repository.appending(path), remote: repository.remote)
+        }
         reload()
     }
 
     var name: String { (path as NSString).lastPathComponent }
     var title: String { name }
 
+    /// Shown beside the left column's name, for a target that is a commit.
+    /// Empty where the left column is a place rather than a revision.
     var shortOID: String { String(targetOID.prefix(7)) }
 
     /// The file exists at the target but not on disk. The right column is then
@@ -120,8 +164,9 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
         file.updatePath(newPath)
     }
 
-    /// Loads the target side. The working-tree side is the `FileTab`, which
-    /// loads and reloads itself.
+    /// Loads the left side, and the right too when it is a blob rather than a
+    /// file. A live working-tree side is the `FileTab`, which loads and
+    /// reloads itself.
     func reload() {
         reloadGeneration &+= 1
         if let disconnectedHost {
@@ -136,23 +181,31 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
         isLoading = true
         error = nil
         let root = repository
-        let oid = targetOID
-        let oldPath = origPath ?? path
+        // An untracked file has no left side at all; skipping the Git call is
+        // also what stops it reporting "no such path" as an error.
+        let baseSpec = sides.baseSpec(path: origPath ?? path)
+        let rightSpec = sides.rightSpec(path: path)
 
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 var failure: String?
                 // A path absent at the target yields an empty side, which is
                 // the correct "everything here is new" comparison.
-                let text = GitFileContent.firstBlob(
-                    ["\(oid):\(oldPath)"], in: root, error: &failure
-                )
-                return (text: text, failure: failure)
+                let base = baseSpec.map {
+                    GitFileContent.firstBlob([$0], in: root, error: &failure)
+                } ?? ""
+                let right = rightSpec.map {
+                    GitFileContent.firstBlob([$0], in: root, error: &failure)
+                }
+                return (base: base, right: right, failure: failure)
             }.value
             guard let self, self.reloadGeneration == generation else { return }
             self.isLoading = false
             self.error = result.failure
-            self.baseText = result.text
+            self.baseText = result.base
+            if let right = result.right {
+                self.file.replaceSnapshot(with: right)
+            }
         }
     }
 }
@@ -226,8 +279,9 @@ struct CompareDiffView: View {
                 repository: compare.repository,
                 path: compare.path,
                 targetPath: compare.origPath ?? compare.path,
-                targetOID: compare.targetOID,
+                baseBlameRevision: compare.baseBlameRevision,
                 targetName: compare.targetName,
+                isWorkingColumnEditable: !file.isReadOnly,
                 showsLineBlame: settings.compareLineBlame,
                 font: TerminalFont.current(),
                 palette: .theme(dark: colorScheme == .dark),
@@ -252,21 +306,25 @@ struct CompareDiffView: View {
         HStack(spacing: 0) {
             columnLabel(
                 title: compare.targetName,
-                detail: compare.shortOID,
+                // Only a commit has a hash worth showing; HEAD and the index
+                // name themselves.
+                detail: compare.shortOID.isEmpty ? nil : compare.shortOID,
                 isDirty: false,
-                help: String(localized: "The file as of \(compare.targetName) (\(compare.shortOID)) — read-only")
+                help: compare.shortOID.isEmpty
+                    ? String(localized: "The file as of \(compare.targetName) — read-only")
+                    : String(localized: "The file as of \(compare.targetName) (\(compare.shortOID)) — read-only")
             )
             Rectangle()
                 .fill(Color(nsColor: Theme.divider))
                 .frame(width: 1)
                 .frame(maxHeight: .infinity)
             columnLabel(
-                title: compare.path,
+                title: compare.workingName,
                 detail: compare.remoteHost,
                 // The dot is the only state worth a glyph here: everything else
                 // in this bar is fixed, and the word "editable" never changed.
                 isDirty: file.isDirty,
-                help: compare.remoteHost.map { host in
+                help: stagedHelp ?? compare.remoteHost.map { host in
                     String(
                         localized: "The working tree on \(host) — read-only",
                         comment: "Compare header for a working tree on a remote host. The placeholder is a hostname."
@@ -283,6 +341,13 @@ struct CompareDiffView: View {
                 .fill(Color(nsColor: Theme.divider))
                 .frame(height: 1)
         }
+    }
+
+    /// A staged diff's right column is the index, not the working tree — say
+    /// so, since this is the one case where editing is not offered.
+    private var stagedHelp: String? {
+        guard case .staged = compare.sides else { return nil }
+        return String(localized: "The file as staged in the index — read-only")
     }
 
     private func columnLabel(
@@ -383,8 +448,13 @@ private struct CompareColumnsView: NSViewRepresentable {
     /// The path at the target, which differs from `path` for a rename. The
     /// read-only column blames the file's own history under that name.
     let targetPath: String
-    let targetOID: String
+    /// The commit to blame the read-only column at, or nil where there is no
+    /// commit behind it — the index, or a file that is entirely new.
+    let baseBlameRevision: String?
     let targetName: String
+    /// False when the right column is a blob rather than a file on disk: a
+    /// staged diff, or a working tree on a host Terminal cannot write to.
+    let isWorkingColumnEditable: Bool
     let showsLineBlame: Bool
     let font: NSFont
     let palette: EditorPalette
@@ -395,7 +465,8 @@ private struct CompareColumnsView: NSViewRepresentable {
     func makeCoordinator() -> CompareColumnsCoordinator {
         CompareColumnsCoordinator(
             file: file, repository: repository, path: path,
-            targetPath: targetPath, targetOID: targetOID, targetName: targetName
+            targetPath: targetPath, baseBlameRevision: baseBlameRevision,
+            targetName: targetName
         )
     }
 
@@ -410,7 +481,8 @@ private struct CompareColumnsView: NSViewRepresentable {
             path: path, editable: false, font: font, palette: palette, onFocused: {}
         )
         let right = coordinator.makeColumn(
-            path: path, editable: true, font: font, palette: palette, onFocused: onFocused
+            path: path, editable: isWorkingColumnEditable,
+            font: font, palette: palette, onFocused: onFocused
         )
         coordinator.showsLineBlame = showsLineBlame
         coordinator.onAlignment = onAlignment
@@ -631,7 +703,7 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
     private let repository: GitDirectory
     private let path: String
     private let targetPath: String
-    private let targetOID: String
+    private let baseBlameRevision: String?
     private let targetName: String
     var onFocused: () -> Void = {}
     var wasFocused = false
@@ -658,13 +730,13 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
 
     init(
         file: FileTab, repository: GitDirectory, path: String,
-        targetPath: String, targetOID: String, targetName: String
+        targetPath: String, baseBlameRevision: String?, targetName: String
     ) {
         self.file = file
         self.repository = repository
         self.path = path
         self.targetPath = targetPath
-        self.targetOID = targetOID
+        self.baseBlameRevision = baseBlameRevision
         self.targetName = targetName
     }
 
@@ -871,6 +943,11 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
 
     private func loadHover(line: Int, editable: Bool) {
         guard let column = editable ? newColumn : oldColumn else { return }
+        // Neither column of a staged diff has a commit behind it — the index
+        // is not one — and the working column is a blob rather than the file
+        // on disk. Blaming either would attribute lines to the wrong commit,
+        // so that diff simply has no blame.
+        guard editable ? !file.isReadOnly : baseBlameRevision != nil else { return }
         hoverRequestID &+= 1
         let requestID = hoverRequestID
         let root = repository
@@ -879,7 +956,7 @@ private final class CompareColumnsCoordinator: NSObject, STTextViewDelegate {
         // that commit; passing its text as `--contents` instead would blame a
         // detached buffer and lose the commit that actually produced it.
         let contents = editable ? (column.textView.text ?? "") : nil
-        let revision = editable ? nil : targetOID
+        let revision = editable ? nil : baseBlameRevision
 
         Task { [weak self] in
             let blame = await Task.detached(priority: .utility) { () -> BlameLine? in

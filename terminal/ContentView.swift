@@ -101,14 +101,12 @@ final class TabSplitDragCoordinator: ObservableObject {
 
         var targetPaneID: UUID?
         var edge: PaneDropEdge?
-        if let source,
-           !source.allContents.contains(where: \.isDiff),
+        if source != nil,
            targetTabID != sourceTabID,
            renderedTabID == targetTabID,
            let targetTab = project.selectedTab,
            let hit = paneFrames.first(where: { $0.value.contains(location) }),
-           let targetPane = targetTab.allPanes.first(where: { $0.id == hit.key }),
-           !targetPane.content.isDiff {
+           targetTab.allPanes.contains(where: { $0.id == hit.key }) {
             targetPaneID = hit.key
             edge = dropEdge(at: location, in: hit.value)
         }
@@ -188,56 +186,9 @@ struct ContentView: View {
                 MainHeaderView(manager: manager, tabSplitDrag: tabSplitDrag)
                     .zIndex(1)
 
-                ZStack {
-                    // Diff panes stay mounted while unselected: removing one
-                    // would pull its NSHostingView out of the window, which
-                    // tears down and re-creates the WKWebView inside (losing
-                    // the rendered diff and scroll position). Unselected ones
-                    // just sit covered by the active tab's opaque pane layer.
-                    // Diffs are always their own single-pane tab, so a selected
-                    // diff fills the whole content area, unchanged.
-                    if let project = manager.selectedProject {
-                        ForEach(project.diffPlacements, id: \.diff.id) { placement in
-                            DiffViewerView(
-                                diff: placement.diff,
-                                isSelected: project.selectedTabID == placement.tabID
-                            )
-                            .background(Color(nsColor: Theme.background))
-                            .allowsHitTesting(project.selectedTabID == placement.tabID)
-                            .zIndex(project.selectedTabID == placement.tabID ? 1 : 0)
-                        }
-                    }
-                    Group {
-                        if let tab = manager.selectedProject?.selectedTab {
-                            PaneLayoutView(
-                                tab: tab,
-                                tabSplitDrag: tabSplitDrag,
-                                onSplit: { manager.split(toward: $0) },
-                                onNewBrowserTab: {
-                                    manager.newBrowserTab(initialURL: $0)
-                                },
-                                onNewBrowserPane: {
-                                    manager.newBrowserPane(initialURL: $0)
-                                },
-                                onNewFileTab: {
-                                    manager.openFile($0)
-                                },
-                                onNewFilePane: {
-                                    manager.openFileToSide($0)
-                                }
-                            )
-                        } else {
-                            emptyState
-                        }
-                    }
+                paneLayer
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // Opaque so the pane gaps hide the unselected diffs behind,
-                    // except while a diff tab is up — then stay clear so its
-                    // web view shows through from the stack below.
-                    .background(paneLayerIsOpaque ? AnyShapeStyle(Color(nsColor: Theme.background)) : AnyShapeStyle(Color.clear))
-                    .zIndex(2)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: Theme.background))
 
                 if manager.selectedProject != nil
                     && settings.toolbarVisibility != .hide
@@ -336,9 +287,23 @@ struct ContentView: View {
     /// The pane layer paints an opaque background to hide unselected diffs in
     /// its gaps — but a diff tab's own pane must stay clear so its web view
     /// (mounted in the stack behind) shows through.
-    private var paneLayerIsOpaque: Bool {
-        guard let tab = manager.selectedProject?.selectedTab else { return true }
-        return tab.diffs.isEmpty
+    /// The selected tab's panes. Split out of `body` because the type checker
+    /// gives up on the whole window in one expression.
+    @ViewBuilder
+    private var paneLayer: some View {
+        if let tab = manager.selectedProject?.selectedTab {
+            PaneLayoutView(
+                tab: tab,
+                tabSplitDrag: tabSplitDrag,
+                onSplit: { manager.split(toward: $0) },
+                onNewBrowserTab: { manager.newBrowserTab(initialURL: $0) },
+                onNewBrowserPane: { manager.newBrowserPane(initialURL: $0) },
+                onNewFileTab: { manager.openFile($0) },
+                onNewFilePane: { manager.openFileToSide($0) }
+            )
+        } else {
+            emptyState
+        }
     }
 
     @ViewBuilder
