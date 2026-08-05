@@ -78,6 +78,80 @@ key; if it did not, [LOCALIZATION.md](LOCALIZATION.md) says what is owed.
 
 ## Log
 
+### 2026-08-06 — `kero/main` at `ae67b6f`
+
+Merge base `2163068`; 44 upstream commits spanning 0.1.36–0.1.44. **Not a
+merge.** `git merge kero/main` was tried first and abandoned: it produced 22
+content conflicts, and rename detection had by then failed on the files that
+mattered most. `terminal/FileViewerView.swift` has diverged far enough from
+upstream's that git paired it with nothing and left the upstream edits in a
+stray `kero/FileViewerView.swift`, so a "resolved" merge would have silently
+dropped them. The 334 files upstream added under `kero/` also have no rename
+source, and landed as location conflicts. Every commit below was re-applied by
+hand instead, which is what the fork's divergence now costs.
+
+Taken:
+
+| Commit | What it brought |
+| --- | --- |
+| `cc3a285` | Sidebar project rows scale from the file tree's designed 11.5pt |
+| `0764bbd` | A minimum 100pt window-drag target beside the session tabs |
+| `3907094` | The left sidebar's toggle moves into the header while it is hidden |
+| `567ab96` | A modern Safari user agent for browser panes |
+| `31d09ed`, `0785263` | Terminal notifications play the system sound, re-requesting the sound authorization existing installs never granted |
+| `ac4ca58` | OSC 777 notifications in Alacritty panes; the backend advertises ghostty instead of WezTerm |
+| `9ea40a6` | Clicking a notification jumps to the session that posted it |
+| `0158396` | `assumeMainActor` replaces `MainActor.assumeIsolated` on the Ctrl-Tab switcher's structural-main-thread callbacks |
+| `db0da69` | modifyOtherKeys, Ctrl-digit, and application-keypad input in Alacritty |
+| `e74f2b0` | OSC 22 pointer shapes; the DEC 2026 tracker becomes a general `StreamScanner` |
+| `b83f338` | Terminal links to local files, with Finder reveal and file tab/pane actions |
+| `3f0cdd8` | The Git toolbar below the active tab, its branch switcher, and its setting |
+| `45fa4d3` | Clean status and untracked line counts in that toolbar |
+| `628dee2` | Close Files and Close Diffs in the tab context menu |
+| `32af47a` | The Git panel drops Commit when nothing is staged and a sync is waiting |
+| `8d4b0f2` | A new session prefers the pinned project directory |
+| `90cd6bf` | The selected tab scrolls clear of the strip's overflow fades |
+| `e56d624` | Material file icons: 330 vendored SVGs, the generated table, and the generator |
+| `93b2b34` | Dragging a tab onto the content grafts its pane tree in as a split |
+| `0590f15` | The `.git` walk ascends path strings, so a directory outside any repository no longer spins forever |
+| `01566f9` | Git pipe readers match the calling thread's QoS instead of pinning to utility |
+
+Not taken:
+
+- The nine `[release] …` commits (`28004b5`, `be99423`, `72b4cd0`, `0785263`,
+  `c315dd9`, `7c21a22`, `3425df1`, `9a5dd13`, `ae67b6f`) — version bumps and
+  numbered headings for upstream's releases. Their notes are folded into
+  `## [unrelease]`; `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` are
+  untouched, per [RELEASING.md](RELEASING.md). `0785263` also carried a real
+  notification change, which was taken.
+- `09d2496`, `4fdbc99` — upstream changelog wording only.
+- `83a3932` — upstream's `CLAUDE.md` AppKit-first guidance. This fork's
+  equivalent lives in [STYLE.md](STYLE.md) and already says it.
+- `9e1de54` — `BUILD_JOBS`/`BUILD_NICE` in upstream's release script. Maintainer
+  tooling against a release flow this fork does not share.
+- `a787cc8`, `09d860c` — upstream's `web/src/routes/changelog.tsx` contributor
+  fetch. This fork's site is hand-written and has no such page.
+
+**Deferred — still owed, and the reason.** These are the diff viewer and Git
+panel reworks, which land in files this fork has rewritten rather than
+extended. They need porting the same way the rest of this sync was, and are
+listed here rather than dropped:
+
+- `dd14529`, `17bb787`, `db9a061`, `0a253ba` — editing live worktree changes
+  directly in the diff view, with remembered Review/Edit and Unified/Split
+  controls, and diff appearance following the system theme. Needs
+  PierreDiffsSwift 1.5.0 (the bump was reverted rather than left dangling
+  without the feature that uses it). This fork's `DiffViewerView.swift` is 430
+  lines against upstream's 580 and loads diffs through `TerminalCore` so they
+  work over ssh, so upstream's ~300 added lines do not transplant.
+- `1da3345` — keeping visited project diffs mounted. This fork already mounts
+  unselected diffs from `ContentView`; upstream's version has to be reconciled
+  with that rather than applied.
+- `212ea0a`, `17caef1` — the reworked Recent Commits view (a new ~770-line
+  file) and its page size of 30.
+- `dae03e9` — Git operation progress and error feedback, ~460 lines into a
+  `RightSidebarView.swift` that is 2,725 lines here.
+
 ### 2026-07-31 — `kero/main` at `2163068`
 
 Merge base `3e2e826`; five upstream commits, all taken.

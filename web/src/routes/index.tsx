@@ -163,7 +163,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Split panes',
         detail:
-          'Cmd+D splits right, Cmd+Shift+D splits down, Opt+Cmd+arrows moves focus between panes',
+          'Cmd+D splits right, Cmd+Shift+D splits down, Opt+Cmd+arrows moves focus between panes, or drag a tab onto the content to split it there — a tab that is already split keeps its panes and their proportions',
       },
       {
         name: 'Restored on relaunch',
@@ -194,9 +194,14 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'switch or create a branch, fetch, fast-forward pull, push, publish a new upstream, or stash',
       },
       {
+        name: 'Repository toolbar',
+        detail:
+          'an optional bar under the active tab showing the branch and the lines added and deleted so far — or Clean when there is nothing pending — with a searchable branch switcher; off by default, and it follows you onto an ssh host like the panels do',
+      },
+      {
         name: 'Files panel',
         detail:
-          'browse the working tree, open a file, edit it with tree-sitter highlighting, Cmd+S to save',
+          'browse the working tree, open a file, edit it with tree-sitter highlighting, Cmd+S to save — with filename-aware icons throughout',
       },
       {
         name: 'Session info',
@@ -231,7 +236,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Desktop notifications',
         detail:
-          'a bell in an unfocused session, or a notification escape from a long-running command, reaches Notification Center',
+          'a bell in an unfocused session, or a notification escape from a long-running command, reaches Notification Center with the system sound — click one and it jumps to the session that posted it',
       },
       {
         name: 'Progress reports',

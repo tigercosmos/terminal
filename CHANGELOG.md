@@ -14,6 +14,47 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- A toolbar under the active tab shows the repository the terminal is working
+  in: its branch, and the lines added and deleted so far — or a green Clean
+  when there is nothing pending. The branch opens a searchable switcher that
+  floats the current branch to the top and marks the remote's default; the
+  counts open the Git panel, and include untracked files the way `git diff`
+  does not. Right-click the toolbar to hide it, or choose in Settings →
+  Appearance → Toolbar whether it appears in every project, only in Git
+  repositories, or never. It follows a terminal onto a host it has `ssh`'d
+  into, like the panels do, and it starts out hidden
+- File names carry their own icons — 300 of them, from the Material Icon
+  Theme — in the file tree, the Git panel, tab labels, pane headers, the pane
+  switcher, and ⌘P results
+- Drag a tab down onto the current tab's content to turn it into a split pane.
+  A tab that is already split keeps its panes and their proportions
+- Command-click a file path in a terminal to reveal it in Finder, or
+  Command-right-click a path or URL to open it as a file or browser tab or
+  pane. Paths are resolved against the terminal's own directory, and the
+  `file:12:5` suffixes compilers print are understood
+- Terminal notifications play the system sound, and clicking one brings
+  Terminal forward and jumps to the session that posted it. Notifications from
+  Grok and other OSC 777 programs now arrive in Alacritty panes too
+- Alacritty panes take modified keys the way Ghostty panes do: Shift-Return
+  inserts a newline in Claude Code instead of submitting, Ctrl with the number
+  row sends the right control codes, and the numeric keypad works in
+  application mode. Programs can also set the mouse pointer's shape, and
+  mouse-reporting apps show the arrow
+- Close Files and Close Diffs in the tab context menu clear those panes
+  everywhere without touching terminals
+- With the left sidebar hidden, its toggle stays reachable in the header, and
+  a strip beside the tabs is always free to drag the window by
+- Selecting a tab now scrolls it clear of the strip's fade instead of leaving
+  it half-covered
+- Fix a rare crash while using the Ctrl-Tab switcher
+- Fix browser panes reporting an outdated browser to sites such as Bilibili
+- Fix the app hanging when a terminal sat in a directory outside any
+  repository
+- A new terminal opens in the project's pinned directory when it has one,
+  rather than following the current session
+
 ## [0.5.0]
 
 - Holding a key down in a terminal repeats it. Hold j or k to run through
