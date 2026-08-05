@@ -22,10 +22,12 @@ private func presentFileTreeFailure(_ message: String, _ detail: String) {
 /// button or ⇧⌘B. Files/Git switch via tabs along its top, otty-style.
 struct RightSidebarView: View {
     @ObservedObject var manager: TerminalManager
+    /// Owned by the window rather than this panel: the toolbar shows the same
+    /// repository and stays visible while the panel is closed.
+    @ObservedObject var git: GitStatusModel
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @StateObject private var fileTree = FileTreeModel(reportFailure: presentFileTreeFailure)
-    @StateObject private var git = GitStatusModel()
     @StateObject private var compare = GitCompareModel()
     @StateObject private var info = SessionInfoModel()
     @State private var applicationIsActive = NSApp.isActive
@@ -289,8 +291,9 @@ struct RightSidebarView: View {
         switch manager.panelTab {
         case .files:
             guard let remote else {
+                // Git status backs this tree's decorations, and the window
+                // keeps it current for the toolbar already — no sync here.
                 fileTree.sync(root: root)
-                if refreshGitStatus { git.sync(root: panelRoot) }
                 return
             }
             // With no directory established yet, the tree learns the login
@@ -300,7 +303,11 @@ struct RightSidebarView: View {
         // `refreshGitStatus` is false only on a timer tick, which is what the
         // models rate-limit a remote re-read against.
         case .git:
-            git.sync(root: panelRoot, polling: !refreshGitStatus)
+            // The window owns this model and already refreshes it on every
+            // user-driven trigger, for the toolbar as much as this panel.
+            // Only the timer tick — which is how a repository on another
+            // machine stays current — is still this panel's to drive.
+            if !refreshGitStatus { git.sync(root: panelRoot, polling: true) }
         case .compare:
             compare.sync(root: panelRoot, polling: !refreshGitStatus)
         case .info:

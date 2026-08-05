@@ -17,6 +17,17 @@ struct SettingsView: View {
     /// Installed fixed-pitch families (bundled default first).
     private let families = TerminalFont.selectableFamilies()
 
+    private var toolbarVisibilityDescription: LocalizedStringKey {
+        switch settings.toolbarVisibility {
+        case .auto:
+            "Shows the toolbar only in Git repositories"
+        case .always:
+            "Shows the toolbar in every project"
+        case .hide:
+            "Keeps the toolbar hidden"
+        }
+    }
+
     var body: some View {
         CappedIdealHeight(maxHeight: 600) { form }
     }
@@ -38,6 +49,15 @@ struct SettingsView: View {
                         Text(verbatim: language.title).tag(language)
                     }
                 }
+
+                Picker("Toolbar", selection: $settings.toolbarVisibility) {
+                    Text("Auto").tag(ToolbarVisibility.auto)
+                    Text("Always Show").tag(ToolbarVisibility.always)
+                    Text("Hide").tag(ToolbarVisibility.hide)
+                }
+                Text(toolbarVisibilityDescription)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
 
                 if settings.languageRequiresRelaunch {
                     HStack(alignment: .firstTextBaseline) {

@@ -4,17 +4,51 @@
 //
 
 import SwiftUI
+import TerminalCore
+
+enum BottomToolbarLayout {
+    static let idealHeight: CGFloat = 32
+
+    static func height(for session: TerminalSession?) -> CGFloat {
+        guard session?.backend == .libghostty,
+              let cellHeight = session?.terminalCellSize?.height,
+              cellHeight.isFinite, cellHeight > 0 else {
+            return idealHeight
+        }
+        let rowCount = max(1, (idealHeight / cellHeight).rounded())
+        return rowCount * cellHeight
+    }
+}
 
 struct ContentView: View {
     @ObservedObject var manager: TerminalManager
+    @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var tabSwitcher = TabSwitcherController()
+    @StateObject private var git = GitStatusModel()
+
+    /// Every terminal in the selected project can change the same repository.
+    /// Watching command completion keeps the toolbar current without polling.
+    private var commandCompletionSequences: [UUID: UInt64] {
+        Dictionary(uniqueKeysWithValues:
+            manager.selectedProject?.sessions.map {
+                ($0.id, $0.commandLifecycle.completionSequence)
+            } ?? []
+        )
+    }
+
+    private var bottomToolbarHeight: CGFloat {
+        BottomToolbarLayout.height(for: manager.selectedSession)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             if manager.isLeftSidebarVisible {
-                SidebarView(manager: manager)
+                SidebarView(
+                    manager: manager,
+                    bottomBarHeight: bottomToolbarHeight
+                )
             }
 
             VStack(spacing: 0) {
@@ -72,14 +106,25 @@ struct ContentView: View {
                     .zIndex(2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if manager.selectedProject != nil
+                    && settings.toolbarVisibility != .hide
+                    && (git.isRepo || settings.toolbarVisibility == .always) {
+                    BottomToolbarView(
+                        model: git,
+                        height: bottomToolbarHeight,
+                        toggleGitPanel: { manager.togglePanel(.git) },
+                        hideToolbar: { settings.toolbarVisibility = .hide }
+                    )
+                }
             }
             .background(Color(nsColor: Theme.background))
 
-            // Dropping the hidden sidebar also drops any expanded file tree,
-            // git snapshot and process snapshot it owned instead of retaining
-            // them for the rest of the window's lifetime.
+            // Dropping the hidden sidebar also drops its expanded file tree
+            // and process snapshot. Git stays window-owned because the toolbar
+            // remains visible while this panel is closed.
             if manager.isPanelVisible {
-                RightSidebarView(manager: manager)
+                RightSidebarView(manager: manager, git: git)
             }
         }
         .ignoresSafeArea()
@@ -105,9 +150,41 @@ struct ContentView: View {
                 .frame(width: 0, height: 0)
         }
         .background(WindowChromeAccessor { manager.attach(to: $0) })
+        .onAppear { syncGit() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            syncGit()
+        }
+        .onChange(of: commandCompletionSequences) { syncGit() }
+        .onChange(of: manager.selectedProjectID) { syncGit() }
+        .onChange(of: manager.selectedSession?.id) { syncGit() }
+        .onChange(of: manager.selectedSession?.workingDirectory) { syncGit() }
+        .onChange(of: manager.selectedSession?.foregroundDirectoryPath) { syncGit() }
+        .onChange(of: manager.selectedProject?.customDirectory) { syncGit() }
         .onChange(of: colorScheme) {
             manager.refreshAppearance()
         }
+    }
+
+    /// Keeps the toolbar's repository current whether or not the Git panel is
+    /// open. Resolves the same root the panels use, including following the
+    /// terminal onto a host it has ssh'd into, so both show one repository.
+    private func syncGit() {
+        guard let project = manager.selectedProject,
+              let session = project.selectedSession else {
+            git.sync(root: .local(""))
+            return
+        }
+        let (root, source) = project.panelRoot(
+            followingSessionAt: session.currentDirectoryPath,
+            foregroundAt: session.foregroundDirectoryPath
+        )
+        // A pin is an explicit choice about what these panels describe, so it
+        // keeps them on this Mac — matching RightSidebarView.
+        let remote = source == .pinned ? nil : session.remoteDestination
+        git.sync(root: remote.map { PanelRoot.remote(session.remoteRoot(on: $0), $0) }
+            ?? .local(root))
     }
 
     /// Sessions in the visible tab are owned by `TerminalHostView`; every
@@ -161,6 +238,562 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Button(buttonTitle, action: action)
         }
+    }
+}
+
+/// Project context for the active workspace. It stays deliberately compact so
+/// terminal content remains the center of gravity below the tab strip.
+private struct BottomToolbarView: View {
+    @ObservedObject var model: GitStatusModel
+    @ObservedObject private var themeChanges = Theme.changes
+    let height: CGFloat
+    let toggleGitPanel: () -> Void
+    let hideToolbar: () -> Void
+
+    @State private var isShowingBranches = false
+    @State private var branchFilter = ""
+    @State private var branchSearchFocusRequest: UInt = 0
+    @State private var branchScrollRequest: UInt = 0
+    @State private var isBranchButtonHovered = false
+    @State private var isChangesButtonHovered = false
+    @State private var isNoRepositoryButtonHovered = false
+    @State private var hoveredBranch: String?
+
+    private var filteredBranches: [String] {
+        let query = branchFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        var branches = query.isEmpty ? model.branches : model.branches.filter {
+            $0.localizedCaseInsensitiveContains(query)
+        }
+        if let current = model.branch,
+           let index = branches.firstIndex(of: current), index != branches.startIndex {
+            branches.remove(at: index)
+            branches.insert(current, at: branches.startIndex)
+        }
+        return branches
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            if model.isRepo {
+                branchButton
+                changesButton
+            } else {
+                noRepositoryButton
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 10)
+        .frame(height: height)
+        .contentShape(Rectangle())
+        .background {
+            ToolbarContextMenuMonitor(hideToolbar: hideToolbar)
+        }
+        .background(Color(nsColor: Theme.background))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(nsColor: Theme.divider))
+                .frame(height: 1)
+        }
+    }
+
+    private var noRepositoryButton: some View {
+        Button(action: toggleGitPanel) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("No Git Repository")
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(
+                        isNoRepositoryButtonHovered
+                            ? Color.primary.opacity(0.08)
+                            : Color.clear
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isNoRepositoryButtonHovered = $0 }
+    }
+
+    private var branchButton: some View {
+        Button {
+            toggleBranchPicker()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color(nsColor: Theme.accent))
+                Text(verbatim: model.branch ?? "detached HEAD")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isBranchButtonHovered ? Color.primary.opacity(0.08) : .clear)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isBranchButtonHovered = $0 }
+        .background {
+            InstantPopoverPresenter(
+                isPresented: $isShowingBranches,
+                preferredEdge: .maxY,
+                onPresent: {
+                    guard isShowingBranches else { return }
+                    branchSearchFocusRequest &+= 1
+                    branchScrollRequest &+= 1
+                },
+                onDismiss: {
+                    hoveredBranch = nil
+                }
+            ) {
+                branchPicker
+            }
+        }
+        .disabled(model.isBusy)
+        .help("Switch Branch")
+        .accessibilityLabel(
+            String(localized: "Current branch, \(model.branch ?? String(localized: "detached HEAD"))")
+        )
+    }
+
+    private var changesButton: some View {
+        Button(action: toggleGitPanel) {
+            HStack(spacing: 8) {
+                Text(verbatim: "+\(model.lineAdditions)")
+                    .foregroundStyle(Color(red: 0.25, green: 0.73, blue: 0.31))
+                Text(verbatim: "−\(model.lineDeletions)")
+                    .foregroundStyle(Color(red: 1.0, green: 0.48, blue: 0.45))
+            }
+            .monospacedDigit()
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isChangesButtonHovered ? Color.primary.opacity(0.08) : .clear)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isChangesButtonHovered = $0 }
+        .help("Open Changes")
+        .accessibilityLabel("Open Changes")
+        .accessibilityValue("+\(model.lineAdditions), −\(model.lineDeletions)")
+    }
+
+    private var branchPicker: some View {
+        VStack(spacing: 0) {
+            BranchSearchField(
+                text: $branchFilter,
+                focusRequest: branchSearchFocusRequest
+            ) {
+                if filteredBranches.count == 1,
+                   let branch = filteredBranches.first,
+                   branch != model.branch {
+                    selectBranch(branch)
+                }
+            }
+            .frame(height: 22)
+            .padding(8)
+
+            Divider()
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        if filteredBranches.isEmpty {
+                            Text("No matches")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 24)
+                        } else {
+                            ForEach(filteredBranches, id: \.self) { branch in
+                                let isHovered = hoveredBranch == branch
+                                Button {
+                                    selectBranch(branch)
+                                } label: {
+                                    HStack(spacing: 7) {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .opacity(branch == model.branch ? 1 : 0)
+                                        Text(verbatim: branch)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                        Spacer(minLength: 0)
+                                        if branch == model.defaultBranch {
+                                            Text(
+                                                "default",
+                                                comment: "Badge for the repository's default branch."
+                                            )
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundStyle(
+                                                isHovered
+                                                    ? Color.white.opacity(0.85)
+                                                    : Color(nsColor: .secondaryLabelColor)
+                                            )
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(
+                                                Capsule().fill(
+                                                    isHovered
+                                                        ? Color.white.opacity(0.18)
+                                                        : Color.primary.opacity(0.07)
+                                                )
+                                            )
+                                            .fixedSize()
+                                        }
+                                    }
+                                    .foregroundStyle(isHovered ? Color.white : Color.primary)
+                                    .padding(.horizontal, 9)
+                                    .frame(height: 26)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                            .fill(
+                                                isHovered
+                                                    ? Color(nsColor: .selectedContentBackgroundColor)
+                                                    : Color.clear
+                                            )
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .onHover { isHovered in
+                                    if isHovered {
+                                        hoveredBranch = branch
+                                    } else if hoveredBranch == branch {
+                                        hoveredBranch = nil
+                                    }
+                                }
+                                .disabled(branch == model.branch || model.isBusy)
+                                .id(branch)
+                            }
+                        }
+                    }
+                    .padding(5)
+                }
+                .onChange(of: branchScrollRequest) {
+                    guard let branch = model.branch else { return }
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(branch, anchor: .top)
+                    }
+                }
+            }
+        }
+        .font(.system(size: 11))
+        .frame(width: 260, height: 250)
+        .background {
+            VisualEffectView(material: .popover)
+                .ignoresSafeArea()
+        }
+    }
+
+    private func toggleBranchPicker() {
+        if !isShowingBranches { branchFilter = "" }
+        isShowingBranches.toggle()
+    }
+
+    private func selectBranch(_ branch: String) {
+        isShowingBranches = false
+        model.switchBranch(to: branch)
+    }
+}
+
+/// NSSearchField supplies the standard macOS bezel, magnifier, clear button,
+/// focus ring, and vibrancy-aware colors inside the native popover.
+private struct BranchSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let focusRequest: UInt
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.delegate = context.coordinator
+        field.controlSize = .small
+        field.font = .systemFont(ofSize: 11)
+        field.placeholderString = String(localized: "Filter branches")
+        field.setAccessibilityLabel(String(localized: "Filter branches"))
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text {
+            field.stringValue = text
+            field.currentEditor()?.string = text
+        }
+        guard context.coordinator.handledFocusRequest != focusRequest else { return }
+        context.coordinator.handledFocusRequest = focusRequest
+        context.coordinator.focus(field)
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var parent: BranchSearchField
+        var handledFocusRequest: UInt?
+
+        init(parent: BranchSearchField) {
+            self.parent = parent
+            handledFocusRequest = parent.focusRequest == 0 ? 0 : nil
+        }
+
+        func focus(_ field: NSSearchField, attemptsRemaining: Int = 6) {
+            DispatchQueue.main.async { [weak self, weak field] in
+                guard let self, let field else { return }
+                if let window = field.window, window.makeFirstResponder(field) { return }
+                guard attemptsRemaining > 1 else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.focus(field, attemptsRemaining: attemptsRemaining - 1)
+                }
+            }
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            parent.text = field.stringValue
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else {
+                return false
+            }
+            parent.text = textView.string
+            parent.onSubmit()
+            return true
+        }
+    }
+}
+
+/// SwiftUI anchors a context menu to this full-width toolbar view. A local
+/// AppKit monitor retains the same hit area while presenting from the actual
+/// right-click event, so the menu appears at the pointer instead.
+private struct ToolbarContextMenuMonitor: NSViewRepresentable {
+    let hideToolbar: () -> Void
+
+    func makeNSView(context: Context) -> ToolbarContextMenuMonitorView {
+        let view = ToolbarContextMenuMonitorView()
+        view.hideToolbar = hideToolbar
+        return view
+    }
+
+    func updateNSView(_ nsView: ToolbarContextMenuMonitorView, context: Context) {
+        nsView.hideToolbar = hideToolbar
+    }
+
+    static func dismantleNSView(
+        _ nsView: ToolbarContextMenuMonitorView,
+        coordinator: ()
+    ) {
+        nsView.detach()
+    }
+}
+
+@MainActor
+private final class ToolbarContextMenuMonitorView: NSView {
+    var hideToolbar: () -> Void = {}
+    private var eventMonitor: Any?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        detach()
+        guard let window else { return }
+
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) {
+            [weak self, weak window] event in
+            // AppKit invokes local monitors synchronously on the event thread.
+            let input = ToolbarContextMenuEvent(event)
+            let output: ToolbarContextMenuEvent = assumeMainActor {
+                guard let self,
+                      let window,
+                      let event = input.value,
+                      event.window === window,
+                      self.bounds.contains(self.convert(event.locationInWindow, from: nil))
+                else { return input }
+
+                let menu = NSMenu()
+                let hideItem = NSMenuItem(
+                    title: String(localized: "Hide"),
+                    action: #selector(self.hideToolbarFromMenu),
+                    keyEquivalent: ""
+                )
+                hideItem.target = self
+                menu.addItem(hideItem)
+                menu.update()
+                var screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+                // The toolbar sits at the screen's lower edge. Position the
+                // menu upward so its bottom edge, rather than its top edge,
+                // meets the pointer without AppKit relocating the whole menu.
+                screenPoint.y += menu.size.height
+                _ = menu.popUp(positioning: nil, at: screenPoint, in: nil)
+                return ToolbarContextMenuEvent(nil)
+            }
+            return output.value
+        }
+    }
+
+    @objc private func hideToolbarFromMenu() {
+        hideToolbar()
+    }
+
+    func detach() {
+        guard let eventMonitor else { return }
+        NSEvent.removeMonitor(eventMonitor)
+        self.eventMonitor = nil
+    }
+
+    deinit {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+        }
+    }
+}
+
+/// Local event monitors run synchronously on AppKit's main event thread.
+private struct ToolbarContextMenuEvent: @unchecked Sendable {
+    let value: NSEvent?
+
+    init(_ value: NSEvent?) {
+        self.value = value
+    }
+}
+
+/// A single AppKit-owned popover avoids SwiftUI's re-entrant presentation path:
+/// rapid binding changes reconcile against `isShown`, and generation checks
+/// prevent a stale close callback from dismissing a newer presentation.
+private struct InstantPopoverPresenter<PopoverContent: View>: NSViewRepresentable {
+    @Binding var isPresented: Bool
+    let preferredEdge: NSRectEdge
+    let onPresent: () -> Void
+    let onDismiss: () -> Void
+    let content: () -> PopoverContent
+
+    init(
+        isPresented: Binding<Bool>,
+        preferredEdge: NSRectEdge,
+        onPresent: @escaping () -> Void,
+        onDismiss: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> PopoverContent
+    ) {
+        _isPresented = isPresented
+        self.preferredEdge = preferredEdge
+        self.onPresent = onPresent
+        self.onDismiss = onDismiss
+        self.content = content
+    }
+
+    final class Coordinator: NSObject, NSPopoverDelegate {
+        var parent: InstantPopoverPresenter
+        let popover: NSPopover
+        let hostingController: NSHostingController<PopoverContent>
+        private var presentationGeneration: UInt = 0
+
+        init(parent: InstantPopoverPresenter) {
+            self.parent = parent
+            popover = NSPopover()
+            hostingController = NSHostingController(rootView: parent.content())
+            super.init()
+            popover.animates = false
+            popover.behavior = .transient
+            popover.delegate = self
+            popover.contentViewController = hostingController
+        }
+
+        func reconcile(parent: InstantPopoverPresenter, anchor: NSView) {
+            self.parent = parent
+            hostingController.rootView = parent.content()
+            popover.animates = false
+
+            if parent.isPresented {
+                guard !popover.isShown, anchor.window != nil else { return }
+                presentationGeneration &+= 1
+                hostingController.view.layoutSubtreeIfNeeded()
+                let fittingSize = hostingController.view.fittingSize
+                if fittingSize.width > 0, fittingSize.height > 0 {
+                    popover.contentSize = fittingSize
+                }
+                popover.show(
+                    relativeTo: anchor.bounds,
+                    of: anchor,
+                    preferredEdge: parent.preferredEdge
+                )
+            } else if popover.isShown {
+                popover.close()
+            }
+        }
+
+        func popoverWillShow(_ notification: Notification) {
+            popover.animates = false
+        }
+
+        func popoverDidShow(_ notification: Notification) {
+            let generation = presentationGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.presentationGeneration == generation,
+                      self.popover.isShown,
+                      self.parent.isPresented else { return }
+                self.parent.onPresent()
+            }
+        }
+
+        func popoverWillClose(_ notification: Notification) {
+            popover.animates = false
+        }
+
+        func popoverDidClose(_ notification: Notification) {
+            let generation = presentationGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.presentationGeneration == generation,
+                      !self.popover.isShown else { return }
+                self.parent.onDismiss()
+                if self.parent.isPresented {
+                    self.parent.isPresented = false
+                }
+            }
+        }
+
+        func dismantle() {
+            popover.delegate = nil
+            popover.animates = false
+            popover.close()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.reconcile(parent: self, anchor: nsView)
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.dismantle()
     }
 }
 

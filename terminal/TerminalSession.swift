@@ -35,6 +35,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
 
     @Published var hasExited = false
     @Published private(set) var commandLifecycle = TerminalCommandLifecycle()
+    @Published private(set) var terminalCellSize: CGSize?
 
     /// The emulator driving this session. Fixed for the session's lifetime —
     /// changing the setting only affects terminals opened afterwards.
@@ -475,6 +476,12 @@ extension TerminalSession: TerminalBackendEvents {
     /// happens to sit at the same path here. It is kept separately instead, as
     /// one of the ways ``remoteRoot(on:)`` follows the panels onto the host the
     /// terminal is really working on.
+    func terminalDidChangeCellSize(_ size: CGSize) {
+        guard size.width > 0, size.height > 0,
+              terminalCellSize != size else { return }
+        terminalCellSize = size
+    }
+
     func terminalDidChangeWorkingDirectory(_ path: String) {
         guard !path.isEmpty else { return }
         let fields = path.split(separator: "\0", maxSplits: 1, omittingEmptySubsequences: false)

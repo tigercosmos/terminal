@@ -36,6 +36,34 @@ struct GitStatusParsingTests {
         #expect(result.behind == 3)
     }
 
+    // MARK: - Line counts
+
+    /// The toolbar's +/− totals come from `git diff --numstat`, whose columns
+    /// are tab-separated so a path may hold spaces.
+    @Test func numstatColumnsAddUpAcrossFiles() {
+        let totals = GitStatusModel.parseNumstat("3\t1\ta.txt\n12\t0\tsrc/my file.swift\n")
+
+        #expect(totals.additions == 15)
+        #expect(totals.deletions == 1)
+    }
+
+    /// Git writes `-` for both columns of a binary file. Those rows carry no
+    /// line count and must not be read as zero-width text edits or crash the
+    /// sum.
+    @Test func aBinaryFileContributesNoLines() {
+        let totals = GitStatusModel.parseNumstat("-\t-\tlogo.png\n4\t2\ta.txt\n")
+
+        #expect(totals.additions == 4)
+        #expect(totals.deletions == 2)
+    }
+
+    @Test func anEmptyDiffIsZero() {
+        let totals = GitStatusModel.parseNumstat("")
+
+        #expect(totals.additions == 0)
+        #expect(totals.deletions == 0)
+    }
+
     /// A repository with no commit yet reports `(initial)`, which is not an
     /// OID and must not be shown as one.
     @Test func anUnbornBranchHasNoHead() {

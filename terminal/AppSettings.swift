@@ -80,6 +80,15 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+/// Whether the toolbar follows project context, always shows, or stays hidden.
+enum ToolbarVisibility: String, CaseIterable, Identifiable {
+    case auto
+    case always
+    case hide
+
+    var id: String { rawValue }
+}
+
 /// User-configurable settings, persisted to `$HOME/.config/terminal/config.toml`.
 /// Views observe this directly; `TerminalManager` re-themes live sessions on
 /// any change.
@@ -112,6 +121,7 @@ final class AppSettings: nonisolated ObservableObject {
     /// chrome around it — traffic-light strip, hover controls — stops looking
     /// deliberate beside the text.
     static let sidebarFontSizeRange: ClosedRange<Double> = 9...24
+    static let defaultToolbarVisibility: ToolbarVisibility = .hide
 
     /// The language this process launched with, kept separate from the pending
     /// selection so Settings can explain when a relaunch is required.
@@ -163,6 +173,12 @@ final class AppSettings: nonisolated ObservableObject {
     /// Base text size for both sidebars. Each panel preserves its relative
     /// hierarchy for section labels, content, metadata, and controls.
     @Published var sidebarFontSize: Double {
+        didSet { save() }
+    }
+
+    /// `auto` shows the toolbar only for Git projects; `always` keeps its Git
+    /// panel entry point visible in every project; `hide` suppresses it.
+    @Published var toolbarVisibility: ToolbarVisibility {
         didSet { save() }
     }
 
@@ -236,6 +252,9 @@ final class AppSettings: nonisolated ObservableObject {
         sidebarFontSize = Self.sidebarFontSizeRange.contains(sidebarSize)
             ? sidebarSize
             : Self.defaultSidebarFontSize
+        toolbarVisibility = ToolbarVisibility(
+            rawValue: toml["toolbar.visibility"]?.string ?? ""
+        ) ?? Self.defaultToolbarVisibility
         fontThicken = toml["terminal.font-thicken"]?.bool
             ?? toml["font-thicken"]?.bool
             ?? false
@@ -322,6 +341,7 @@ final class AppSettings: nonisolated ObservableObject {
         theme = .system
         themeDark = Theme.defaultDarkThemeName
         themeLight = Theme.defaultLightThemeName
+        toolbarVisibility = Self.defaultToolbarVisibility
         macosOptionAsAlt = false
         wrapLines = false
         compareLineBlame = true
@@ -348,6 +368,9 @@ final class AppSettings: nonisolated ObservableObject {
         lines.append("font-size = \(TOML.number(fontSize))")
         if sidebarFontSize != Self.defaultSidebarFontSize {
             lines.append("sidebar.font-size = \(TOML.number(sidebarFontSize))")
+        }
+        if toolbarVisibility != Self.defaultToolbarVisibility {
+            lines.append("toolbar.visibility = \(TOML.quote(toolbarVisibility.rawValue))")
         }
         if fontThicken {
             lines.append("terminal.font-thicken = true")
