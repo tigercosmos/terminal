@@ -212,27 +212,103 @@ struct GitStatusParsingTests {
 
     // MARK: - Recent commits
 
+    /// One record as `log --pretty=… --name-status -z` writes it: the header's
+    /// seven US-separated fields, then the first file's status on the next
+    /// line, then NUL-delimited paths and statuses.
+    private func commitRecord(
+        hash: String, short: String, subject: String, author: String,
+        timestamp: String, parents: String, refs: String,
+        files: [String] = []
+    ) -> String {
+        let header = [hash, short, subject, author, timestamp, parents, refs]
+            .joined(separator: "\u{1f}")
+        guard !files.isEmpty else { return header }
+        return header + "\n" + files.joined(separator: "\u{0}")
+    }
+
+    /// Records are separated by RS and header fields by US. Subjects are safe
+    /// to read up to the first newline because `%s` collapses the message's
+    /// first paragraph onto one line — the newline in a record always belongs
+    /// to the file rows that follow.
     @Test func recentCommitsComeBackInOrder() {
-        // Records are separated by RS and fields by US, so a subject holding
-        // a newline stays one commit.
         let output = [
-            "abc1234567\u{1f}abc1234\u{1f}First commit\u{1f}Ada\u{1f}1700000000",
-            "def1234567\u{1f}def1234\u{1f}Second\ncommit\u{1f}Grace\u{1f}1700000100",
+            commitRecord(
+                hash: "abc1234567", short: "abc1234", subject: "First commit",
+                author: "Ada", timestamp: "1700000000", parents: "", refs: ""
+            ),
+            commitRecord(
+                hash: "def1234567", short: "def1234", subject: "Second commit",
+                author: "Grace", timestamp: "1700000100",
+                parents: "abc1234567", refs: "HEAD -> main, origin/main"
+            ),
         ].joined(separator: "\u{1e}")
-        let commits = GitStatusModel.parseRecentCommits(output)
+        let commits = GitStatusModel.parseRecentCommits("\u{1e}" + output)
+
         #expect(commits.count == 2)
         #expect(commits[0].shortHash == "abc1234")
         #expect(commits[0].subject == "First commit")
         #expect(commits[0].author == "Ada")
+        // A root commit has no parent, so there is nothing to diff it against.
+        #expect(commits[0].parentHash == nil)
         #expect(commits[1].hash == "def1234567")
-        #expect(commits[1].subject == "Second\ncommit")
+        #expect(commits[1].subject == "Second commit")
+        #expect(commits[1].parentHash == "abc1234567")
+        #expect(commits[1].references == ["HEAD -> main", "origin/main"])
+    }
+
+    /// A merge lists every parent; the diff shown is against the first, which
+    /// is the branch the history is being read down.
+    @Test func onlyTheFirstParentIsKept() {
+        let record = commitRecord(
+            hash: "m1", short: "m1", subject: "Merge", author: "Ada",
+            timestamp: "1700000000", parents: "p1 p2 p3", refs: ""
+        )
+        #expect(GitStatusModel.parseRecentCommits("\u{1e}" + record).first?.parentHash == "p1")
+    }
+
+    /// The file rows are where repository-authored paths arrive, which is why
+    /// the records are NUL-delimited: a newline in a name must not split a row.
+    @Test func fileRowsSurviveAwkwardPaths() {
+        let record = commitRecord(
+            hash: "abc", short: "abc", subject: "s", author: "a",
+            timestamp: "1700000000", parents: "p", refs: "",
+            files: ["M", "src/two words.swift", "A", "odd\nname.txt", "D", "gone.txt"]
+        )
+        let files = GitStatusModel.parseRecentCommits("\u{1e}" + record).first?.files ?? []
+
+        #expect(files.count == 3)
+        #expect(files[0].status == "M")
+        #expect(files[0].path == "src/two words.swift")
+        #expect(files[0].fileName == "two words.swift")
+        #expect(files[0].directory == "src")
+        #expect(files[1].path == "odd\nname.txt")
+        #expect(files[2].status == "D")
+    }
+
+    /// A rename is one row carrying two paths. Reading it as two rows would
+    /// shift every file after it onto the wrong status.
+    @Test func aRenameCarriesBothOfItsPaths() {
+        let record = commitRecord(
+            hash: "abc", short: "abc", subject: "s", author: "a",
+            timestamp: "1700000000", parents: "p", refs: "",
+            files: ["R100", "old/name.swift", "new/name.swift", "M", "after.swift"]
+        )
+        let files = GitStatusModel.parseRecentCommits("\u{1e}" + record).first?.files ?? []
+
+        #expect(files.count == 2)
+        #expect(files[0].status == "R")
+        #expect(files[0].originalPath == "old/name.swift")
+        #expect(files[0].path == "new/name.swift")
+        // The row after the rename still lines up with its own status.
+        #expect(files[1].status == "M")
+        #expect(files[1].path == "after.swift")
     }
 
     @Test func aCommitRecordWithMissingFieldsIsSkipped() {
         #expect(GitStatusModel.parseRecentCommits("abc\u{1f}abc").isEmpty)
         // A timestamp that is not a number is not a commit either.
         #expect(GitStatusModel.parseRecentCommits(
-            "a\u{1f}b\u{1f}c\u{1f}d\u{1f}not-a-time"
+            "a\u{1f}b\u{1f}c\u{1f}d\u{1f}not-a-time\u{1f}p\u{1f}"
         ).isEmpty)
     }
 }

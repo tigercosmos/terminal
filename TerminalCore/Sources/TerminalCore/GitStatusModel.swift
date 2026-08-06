@@ -76,12 +76,39 @@ public final class GitStatusModel: nonisolated ObservableObject {
     }
 
     nonisolated public struct RecentCommit: Identifiable, Equatable, Sendable {
+        /// One path a commit touched, as `--name-status` reports it.
+        nonisolated public struct FileChange: Identifiable, Equatable, Sendable {
+            public let status: Character
+            public let path: String
+            /// Where a rename or copy came from.
+            public let originalPath: String?
+
+            /// A commit can touch the same path twice under different statuses
+            /// (a rename's two halves), so the status and both paths together
+            /// are the identity. NUL-joined because every other byte is legal
+            /// in a path.
+            public var id: String {
+                "\(status)\u{0}\(originalPath ?? "")\u{0}\(path)"
+            }
+            public var fileName: String { (path as NSString).lastPathComponent }
+            public var directory: String {
+                let dir = (path as NSString).deletingLastPathComponent
+                return dir.isEmpty ? "" : dir
+            }
+        }
+
         public var id: String { hash }
         public let hash: String
         public let shortHash: String
         public let subject: String
         public let author: String
         let date: Date
+        /// First parent, which is what a diff of this commit reads against.
+        /// Nil for a root commit, which has nothing to compare to.
+        public let parentHash: String?
+        /// Branch and tag names pointing here, as `--decorate` gives them.
+        public let references: [String]
+        public let files: [FileChange]
 
         public var relativeDate: String {
             date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
@@ -144,6 +171,8 @@ public final class GitStatusModel: nonisolated ObservableObject {
     @Published public private(set) var defaultBranch: String?
     @Published public private(set) var remotes: [String] = []
     @Published public private(set) var recentCommits: [RecentCommit] = []
+    @Published public private(set) var hasMoreRecentCommits = false
+    @Published public private(set) var isLoadingMoreCommits = false
     @Published public private(set) var repositoryOperation: String?
     @Published public private(set) var stashCount = 0
     @Published public private(set) var isRefreshing = false
@@ -176,6 +205,12 @@ public final class GitStatusModel: nonisolated ObservableObject {
     /// Longer than any snapshot's own budget, so a Git that times out reports
     /// its own error rather than being overtaken by this backstop.
     private static let watchdogSeconds = 45
+    /// How many commits the history shows, and grows by. Kept per root so
+    /// returning to a repository does not collapse a history already opened
+    /// out.
+    private static let recentCommitPageSize = 30
+    private var recentCommitLimit = recentCommitPageSize
+    private var recentCommitLimitByRoot: [PanelRoot: Int] = [:]
     /// Restores a previously resolved directory immediately when switching
     /// tabs. Without this, every return to a repository clears `isRepo` until
     /// the asynchronous Git refresh finishes, briefly removing the toolbar
@@ -303,6 +338,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
             // host is asked to place it; the load replaces it with what it
             // actually read.
             rootPath = root.provisionalPath
+            recentCommitLimit = recentCommitLimitByRoot[root] ?? Self.recentCommitPageSize
             hasResolvedStatus = false
             clearRepositoryState(preserveIdentity: sameMachine)
             if let cachedStatus = cachedStatusByRoot[root] {
@@ -342,6 +378,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
     public func refresh() {
         let root = panelRoot
         let generation = contextGeneration
+        let commitLimit = recentCommitLimit
         guard !root.isUnset else { return }
         guard !isRefreshing, !isBusy else {
             refreshPending = true
@@ -380,12 +417,21 @@ public final class GitStatusModel: nonisolated ObservableObject {
                 // login lands, or whether it answers to the name a shell
                 // reported — neither of which the main actor can wait on.
                 let directory = root.directory()
-                return (directory: directory, result: Self.runGitStatus(in: directory))
+                return (
+                    directory: directory,
+                    result: Self.runGitStatus(
+                        in: directory, recentCommitLimit: commitLimit
+                    )
+                )
             }.value
             guard let self, self.contextGeneration == generation,
                   self.statusRequestID == requestID,
                   self.panelRoot == root else { return }
             self.isRefreshing = false
+            // A "show more" may have arrived while this older, smaller
+            // snapshot was already running. Keep the loading state latched
+            // until the queued refresh at the larger limit lands.
+            self.isLoadingMoreCommits = commitLimit < self.recentCommitLimit
             self.lastLoad = Date()
             self.rootPath = loaded.directory.path
             switch loaded.result {
@@ -401,6 +447,26 @@ public final class GitStatusModel: nonisolated ObservableObject {
                 self.refresh()
             }
         }
+    }
+
+    /// Shows another page of history. Returns whether it started one, so a
+    /// caller reaching the end of the list does not keep asking.
+    @discardableResult
+    public func loadMoreCommits() -> Bool {
+        guard isRepo, hasMoreRecentCommits,
+              !isLoadingMoreCommits, !isBusy else { return false }
+        recentCommitLimit += Self.recentCommitPageSize
+        recentCommitLimitByRoot[panelRoot] = recentCommitLimit
+        isLoadingMoreCommits = true
+        if isRefreshing {
+            // The running worker captured the previous limit. Queue a second
+            // refresh rather than drop a request made just as the list is
+            // scrolled to its end.
+            refreshPending = true
+        } else {
+            refresh()
+        }
+        return true
     }
 
     public func dismissOperation() {
@@ -1037,6 +1103,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
     private func invalidateStatusRefresh() {
         statusRequestID &+= 1
         isRefreshing = false
+        isLoadingMoreCommits = false
         refreshPending = false
     }
 
@@ -1079,6 +1146,8 @@ public final class GitStatusModel: nonisolated ObservableObject {
         branches = []
         remotes = []
         recentCommits = []
+        hasMoreRecentCommits = false
+        isLoadingMoreCommits = false
         repositoryOperation = nil
         stashCount = 0
         isRefreshing = false
@@ -1145,6 +1214,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
             defaultBranch = result.defaultBranch
             remotes = result.remotes
             recentCommits = result.recentCommits
+            hasMoreRecentCommits = result.hasMoreRecentCommits
             repositoryOperation = result.repositoryOperation
             stashCount = result.stashCount
         }
@@ -1189,6 +1259,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
         var defaultBranch: String?
         var remotes: [String] = []
         public var recentCommits: [RecentCommit] = []
+        var hasMoreRecentCommits = false
         var repositoryOperation: String?
         var stashCount = 0
         var loadedDetails = false
@@ -1206,7 +1277,9 @@ public final class GitStatusModel: nonisolated ObservableObject {
 
     /// Resolves the active repository and distinguishes a normal non-repo
     /// directory from an actual Git failure that the UI should surface.
-    private nonisolated static func runGitStatus(in root: GitDirectory) -> StatusLoadResult {
+    private nonisolated static func runGitStatus(
+        in root: GitDirectory, recentCommitLimit: Int
+    ) -> StatusLoadResult {
         // A filesystem, a Git helper waiting on a prompt, or a corrupt
         // repository must not leave the panel's spinner running forever.
         let deadline = Date().addingTimeInterval(snapshotBudget(for: root))
@@ -1323,11 +1396,18 @@ public final class GitStatusModel: nonisolated ObservableObject {
             }
         }
 
-        let log = statusGit(
-            ["log", "-n", "8", "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e"],
-            in: repoRoot
-        )
-        if log.status == 0 { result.recentCommits = parseRecentCommits(log.stdout) }
+        // One past the page, so the answer to "is there more?" costs nothing
+        // extra. `-z` because the file rows carry repository-authored paths.
+        let log = statusGit([
+            "log", "-n", "\(recentCommitLimit + 1)", "--decorate=short",
+            "--pretty=format:%x1e%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1f%P%x1f%D",
+            "--name-status", "-z",
+        ], in: repoRoot)
+        if log.status == 0 {
+            let commits = parseRecentCommits(log.stdout)
+            result.hasMoreRecentCommits = commits.count > recentCommitLimit
+            result.recentCommits = Array(commits.prefix(recentCommitLimit))
+        }
 
         let stash = statusGit(
             ["rev-list", "--walk-reflogs", "--count", "refs/stash"], in: repoRoot
@@ -1567,17 +1647,68 @@ public final class GitStatusModel: nonisolated ObservableObject {
         return .modified
     }
 
+    /// Parses `log --pretty=… --name-status -z`, one record per RS.
+    ///
+    /// The paths are a repository's own text, so the records are NUL-delimited
+    /// — a newline, a quote, or a tab is legal in a file name and any of them
+    /// would otherwise split a row in the wrong place.
     nonisolated static func parseRecentCommits(_ output: String) -> [RecentCommit] {
         output.split(separator: "\u{1e}").compactMap { record in
-            let clean = record.trimmingCharacters(in: .newlines)
-            let fields = clean.split(separator: "\u{1f}", omittingEmptySubsequences: false)
-            guard fields.count == 5, let timestamp = TimeInterval(fields[4]) else {
+            var chunks = record.split(separator: "\u{0}", omittingEmptySubsequences: false)
+                .map(String.init)
+            guard !chunks.isEmpty else { return nil }
+
+            // Git writes the first status on the line after the pretty header,
+            // then every later status as its own NUL-delimited field.
+            let headerAndStatus = chunks.removeFirst()
+            let boundary = headerAndStatus.lastIndex(of: "\n")
+            let header = boundary.map { String(headerAndStatus[..<$0]) } ?? headerAndStatus
+            var statusToken = boundary.map {
+                String(headerAndStatus[headerAndStatus.index(after: $0)...])
+            } ?? ""
+            let fields = header.split(separator: "\u{1f}", omittingEmptySubsequences: false)
+            guard fields.count == 7, let timestamp = TimeInterval(fields[4]) else {
                 return nil
             }
+
+            var files: [RecentCommit.FileChange] = []
+            var index = 0
+            while !statusToken.isEmpty, index < chunks.count {
+                guard let status = statusToken.first else { break }
+                // A rename or copy is followed by two paths, not one.
+                if status == "R" || status == "C" {
+                    guard index + 1 < chunks.count else { break }
+                    files.append(.init(
+                        status: status,
+                        path: chunks[index + 1],
+                        originalPath: chunks[index]
+                    ))
+                    index += 2
+                } else {
+                    files.append(.init(
+                        status: status, path: chunks[index], originalPath: nil
+                    ))
+                    index += 1
+                }
+                guard index < chunks.count else { break }
+                statusToken = chunks[index]
+                index += 1
+            }
+
+            // Only the first parent: a merge's diff is read against the branch
+            // it was made on, which is the side the history is being read down.
+            let parentHash = fields[5].split(separator: " ").first.map(String.init)
+            let references = fields[6]
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
             return RecentCommit(
                 hash: String(fields[0]), shortHash: String(fields[1]),
                 subject: String(fields[2]), author: String(fields[3]),
-                date: Date(timeIntervalSince1970: timestamp)
+                date: Date(timeIntervalSince1970: timestamp),
+                parentHash: parentHash,
+                references: references,
+                files: files
             )
         }
     }
