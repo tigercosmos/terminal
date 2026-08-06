@@ -822,6 +822,28 @@ private extension GitStatusModel.FileDecoration {
 private struct GitPanel: View {
     @ObservedObject private var themeChanges = Theme.changes
 
+    private enum EntryOperation: Equatable {
+        case stage
+        case unstage
+        case discard
+    }
+
+    /// Which control started the running operation, so its own spinner can
+    /// replace its icon. A single banner saying "something is happening"
+    /// leaves you looking for what — this points at it.
+    private enum OperationTrigger: Equatable {
+        case branchMenu
+        case moreMenu
+        case primaryAction
+        case commitMenu
+        case syncButton
+        case stageAll
+        case unstageAll
+        case discardAll
+        case entry(path: String, operation: EntryOperation)
+        case initializeRepository
+    }
+
     private struct FileFingerprint: Equatable {
         let exists: Bool
         let size: UInt64
@@ -858,23 +880,19 @@ private struct GitPanel: View {
     @State private var historyCollapsed = true
     @State private var filterText = ""
     @State private var showFilter = false
-    @State private var showBranchCreator = false
-    @State private var newBranchName = ""
     @State private var operationExpanded = false
-    @FocusState private var branchFieldFocused: Bool
+    @State private var operationTrigger: OperationTrigger?
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            operationBanner
+            operationFailureBanner
 
             if let statusError = model.statusError {
                 statusFailure(statusError)
             } else if !model.isRepo {
                 if model.isResolvingInitialStatus {
                     placeholder(icon: "arrow.clockwise", text: String(localized: "Finding repository…"))
-                } else if model.isBusy {
-                    placeholder(icon: "hourglass", text: String(localized: "Finishing Git operation…"))
                 } else {
                     notRepository
                 }
@@ -882,7 +900,6 @@ private struct GitPanel: View {
                 trackingBar
                 repositoryOperationBanner
                 if model.isEditable {
-                    branchCreator
                     commitBox
                 } else {
                     readOnlyNotice
@@ -903,7 +920,11 @@ private struct GitPanel: View {
                    role: .destructive) {
                 if let pendingDiscard {
                     if discardSnapshotIsCurrent(pendingDiscard) {
-                        model.discard(pendingDiscard.entry)
+                        performOperation(
+                            .entry(path: pendingDiscard.entry.path, operation: .discard)
+                        ) {
+                            model.discard(pendingDiscard.entry)
+                        }
                     } else {
                         model.cancelStaleDiscard()
                     }
@@ -926,7 +947,9 @@ private struct GitPanel: View {
             Button("Discard All Changes", role: .destructive) {
                 let snapshot = pendingDiscardAll
                 if !snapshot.isEmpty && snapshot.allSatisfy(discardSnapshotIsCurrent) {
-                    model.discardChanges(snapshot.map(\.entry))
+                    performOperation(.discardAll) {
+                        model.discardChanges(snapshot.map(\.entry))
+                    }
                 } else {
                     model.cancelStaleDiscard()
                 }
@@ -940,11 +963,12 @@ private struct GitPanel: View {
             pendingDiscard = nil
             pendingDiscardAll = []
             confirmDiscardAll = false
-            showBranchCreator = false
-            newBranchName = ""
         }
         .onChange(of: model.repositoryIdentity) {
             resetRepositoryDrafts()
+        }
+        .onChange(of: model.isBusy) {
+            if !model.isBusy { operationTrigger = nil }
         }
     }
 
@@ -962,16 +986,15 @@ private struct GitPanel: View {
             }
             // Only surface progress for user operations and initial repository
             // discovery. Event-driven refreshes retain the resolved content.
-            if model.isBusy || model.isResolvingInitialStatus {
+            // A user's operation reports itself in the control that started
+            // it. Repository discovery stays here, because it has no control
+            // behind it to report from.
+            if model.isResolvingInitialStatus {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.6)
                     .frame(width: 12, height: 12)
-                    .accessibilityLabel(
-                        model.isBusy
-                            ? String(localized: "Git operation in progress")
-                            : String(localized: "Refreshing Git status")
-                    )
+                    .accessibilityLabel(String(localized: "Refreshing Git status"))
             }
             if model.isRepo {
                 headerButton(
@@ -1048,7 +1071,9 @@ private struct GitPanel: View {
             if !model.branches.isEmpty {
                 ForEach(model.branches, id: \.self) { branch in
                     Button {
-                        model.switchBranch(to: branch)
+                        performOperation(.branchMenu) {
+                            model.switchBranch(to: branch)
+                        }
                     } label: {
                         if branch == model.branch {
                             Label(branch, systemImage: "checkmark")
@@ -1061,15 +1086,20 @@ private struct GitPanel: View {
                 Divider()
             }
             Button("Create New Branch…") {
-                newBranchName = ""
-                showBranchCreator = true
-                DispatchQueue.main.async { branchFieldFocused = true }
+                presentCreateBranchDialog()
             }
+            .disabled(model.isBusy)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.branch")
-                    .sidebarFont(size: 11, weight: .medium)
-                    .foregroundStyle(Color(nsColor: Theme.accent))
+                ZStack {
+                    Image(systemName: "arrow.triangle.branch")
+                        .sidebarFont(size: 11, weight: .medium)
+                        .foregroundStyle(Color(nsColor: Theme.accent))
+                        .opacity(operationIsLoading(.branchMenu) ? 0 : 1)
+                    if operationIsLoading(.branchMenu) {
+                        operationProgressView()
+                    }
+                }
                 PanelHeader(
                     title: model.branch ?? String(localized: "Detached HEAD"),
                     subtitle: model.displayPath
@@ -1114,11 +1144,17 @@ private struct GitPanel: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .sidebarFont(size: 10, weight: .medium)
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
-                .contentShape(RoundedRectangle(cornerRadius: 4))
+            ZStack {
+                Image(systemName: "ellipsis")
+                    .sidebarFont(size: 10, weight: .medium)
+                    .foregroundStyle(.secondary)
+                    .opacity(operationIsLoading(.moreMenu) ? 0 : 1)
+                if operationIsLoading(.moreMenu) {
+                    operationProgressView()
+                }
+            }
+            .frame(width: 18, height: 18)
+            .contentShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
         .menuStyle(.button)
@@ -1132,39 +1168,43 @@ private struct GitPanel: View {
     /// this machine.
     @ViewBuilder
     private var remoteActions: some View {
-        Button("Fetch") { model.fetch() }
+        Button("Fetch") { performOperation(.moreMenu, model.fetch) }
             .disabled(model.isBusy || model.remotes.isEmpty)
-        Button("Pull (Fast-forward Only)") { model.pull() }
+        Button("Pull (Fast-forward Only)") { performOperation(.moreMenu, model.pull) }
             .disabled(model.isBusy || !model.hasUpstream)
         if model.hasUpstream {
-            Button("Push") { model.push() }
+            Button("Push") { performOperation(.moreMenu, model.push) }
                 .disabled(model.isBusy)
         } else if model.remotes.count > 1 {
             Menu("Publish Branch to") {
                 ForEach(model.remotes, id: \.self) { remote in
-                    Button(remote) { model.publish(to: remote) }
+                    Button(remote) {
+                        performOperation(.moreMenu) { model.publish(to: remote) }
+                    }
                 }
             }
             .disabled(model.isBusy || model.branch == "detached HEAD")
         } else {
-            Button("Publish Branch") { model.push() }
+            Button("Publish Branch") { performOperation(.moreMenu, model.push) }
                 .disabled(model.isBusy || model.remotes.isEmpty || model.branch == "detached HEAD")
         }
-        Button("Sync Changes") { model.syncChanges() }
+        Button("Sync Changes") { performOperation(.moreMenu, model.syncChanges) }
             .disabled(
                 model.isBusy || model.remotes.isEmpty
                     || (!model.hasUpstream && model.remotes.count != 1)
                     || model.branch == "detached HEAD"
             )
         Divider()
-        Button("Stash All Changes") { model.stash(includeUntracked: true) }
+        Button("Stash All Changes") {
+            performOperation(.moreMenu) { model.stash(includeUntracked: true) }
+        }
             .disabled(model.isBusy || model.totalChangeCount == 0)
         Button(
             model.stashCount == 1
                 ? String(localized: "Pop Stash")
                 : String(localized: "Pop Stash (\(model.stashCount))")
         ) {
-            model.stashPop()
+            performOperation(.moreMenu, model.stashPop)
         }
         .disabled(model.isBusy || model.stashCount == 0)
     }
@@ -1256,12 +1296,16 @@ private struct GitPanel: View {
         }
     }
 
+    /// Failures only. A running or succeeded operation reports itself in the
+    /// control that started it, which is where you are already looking; a
+    /// banner for those just moved the news somewhere else.
     @ViewBuilder
-    private var operationBanner: some View {
-        if let operation = model.operation {
+    private var operationFailureBanner: some View {
+        if let operation = model.operation, case .failed = operation.state {
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
-                    operationIcon(operation)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .sidebarFont(size: 10)
                     Text(operation.statusLabel)
                         .sidebarFont(size: 10.5, weight: .medium)
                         .lineLimit(1)
@@ -1288,20 +1332,19 @@ private struct GitPanel: View {
                                 : String(localized: "Show Git Output")
                         )
                     }
-                    if !operation.isRunning {
-                        Button {
-                            operationExpanded = false
-                            model.dismissOperation()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .sidebarFont(size: 8, weight: .semibold)
-                                .frame(width: 16, height: 16)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Dismiss")
-                        .accessibilityLabel("Dismiss Git Result")
+                    // Always dismissible: a failed operation is never running.
+                    Button {
+                        operationExpanded = false
+                        model.dismissOperation()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .sidebarFont(size: 8, weight: .semibold)
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .help("Dismiss")
+                    .accessibilityLabel("Dismiss Git Error")
                 }
                 if operationExpanded, !operation.output.isEmpty {
                     ScrollView([.horizontal, .vertical]) {
@@ -1316,89 +1359,78 @@ private struct GitPanel: View {
                     .accessibilityLabel("Git Output")
                 }
             }
-            .foregroundStyle(operationColor(operation))
+            .foregroundStyle(Self.failureColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(operationColor(operation).opacity(0.08))
+                    .fill(Self.failureColor.opacity(0.08))
             )
             .padding(.horizontal, 10)
             .padding(.bottom, 7)
         }
     }
 
-    @ViewBuilder
-    private func operationIcon(_ operation: GitStatusModel.Operation) -> some View {
-        switch operation.state {
-        case .running:
-            ProgressView().controlSize(.mini).frame(width: 11, height: 11)
-        case .succeeded:
-            Image(systemName: "checkmark.circle.fill").sidebarFont(size: 10)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill").sidebarFont(size: 10)
-        }
-    }
+    private static let failureColor = Color(red: 0.88, green: 0.42, blue: 0.36)
 
-    private func operationColor(_ operation: GitStatusModel.Operation) -> Color {
-        switch operation.state {
-        case .running: return Color(nsColor: Theme.accent)
-        case .succeeded: return Color(red: 0.25, green: 0.68, blue: 0.33)
-        case .failed: return Color(red: 0.88, green: 0.42, blue: 0.36)
-        }
-    }
+    /// A sheet rather than an inline field: the panel is narrow, a branch name
+    /// is not, and the inline row pushed the whole change list down while it
+    /// was open.
+    private func presentCreateBranchDialog() {
+        guard !model.isBusy else { return }
 
-    @ViewBuilder
-    private var branchCreator: some View {
-        if showBranchCreator {
-            HStack(spacing: 5) {
-                Image(systemName: "arrow.triangle.branch")
-                    .sidebarFont(size: 10)
-                    .foregroundStyle(.secondary)
-                TextField("New branch name", text: $newBranchName)
-                    .textFieldStyle(.plain)
-                    .sidebarFont(size: 11)
-                    .focused($branchFieldFocused)
-                    .onSubmit(createBranch)
-                    .onKeyPress(.escape) {
-                        showBranchCreator = false
-                        return .handled
-                    }
-                Button("Create", action: createBranch)
-                    .buttonStyle(.borderless)
-                    .sidebarFont(size: 10, weight: .medium)
-                    .disabled(newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isBusy)
-                Button {
-                    showBranchCreator = false
-                } label: {
-                    Image(systemName: "xmark").sidebarFont(size: 8, weight: .semibold)
-                }
-                .buttonStyle(.plain)
-                .help("Cancel")
-                .accessibilityLabel("Cancel Branch Creation")
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Create New Branch")
+        alert.informativeText = String(localized: "Enter a name for the new branch.")
+
+        let field = NSTextField(string: "")
+        field.placeholderString = String(localized: "Branch name")
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+        alert.accessoryView = field
+
+        let create = alert.addButton(withTitle: String(localized: "Create"))
+        create.keyEquivalent = "\r"
+        create.isEnabled = false
+        let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+
+        let validator = NonemptyTextFieldValidator(button: create)
+        field.delegate = validator
+        alert.window.initialFirstResponder = field
+
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
+            _ = validator // Keep the field's delegate alive until the sheet closes.
+            guard response == .alertFirstButtonReturn else { return }
+            performOperation(.branchMenu) {
+                model.createBranch(named: field.stringValue)
             }
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color(nsColor: Theme.accent).opacity(0.45))
-            )
-            .padding(.horizontal, 10)
-            .padding(.bottom, 8)
+        }
+
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            alert.beginSheetModal(for: window, completionHandler: handleResponse)
+        } else {
+            handleResponse(alert.runModal())
         }
     }
 
-    private func createBranch() {
-        let name = newBranchName
-        model.createBranch(named: name) { success in
-            guard success else { return }
-            newBranchName = ""
-            showBranchCreator = false
-        }
+    // MARK: Operation progress
+
+    /// Runs a Git operation and remembers which control asked for it, so that
+    /// control shows the progress instead of a banner elsewhere in the panel.
+    private func performOperation(_ trigger: OperationTrigger, _ action: () -> Void) {
+        operationTrigger = trigger
+        action()
+    }
+
+    private func operationIsLoading(_ trigger: OperationTrigger) -> Bool {
+        model.isBusy && operationTrigger == trigger
+    }
+
+    private func operationProgressView() -> some View {
+        ProgressView()
+            .controlSize(.small)
+            .scaleEffect(0.5)
+            .frame(width: 12, height: 12)
     }
 
     // MARK: Commit box
@@ -1435,6 +1467,7 @@ private struct GitPanel: View {
                         title: commitButtonTitle,
                         enabled: canCommit(includeAll: false),
                         help: String(localized: "Commit staged changes (⌘Return)"),
+                        loading: operationIsLoading(.primaryAction),
                         action: performPrimaryAction
                     )
                     commitMenu
@@ -1447,8 +1480,10 @@ private struct GitPanel: View {
                     title: syncButtonTitle,
                     enabled: !model.isBusy,
                     help: String(localized: "Pull remote commits, then push local ones"),
-                    action: model.syncChanges
-                )
+                    loading: operationIsLoading(.syncButton)
+                ) {
+                    performOperation(.syncButton, model.syncChanges)
+                }
             }
         }
         .padding(.horizontal, 10)
@@ -1467,15 +1502,21 @@ private struct GitPanel: View {
             Button("Stage All & Amend") { performCommit(includeAll: true, amend: true) }
                 .disabled(!canAmend(includeAll: true))
         } label: {
-            Image(systemName: "chevron.down")
-                .sidebarFont(size: 8, weight: .semibold)
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.06))
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 6))
+            ZStack {
+                Image(systemName: "chevron.down")
+                    .sidebarFont(size: 8, weight: .semibold)
+                    .foregroundStyle(.secondary)
+                    .opacity(operationIsLoading(.commitMenu) ? 0 : 1)
+                if operationIsLoading(.commitMenu) {
+                    operationProgressView()
+                }
+            }
+            .frame(width: 24, height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .menuStyle(.button)
@@ -1487,12 +1528,23 @@ private struct GitPanel: View {
 
     private func actionButton(
         icon: String, title: String, enabled: Bool, help: String,
+        loading: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .sidebarFont(size: 10, weight: .semibold)
+                ZStack {
+                    Image(systemName: icon)
+                        .sidebarFont(size: 10, weight: .semibold)
+                        .opacity(loading ? 0 : 1)
+                    if loading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.5)
+                            .frame(width: 12, height: 12)
+                            .tint(.white)
+                    }
+                }
                 Text(title)
                     .sidebarFont(size: 11, weight: .medium)
             }
@@ -1570,14 +1622,19 @@ private struct GitPanel: View {
     }
 
     private func performPrimaryAction() {
-        performCommit(includeAll: false)
+        performCommit(includeAll: false, trigger: .primaryAction)
     }
 
-    private func performCommit(includeAll: Bool, amend: Bool = false) {
+    private func performCommit(
+        includeAll: Bool, amend: Bool = false,
+        trigger: OperationTrigger = .commitMenu
+    ) {
         guard amend ? canAmend(includeAll: includeAll) : canCommit(includeAll: includeAll) else { return }
         let submittedMessage = commitMessage
-        model.commit(message: submittedMessage, includeAll: includeAll, amend: amend) { success in
-            if success, commitMessage == submittedMessage { commitMessage = "" }
+        performOperation(trigger) {
+            model.commit(message: submittedMessage, includeAll: includeAll, amend: amend) { success in
+                if success, commitMessage == submittedMessage { commitMessage = "" }
+            }
         }
     }
 
@@ -1654,7 +1711,7 @@ private struct GitPanel: View {
                                 systemImage: "minus",
                                 help: String(localized: "Unstage All Changes")
                             ) {
-                                model.unstageAll()
+                                performOperation(.unstageAll, model.unstageAll)
                             }
                         ] : [],
                         actionsDisabled: model.isBusy
@@ -1681,7 +1738,7 @@ private struct GitPanel: View {
                                 systemImage: "plus",
                                 help: String(localized: "Stage All Changes")
                             ) {
-                                model.stageAll()
+                                performOperation(.stageAll, model.stageAll)
                             },
                         ] : [],
                         actionsDisabled: model.isBusy
@@ -1802,8 +1859,16 @@ private struct GitPanel: View {
             },
             openFile: { openIfPossible(entry) },
             openToSide: { openIfPossible(entry, toSide: true) },
-            stage: { model.stage(entry) },
-            unstage: { model.unstage(entry) },
+            stage: {
+                performOperation(.entry(path: entry.path, operation: .stage)) {
+                    model.stage(entry)
+                }
+            },
+            unstage: {
+                performOperation(.entry(path: entry.path, operation: .unstage)) {
+                    model.unstage(entry)
+                }
+            },
             discard: { pendingDiscard = makePendingDiscard(entry) },
             absolutePath: model.absolutePath(for: entry),
             copyRelativePath: { copyToPasteboard(entry.path) },
@@ -1967,7 +2032,9 @@ private struct GitPanel: View {
             }
             if model.isEditable {
                 Button("Initialize Repository") {
-                    model.initializeRepository()
+                    performOperation(.initializeRepository) {
+                        model.initializeRepository()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -2055,8 +2122,6 @@ private struct GitPanel: View {
         commitMessage = ""
         filterText = ""
         showFilter = false
-        newBranchName = ""
-        showBranchCreator = false
         operationExpanded = false
         pendingDiscard = nil
         pendingDiscardAll = []
@@ -2178,6 +2243,24 @@ struct GitSectionHeader: View {
 /// A commit in the history, which opens to show what it changed. Each file
 /// inside opens that commit against its parent, so a change can be read
 /// without leaving for a terminal.
+/// Keeps an alert's default button disabled until its field has something in
+/// it. `NSAlert` has no notion of a required field, and a Create button that
+/// runs `git branch ""` is a failure banner waiting to happen.
+private final class NonemptyTextFieldValidator: NSObject, NSTextFieldDelegate {
+    private let button: NSButton
+
+    init(button: NSButton) {
+        self.button = button
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        button.isEnabled = !field.stringValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+    }
+}
+
 private struct GitCommitRow: View {
     @ObservedObject private var themeChanges = Theme.changes
     let commit: GitStatusModel.RecentCommit
