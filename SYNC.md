@@ -149,13 +149,21 @@ its WKWebView renderer, which this fork no longer has:
   Upstream's unified layout is the one thing lost; side-by-side is now the
   only diff layout.
 
-**Deferred — still owed, and the reason.** Both land in
-`RightSidebarView.swift`, which is 2,725 lines here against upstream's, and
-neither is a rendering change this fork can shortcut:
+**Taken last, in the panel's own idiom:**
 
-- `212ea0a`, `17caef1` — the reworked Recent Commits view (a new ~770-line
-  file) and its page size of 30.
-- `dae03e9` — Git operation progress and error feedback, ~460 lines.
+- `212ea0a`, `17caef1` — the Recent Commits rework. Split into three commits
+  here, because upstream's one bundles three separable things: Git command
+  timeouts and a refresh watchdog; the richer commit records (first parent,
+  refs, per-file rows from `--name-status -z`) with 30-commit paging; and the
+  view. Opening a commit's file reuses `CompareSides` rather than adding
+  machinery, so it arrives in the same diff view as everything else.
+  Upstream's version is a 770-line view with its own commit graph; this is the
+  same capability in the section header, row spacing, and type scale the panel
+  already uses, rather than a second design language inside one sidebar.
+- `dae03e9` — Git operation progress and error feedback, including moving
+  branch creation from an inline row to a sheet.
+
+Nothing from this range is now outstanding.
 
 ### 2026-07-31 — `kero/main` at `2163068`
 

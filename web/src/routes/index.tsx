@@ -182,7 +182,12 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Git panel',
         detail:
-          'stage, unstage, discard, and commit — amend included — beside the shell that made the changes',
+          'stage, unstage, discard, and commit — amend included — beside the shell that made the changes, with each operation showing its progress on the control you used',
+      },
+      {
+        name: 'Readable history',
+        detail:
+          'open a commit in Recent Commits to see the files it touched, and click one to read that file as it changed — branch and tag names show beside the commits they point at',
       },
       {
         name: 'Inline diffs',

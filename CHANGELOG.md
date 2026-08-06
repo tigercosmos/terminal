@@ -16,6 +16,17 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Recent Commits in the Git panel opens: each commit shows the files it
+  touched, and clicking one shows that file as it changed in that commit.
+  Branch and tag names appear beside the commits they point at, and history
+  loads 30 at a time instead of stopping at eight
+- Git operations now show their progress on the control you used — the branch
+  menu, Commit, Sync — instead of a banner at the top of the panel, and only
+  failures interrupt you. Creating a branch asks in a dialog rather than a row
+  that pushed the file list down
+- The Git panel can no longer be left spinning by a repository that never
+  answers — a disconnected volume, or a credential helper waiting on a prompt.
+  It gives up and offers a retry instead
 - Clicking a changed file in the Git panel now opens it in the same
   side-by-side view Compare uses. An unstaged change sits beside your live
   file, so you can read it and fix it in the same place and press ⌘S — and it
