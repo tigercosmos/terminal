@@ -47,6 +47,11 @@ What this fork adds on top of [Kero](https://github.com/egoist/kero):
   target on the left, read-only, and your live file on the right, still
   editable and saveable. Each line shows who last changed it, and any file can
   be reverted to the target.
+- **One diff view, everywhere** — the Git panel's diffs open in that same
+  side-by-side view rather than a separate web-rendered one, so an unstaged
+  change sits beside your live file and can be fixed and saved right there,
+  with blame, and following a terminal over ssh like the panels do. Commits in
+  the history open the same way, against their parent.
 - **The panels follow you over ssh** — connect to another machine in a terminal
   and Files, Git, and Compare all describe *that* machine rather than a stale
   local tree. Folders expand, files open, Git reads the branch, tracking,

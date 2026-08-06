@@ -127,6 +127,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'Cmd+Shift+C puts a branch, a commit, or any revision git understands beside your working tree — read the diff, keep editing your side, blame a line, revert a file',
       },
       {
+        name: 'One diff view, everywhere',
+        detail:
+          "the Git panel's diffs open in that same side-by-side view rather than a separate web-rendered one, so an unstaged change sits beside your live file and can be fixed and saved right there — with blame, and following a terminal over ssh like the panels do. Commits in the history open the same way, against their parent",
+      },
+      {
         name: 'The panels follow you over ssh',
         detail:
           "connect to another machine and Files, Git, and Compare all describe that machine — the tree browses it, Git shows its branch, history and changed files, and Compare puts any revision beside its working tree, all read-only over the connection you already have. They follow you as you cd around that host with nothing to set up there, and a host that would need a password says so instead of hanging",
