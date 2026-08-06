@@ -90,6 +90,13 @@ dropped them. The 334 files upstream added under `kero/` also have no rename
 source, and landed as location conflicts. Every commit below was re-applied by
 hand instead, which is what the fork's divergence now costs.
 
+**Read the next sync's commit list against `ae67b6f`, not against the merge
+base.** Nothing here records these 44 commits as ancestors, so
+`git log HEAD..kero/main` still lists every one of them and will keep doing so.
+Step 1 of the procedure above will look like a much larger sync than it is —
+start from the first commit after `ae67b6f`, and use this log to tell what has
+already been taken.
+
 Taken:
 
 | Commit | What it brought |
