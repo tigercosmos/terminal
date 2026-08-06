@@ -20,6 +20,22 @@
         }
       }
     },
+    "+%lld, −%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld、−%lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld、−%lld"
+          }
+        }
+      }
+    },
     "Always Show" : {
       "localizations" : {
         "ja" : {
@@ -400,6 +416,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切换分支"
+          }
+        }
+      }
+    },
+    "Tab" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タブ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签页"
+          }
+        }
+      }
+    },
+    "The file as of %@ (%@) — read-only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (%@) 時点のファイル — 読み取り専用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (%@) 时的文件 — 只读"
           }
         }
       }

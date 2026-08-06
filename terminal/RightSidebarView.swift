@@ -1813,8 +1813,14 @@ private struct GitPanel: View {
                         .sidebarFont(size: 9, weight: .semibold)
                         .frame(width: 12)
                 }
-                Text(model.isLoadingMoreCommits ? "Loading…" : "Show More")
-                    .sidebarFont(size: 10.5)
+                // Separate literals rather than a ternary: Xcode extracts a
+                // string literal passed straight to Text, not one chosen
+                // inside an expression.
+                if model.isLoadingMoreCommits {
+                    Text("Loading…").sidebarFont(size: 10.5)
+                } else {
+                    Text("Show More").sidebarFont(size: 10.5)
+                }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.tertiary)
@@ -2347,7 +2353,13 @@ private struct GitCommitRow: View {
         .accessibilityLabel(
             "\(commit.subject), \(commit.shortHash), by \(commit.author), \(commit.relativeDate)"
         )
-        .accessibilityHint(isExpanded ? "Hide changed files" : "Show changed files")
+        // Chosen as a String rather than a ternary of two Text keys, so both
+        // sides are extracted for translation.
+        .accessibilityHint(
+            isExpanded
+                ? String(localized: "Hide changed files")
+                : String(localized: "Show changed files")
+        )
     }
 
     /// A branch or tag pointing at this commit. `--decorate` writes the

@@ -128,8 +128,11 @@ check "runCommand new-session adds a tab" "$(( tabs_before + 1 ))" "$tabs_after"
 # the pane. A tool reading either is reading these exact values.
 automate sendText 'printf "TERM_ENV term=[%s] program=[%s]\n" "$TERMINAL_TERM" "$TERM_PROGRAM"
 '
-sleep 1.5
-env_line=$(automate readScreen | grep 'TERM_ENV term=' | tail -1)
+sleep 2
+# The prompt echoes the command, and that echo contains the format string —
+# which matches this grep, and wraps across two rows in a narrow pane. Drop the
+# echoed line so only the expanded values are read.
+env_line=$(automate readScreen | grep -v 'printf' | grep 'TERM_ENV term=' | tail -1)
 check "the session exports TERMINAL_TERM" "term=[alacritty]" "$env_line"
 check "TERM_PROGRAM advertises the Ghostty protocols" "program=[ghostty]" "$env_line"
 
