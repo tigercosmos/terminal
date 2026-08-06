@@ -610,6 +610,17 @@ final class TerminalManager: nonisolated ObservableObject {
         )
     }
 
+    /// Opens one file as it changed in a historical commit.
+    func openCommitDiff(
+        repository: GitDirectory, path: String, origPath: String?,
+        commitHash: String, parentHash: String?, shortHash: String
+    ) {
+        selectedProject?.openCommitDiff(
+            repository: repository, path: path, origPath: origPath,
+            commitHash: commitHash, parentHash: parentHash, shortHash: shortHash
+        )
+    }
+
     /// Opens a file compared against a branch or commit.
     func openCompare(
         repository: GitDirectory, path: String, origPath: String?,
@@ -902,6 +913,14 @@ final class TerminalManager: nonisolated ObservableObject {
         case .browser(let browser):
             return .browser(url: browser.snapshotURL)
         case .diff(let diff):
+            if case .commit(let oid, let parent, let shortHash) = diff.sides {
+                return .commitDiff(
+                    repoRoot: diff.repository.path, path: diff.path,
+                    origPath: diff.origPath, commitHash: oid,
+                    parentHash: parent, shortHash: shortHash,
+                    remoteHost: diff.remoteHost
+                )
+            }
             return .diff(
                 repoRoot: diff.repository.path, path: diff.path,
                 staged: diff.sides.isStaged,

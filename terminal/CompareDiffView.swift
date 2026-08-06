@@ -73,14 +73,24 @@ final class CompareTab: nonisolated ObservableObject, nonisolated Identifiable {
         case .unstaged: String(localized: "Index")
         case .staged: "HEAD"
         case .untracked: String(localized: "New File")
+        // A root commit's parent side is empty, and saying "before" would
+        // imply there was something there.
+        case .commit(_, let parent, _):
+            parent == nil
+                ? String(localized: "New File")
+                : String(localized: "Before")
         }
     }
 
     /// What to call the right column in the header. Normally the file's own
-    /// path, since that is what is on disk; a staged diff shows the index.
+    /// path, since that is what is on disk; the cases with no live file name
+    /// where their bytes came from instead.
     var workingName: String {
-        if case .staged = sides { return String(localized: "Index") }
-        return path
+        switch sides {
+        case .staged: String(localized: "Index")
+        case .commit(_, _, let shortHash): shortHash
+        case .revision, .unstaged, .untracked: path
+        }
     }
 
     /// The commit the left column can be blamed at, or nil where blame would
@@ -346,8 +356,14 @@ struct CompareDiffView: View {
     /// A staged diff's right column is the index, not the working tree — say
     /// so, since this is the one case where editing is not offered.
     private var stagedHelp: String? {
-        guard case .staged = compare.sides else { return nil }
-        return String(localized: "The file as staged in the index — read-only")
+        switch compare.sides {
+        case .staged:
+            String(localized: "The file as staged in the index — read-only")
+        case .commit(_, _, let shortHash):
+            String(localized: "The file as of commit \(shortHash) — read-only")
+        case .revision, .unstaged, .untracked:
+            nil
+        }
     }
 
     private func columnLabel(

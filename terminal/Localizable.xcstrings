@@ -4,6 +4,22 @@
     "" : {
       "shouldTranslate" : false
     },
+    "%lld files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件のファイル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个文件"
+          }
+        }
+      }
+    },
     "Always Show" : {
       "localizations" : {
         "ja" : {
@@ -32,6 +48,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自动"
+          }
+        }
+      }
+    },
+    "Before" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更前"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "变更前"
           }
         }
       }
@@ -116,6 +148,38 @@
         }
       }
     },
+    "Hide changed files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更されたファイルを隠す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏更改的文件"
+          }
+        }
+      }
+    },
+    "Index" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インデックス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂存区"
+          }
+        }
+      }
+    },
     "Keeps the toolbar hidden" : {
       "localizations" : {
         "ja" : {
@@ -128,6 +192,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "始终隐藏工具栏"
+          }
+        }
+      }
+    },
+    "New File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規ファイル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件"
+          }
+        }
+      }
+    },
+    "No file changes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルの変更なし"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无文件更改"
+          }
+        }
+      }
+    },
+    "Open this file as it changed in %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ での変更としてこのファイルを開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开此文件在 %@ 中的更改"
+          }
+        }
+      }
+    },
+    "Renamed from %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ から名称変更"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名自 %@"
+          }
+        }
+      }
+    },
+    "Show More" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "さらに表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示更多"
+          }
+        }
+      }
+    },
+    "Show changed files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更されたファイルを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示更改的文件"
           }
         }
       }
@@ -176,6 +336,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切换分支"
+          }
+        }
+      }
+    },
+    "The file as of %@ — read-only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 時点のファイル — 読み取り専用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 时的文件 — 只读"
+          }
+        }
+      }
+    },
+    "The file as of commit %@ — read-only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コミット %@ 時点のファイル — 読み取り専用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交 %@ 时的文件 — 只读"
+          }
+        }
+      }
+    },
+    "The file as staged in the index — read-only" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インデックスにステージされたファイル — 読み取り専用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暂存到暂存区的文件 — 只读"
           }
         }
       }

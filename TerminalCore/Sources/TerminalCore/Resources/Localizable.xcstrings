@@ -567,6 +567,22 @@
         }
       }
     },
+    "Git did not respond in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Git が時間内に応答しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Git 未在规定时间内响应。"
+          }
+        }
+      }
+    },
     "Git returned an empty repository path." : {
       "localizations" : {
         "ja" : {

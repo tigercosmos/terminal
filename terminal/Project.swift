@@ -496,6 +496,34 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// Keyed by the repository *and* its host: the same path on another
     /// machine is a different file, so it gets its own tab rather than
     /// reloading this one over the wrong connection.
+    /// Opens one file as it changed in a historical commit: that commit
+    /// against its first parent. Both sides are read-only — neither is the
+    /// working tree — and a root commit compares against nothing.
+    func openCommitDiff(
+        repository: GitDirectory, path: String, origPath: String?,
+        commitHash: String, parentHash: String?, shortHash: String
+    ) {
+        let sides = CompareSides.commit(
+            oid: commitHash, parent: parentHash, shortHash: shortHash
+        )
+        if let (tab, pane) = findDiffPane(
+            repository: repository, path: path, sides: sides
+        ), case .diff(let diff) = pane.content {
+            diff.reload()
+            selectedTabID = tab.id
+            tab.focusedPaneID = pane.id
+            return
+        }
+        let context = selectedSession
+        let diff = CompareTab(
+            repository: repository, path: path, origPath: origPath, sides: sides
+        )
+        let tab = makeTab(content: .diff(diff))
+        tab.contextSession = context
+        insertNextToSelected(tab)
+        selectedTabID = tab.id
+    }
+
     private func findDiffPane(
         repository: GitDirectory, path: String, sides: CompareTab.Sides
     ) -> (tab: PaneTab, pane: Pane)? {
@@ -883,6 +911,15 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             return .diff(CompareTab(
                 repository: GitDirectory(repoRoot), path: path, origPath: origPath,
                 sides: CompareSides(staged: staged, untracked: untracked),
+                disconnectedFrom: remoteHost
+            ))
+        case .commitDiff(
+            let repoRoot, let path, let origPath,
+            let commitHash, let parentHash, let shortHash, let remoteHost
+        ):
+            return .diff(CompareTab(
+                repository: GitDirectory(repoRoot), path: path, origPath: origPath,
+                sides: .commit(oid: commitHash, parent: parentHash, shortHash: shortHash),
                 disconnectedFrom: remoteHost
             ))
         case .compare(

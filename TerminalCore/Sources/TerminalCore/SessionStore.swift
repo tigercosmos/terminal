@@ -62,6 +62,15 @@ public struct SessionSnapshot: Codable {
                 repoRoot: String, path: String, staged: Bool, untracked: Bool,
                 origPath: String?, remoteHost: String? = nil
             )
+            /// One file as it changed in a historical commit. Its own case
+            /// because the stage flags above cannot say which commit, and a
+            /// commit diff restored without one would come back as a diff of
+            /// the working tree instead.
+            case commitDiff(
+                repoRoot: String, path: String, origPath: String?,
+                commitHash: String, parentHash: String?, shortHash: String,
+                remoteHost: String? = nil
+            )
             /// The target commit is saved rather than the branch it came from:
             /// a comparison tab is pinned to one commit for its lifetime, so
             /// restoring it must reopen the same comparison, not whatever the

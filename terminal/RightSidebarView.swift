@@ -99,6 +99,16 @@ struct RightSidebarView: View {
                                     untracked: entry.isUntracked,
                                     origPath: entry.origPath
                                 )
+                            },
+                            openCommitFile: { commit, file in
+                                manager.openCommitDiff(
+                                    repository: git.repoDirectory,
+                                    path: file.path,
+                                    origPath: file.originalPath,
+                                    commitHash: commit.hash,
+                                    parentHash: commit.parentHash,
+                                    shortHash: commit.shortHash
+                                )
                             }
                         )
                     case .compare:
@@ -832,6 +842,11 @@ private struct GitPanel: View {
     let openFile: (String) -> Void
     let openToSide: (String) -> Void
     let openDiff: (_ entry: GitStatusModel.Entry, _ staged: Bool) -> Void
+    /// Opens one file as it changed in a historical commit.
+    let openCommitFile: (
+        _ commit: GitStatusModel.RecentCommit,
+        _ file: GitStatusModel.RecentCommit.FileChange
+    ) -> Void
 
     @State private var commitMessage = ""
     @State private var pendingDiscard: PendingDiscard?
@@ -1687,7 +1702,12 @@ private struct GitPanel: View {
                     )
                     if !historyCollapsed {
                         ForEach(model.recentCommits) { commit in
-                            GitCommitRow(commit: commit)
+                            GitCommitRow(commit: commit) { file in
+                                openCommitFile(commit, file)
+                            }
+                        }
+                        if model.hasMoreRecentCommits {
+                            showMoreCommitsRow
                         }
                     }
                 }
@@ -1716,6 +1736,37 @@ private struct GitPanel: View {
     private func matchesFilter(_ entry: GitStatusModel.Entry) -> Bool {
         let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty || entry.path.localizedCaseInsensitiveContains(query)
+    }
+
+    /// Loads the next page of history. Deliberately a button rather than
+    /// loading on scroll: each page is a Git process, and a history nobody is
+    /// reading should not keep starting them.
+    private var showMoreCommitsRow: some View {
+        Button {
+            model.loadMoreCommits()
+        } label: {
+            HStack(spacing: 6) {
+                if model.isLoadingMoreCommits {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.6)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "ellipsis")
+                        .sidebarFont(size: 9, weight: .semibold)
+                        .frame(width: 12)
+                }
+                Text(model.isLoadingMoreCommits ? "Loading…" : "Show More")
+                    .sidebarFont(size: 10.5)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isLoadingMoreCommits || model.isBusy)
     }
 
     private var cleanState: some View {
@@ -2124,39 +2175,150 @@ struct GitSectionHeader: View {
     }
 }
 
+/// A commit in the history, which opens to show what it changed. Each file
+/// inside opens that commit against its parent, so a change can be read
+/// without leaving for a terminal.
 private struct GitCommitRow: View {
     @ObservedObject private var themeChanges = Theme.changes
     let commit: GitStatusModel.RecentCommit
+    let openFile: (GitStatusModel.RecentCommit.FileChange) -> Void
+
+    @State private var isExpanded = false
+    @State private var isHovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(commit.subject)
-                .sidebarFont(size: 11)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            HStack(spacing: 4) {
-                Text(commit.shortHash)
-                    .sidebarFont(size: 9.5, design: .monospaced)
-                    .foregroundStyle(Color(nsColor: Theme.accent).opacity(0.85))
-                Text("·")
-                Text(commit.author)
-                Text("·")
-                Text(commit.relativeDate)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            if isExpanded {
+                if commit.files.isEmpty {
+                    // A merge carries no file rows against its first parent.
+                    Text("No file changes")
+                        .sidebarFont(size: 10)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 26)
+                        .padding(.vertical, 3)
+                } else {
+                    ForEach(commit.files) { file in
+                        fileRow(file)
+                    }
+                }
             }
-            .sidebarFont(size: 9.5)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+    }
+
+    private var header: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .sidebarFont(size: 8, weight: .semibold)
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(commit.subject)
+                            .sidebarFont(size: 11)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        ForEach(commit.references, id: \.self) { reference in
+                            referenceBadge(reference)
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        Text(commit.shortHash)
+                            .sidebarFont(size: 9.5, design: .monospaced)
+                            .foregroundStyle(Color(nsColor: Theme.accent).opacity(0.85))
+                        Text("·")
+                        Text(commit.author)
+                        Text("·")
+                        Text(commit.relativeDate)
+                        if !commit.files.isEmpty {
+                            Text("·")
+                            Text("\(commit.files.count) files")
+                        }
+                    }
+                    .sidebarFont(size: 9.5)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isHovering ? Color.primary.opacity(0.06) : .clear)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
         .contextMenu {
             Button("Copy Commit Hash") { copy(commit.hash) }
             Button("Copy Commit Message") { copy(commit.subject) }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(commit.subject), \(commit.shortHash), by \(commit.author), \(commit.relativeDate)")
+        .accessibilityLabel(
+            "\(commit.subject), \(commit.shortHash), by \(commit.author), \(commit.relativeDate)"
+        )
+        .accessibilityHint(isExpanded ? "Hide changed files" : "Show changed files")
+    }
+
+    /// A branch or tag pointing at this commit. `--decorate` writes the
+    /// current branch as "HEAD -> main"; only the name is worth the space.
+    private func referenceBadge(_ reference: String) -> some View {
+        let name = reference.contains("->")
+            ? String(reference.split(separator: ">").last ?? "").trimmingCharacters(in: .whitespaces)
+            : reference
+        return Text(name)
+            .sidebarFont(size: 8.5, weight: .medium)
+            .foregroundStyle(Color(nsColor: Theme.accent))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(
+                Capsule().fill(Color(nsColor: Theme.accent).opacity(0.14))
+            )
+            .fixedSize()
+    }
+
+    private func fileRow(_ file: GitStatusModel.RecentCommit.FileChange) -> some View {
+        Button {
+            openFile(file)
+        } label: {
+            HStack(spacing: 7) {
+                Text(String(file.status))
+                    .sidebarFont(size: 10, weight: .bold, design: .monospaced)
+                    .foregroundStyle(gitStatusColor(file.status))
+                    .frame(width: 12)
+                MaterialFileIconView(
+                    path: file.path, size: 13, opacity: file.status == "D" ? 0.6 : 1
+                )
+                Text(file.fileName)
+                    .sidebarFont(size: 11)
+                    .foregroundStyle(.secondary)
+                    .strikethrough(file.status == "D")
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if !file.directory.isEmpty {
+                    Text(file.directory)
+                        .sidebarFont(size: 9.5)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 26)
+            .padding(.trailing, 8)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(file.originalPath.map { String(localized: "Renamed from \($0)") }
+            ?? String(localized: "Open this file as it changed in \(commit.shortHash)"))
     }
 
     private func copy(_ text: String) {
@@ -2366,15 +2528,19 @@ private struct GitEntryRow: View {
         return String(localized: "Discard Changes…")
     }
 
-    private var statusColor: Color {
-        switch status {
-        case "M": return Color(red: 0.82, green: 0.60, blue: 0.13)
-        case "A", "?": return Color(red: 0.25, green: 0.73, blue: 0.31)
-        case "D": return Color(red: 1.0, green: 0.48, blue: 0.45)
-        case "R", "C": return Color(red: 0.35, green: 0.65, blue: 1.0)
-        case "U": return Color(red: 0.74, green: 0.55, blue: 1.0)
-        default: return .secondary
-        }
+    private var statusColor: Color { gitStatusColor(status) }
+}
+
+/// The colour a porcelain status letter is shown in, wherever one appears —
+/// the changed-file rows and the files inside a commit read the same way.
+func gitStatusColor(_ status: Character) -> Color {
+    switch status {
+    case "M": Color(red: 0.82, green: 0.60, blue: 0.13)
+    case "A", "?": Color(red: 0.25, green: 0.73, blue: 0.31)
+    case "D": Color(red: 1.0, green: 0.48, blue: 0.45)
+    case "R", "C": Color(red: 0.35, green: 0.65, blue: 1.0)
+    case "U": Color(red: 0.74, green: 0.55, blue: 1.0)
+    default: .secondary
     }
 }
 
