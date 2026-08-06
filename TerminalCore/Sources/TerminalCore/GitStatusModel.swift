@@ -173,6 +173,9 @@ public final class GitStatusModel: nonisolated ObservableObject {
     private var refreshPending = false
     /// When the last status load finished, for the remote polling interval.
     private var lastLoad: Date?
+    /// Longer than any snapshot's own budget, so a Git that times out reports
+    /// its own error rather than being overtaken by this backstop.
+    private static let watchdogSeconds = 45
     /// Restores a previously resolved directory immediately when switching
     /// tabs. Without this, every return to a repository clears `isRepo` until
     /// the asynchronous Git refresh finishes, briefly removing the toolbar
@@ -348,6 +351,28 @@ public final class GitStatusModel: nonisolated ObservableObject {
         statusRequestID &+= 1
         let requestID = statusRequestID
         isRefreshing = true
+
+        // Deliberately independent of the worker below. The snapshot's own
+        // deadline covers a Git that will not finish, but resolving a remote
+        // directory — or even a filesystem metadata call on a disconnected
+        // volume — can become uninterruptible before Git is ever reached. The
+        // panel has to leave its loading state and offer a retry regardless,
+        // while the stale worker winds down on its own.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.watchdogSeconds))
+            guard let self,
+                  self.isRefreshing,
+                  self.contextGeneration == generation,
+                  self.statusRequestID == requestID,
+                  self.panelRoot == root else { return }
+            self.statusRequestID &+= 1
+            self.isRefreshing = false
+            self.refreshPending = false
+            self.apply(.failed(
+                String(localized: "Git did not respond in time.", bundle: .module)
+            ))
+            self.hasResolvedStatus = true
+        }
 
         Task { [weak self] in
             let loaded = await Task.detached(priority: .utility) {
@@ -1169,10 +1194,34 @@ public final class GitStatusModel: nonisolated ObservableObject {
         var loadedDetails = false
     }
 
+    /// How long a whole snapshot may take before the panel gives up on it.
+    /// One deadline for all of it rather than a timeout each, so a repository
+    /// that is merely slow cannot spend it several times over.
+    ///
+    /// Generous for a remote: every command is a round trip, and a snapshot
+    /// runs a dozen of them.
+    private nonisolated static func snapshotBudget(for root: GitDirectory) -> TimeInterval {
+        root.isLocal ? 10 : 30
+    }
+
     /// Resolves the active repository and distinguishes a normal non-repo
     /// directory from an actual Git failure that the UI should surface.
     private nonisolated static func runGitStatus(in root: GitDirectory) -> StatusLoadResult {
-        let top = GitCommand.run(["rev-parse", "--show-toplevel"], in: root)
+        // A filesystem, a Git helper waiting on a prompt, or a corrupt
+        // repository must not leave the panel's spinner running forever.
+        let deadline = Date().addingTimeInterval(snapshotBudget(for: root))
+        let timeoutMessage = String(localized: "Git did not respond in time.", bundle: .module)
+        func statusGit(
+            _ args: [String], in directory: GitDirectory
+        ) -> (status: Int32, stdout: String, stderr: String) {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else {
+                return (GitCommand.timedOutStatus, "", timeoutMessage)
+            }
+            return GitCommand.run(args, in: directory, timeout: remaining)
+        }
+
+        let top = statusGit(["rev-parse", "--show-toplevel"], in: root)
         guard top.status == 0 else {
             let failure = gitFailureMessage(
                 top,
@@ -1190,7 +1239,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
             return .failed(String(localized: "Git returned an empty repository path.", bundle: .module))
         }
         let repoRoot = root.directory(resolvedRoot)
-        let status = GitCommand.run(
+        let status = statusGit(
             [
                 "status", "--porcelain=v2", "--branch", "-z",
                 "--untracked-files=all", "--ignored=matching",
@@ -1208,7 +1257,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
         var result = parseStatus(status.stdout)
         result.topLevel = resolvedRoot
 
-        let diff = GitCommand.run(
+        let diff = statusGit(
             result.hasHead
                 ? ["diff", "--numstat", "HEAD", "--"]
                 : ["diff", "--numstat", "--cached", "--"],
@@ -1223,7 +1272,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
         // the initial snapshot; add any edits made after staging as a second
         // layer so the toolbar still reflects all pending work.
         if !result.hasHead {
-            let unstaged = GitCommand.run(["diff", "--numstat", "--"], in: repoRoot)
+            let unstaged = statusGit(["diff", "--numstat", "--"], in: repoRoot)
             if unstaged.status == 0 {
                 let totals = parseNumstat(unstaged.stdout)
                 result.lineAdditions += totals.additions
@@ -1244,14 +1293,14 @@ public final class GitStatusModel: nonisolated ObservableObject {
 
         result.loadedDetails = true
 
-        let refs = GitCommand.run(
+        let refs = statusGit(
             ["for-each-ref", "--format=%(refname:short)", "refs/heads"], in: repoRoot
         )
         if refs.status == 0 {
             result.branches = refs.stdout.split(separator: "\n").map(String.init).sorted()
         }
 
-        let remoteRun = GitCommand.run(["remote"], in: repoRoot)
+        let remoteRun = statusGit(["remote"], in: repoRoot)
         if remoteRun.status == 0 {
             result.remotes = remoteRun.stdout.split(separator: "\n").map(String.init).sorted()
         }
@@ -1260,7 +1309,7 @@ public final class GitStatusModel: nonisolated ObservableObject {
         // Prefer origin when more than one remote is present because that is
         // the repository the local branch list conventionally belongs to.
         if let remoteName = result.remotes.contains("origin") ? "origin" : result.remotes.first {
-            let remoteHead = GitCommand.run(
+            let remoteHead = statusGit(
                 ["symbolic-ref", "--quiet", "--short", "refs/remotes/\(remoteName)/HEAD"],
                 in: repoRoot
             )
@@ -1274,20 +1323,20 @@ public final class GitStatusModel: nonisolated ObservableObject {
             }
         }
 
-        let log = GitCommand.run(
+        let log = statusGit(
             ["log", "-n", "8", "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e"],
             in: repoRoot
         )
         if log.status == 0 { result.recentCommits = parseRecentCommits(log.stdout) }
 
-        let stash = GitCommand.run(
+        let stash = statusGit(
             ["rev-list", "--walk-reflogs", "--count", "refs/stash"], in: repoRoot
         )
         if stash.status == 0 {
             result.stashCount = Int(stash.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
         }
 
-        let gitDir = GitCommand.run(["rev-parse", "--absolute-git-dir"], in: repoRoot)
+        let gitDir = statusGit(["rev-parse", "--absolute-git-dir"], in: repoRoot)
         if gitDir.status == 0 {
             let path = strippingTrailingLineEnding(gitDir.stdout)
             result.repositoryOperation = detectRepositoryOperation(
@@ -1444,29 +1493,50 @@ public final class GitStatusModel: nonisolated ObservableObject {
         let rootURL = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL
         let rootPrefix = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
 
-        return entries.lazy
-            .filter { $0.staged == "?" }
-            .reduce(into: 0) { total, entry in
-                let fileURL = rootURL.appendingPathComponent(entry.path).standardizedFileURL
-                guard fileURL.path.hasPrefix(rootPrefix) else { return }
-                total += textLineCount(at: fileURL)
-            }
+        // These totals are secondary metadata on a toolbar. A build directory
+        // someone forgot to ignore should not hold the repository's own status
+        // behind it, so the scan stops rather than reading everything.
+        let maximumFiles = 2_048
+        let maximumFileBytes = 8 * 1_024 * 1_024
+        var remainingBytes = 32 * 1_024 * 1_024
+        var visitedFiles = 0
+        var total = 0
+        for entry in entries where entry.staged == "?" {
+            guard visitedFiles < maximumFiles, remainingBytes > 0 else { break }
+            visitedFiles += 1
+            let fileURL = rootURL.appendingPathComponent(entry.path).standardizedFileURL
+            guard fileURL.path.hasPrefix(rootPrefix) else { continue }
+            let count = textLineCount(
+                at: fileURL, maximumBytes: min(maximumFileBytes, remainingBytes)
+            )
+            total += count.lines
+            remainingBytes -= count.bytesRead
+        }
+        return total
     }
 
     /// Counts logical lines while using Git's usual NUL-byte binary heuristic.
     /// Symlink content is its destination path, which is one added line.
-    private nonisolated static func textLineCount(at url: URL) -> Int {
+    /// Reports the bytes it read as well as the lines, so the caller can hold
+    /// the whole scan to a budget. A file bigger than `maximumBytes` is
+    /// skipped outright rather than counted in part, since a partial count
+    /// would be wrong rather than merely incomplete.
+    private nonisolated static func textLineCount(
+        at url: URL, maximumBytes: Int
+    ) -> (lines: Int, bytesRead: Int) {
         guard let values = try? url.resourceValues(
-            forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-        ) else { return 0 }
-        if values.isSymbolicLink == true { return 1 }
+            forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
+        ) else { return (0, 0) }
+        if values.isSymbolicLink == true { return (1, 0) }
         guard values.isRegularFile == true,
-              let handle = try? FileHandle(forReadingFrom: url) else { return 0 }
+              let fileSize = values.fileSize,
+              fileSize <= maximumBytes,
+              let handle = try? FileHandle(forReadingFrom: url) else { return (0, 0) }
         defer { try? handle.close() }
 
         let binaryProbeSize = 8_000
         guard let probe = try? handle.read(upToCount: binaryProbeSize),
-              !probe.contains(0) else { return 0 }
+              !probe.contains(0) else { return (0, 0) }
 
         var byteCount = probe.count
         var newlineCount = probe.reduce(into: 0) { count, byte in
@@ -1482,8 +1552,8 @@ public final class GitStatusModel: nonisolated ObservableObject {
             lastByte = chunk.last
         }
 
-        guard byteCount > 0 else { return 0 }
-        return newlineCount + (lastByte == 0x0A ? 0 : 1)
+        guard byteCount > 0 else { return (0, byteCount) }
+        return (newlineCount + (lastByte == 0x0A ? 0 : 1), byteCount)
     }
 
     private static func fileDecoration(for entry: Entry) -> FileDecoration {

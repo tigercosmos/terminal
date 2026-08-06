@@ -3,6 +3,7 @@
 //  TerminalCore
 //
 
+import Darwin
 import Dispatch
 import Foundation
 
@@ -97,10 +98,12 @@ public nonisolated enum GitCommand {
     /// Runs Git and hands back its decoded output.
     public static func run(
         _ args: [String], in directory: GitDirectory,
-        allowingRepositoryHooks: Bool = false
+        allowingRepositoryHooks: Bool = false,
+        timeout: TimeInterval? = nil
     ) -> (status: Int32, stdout: String, stderr: String) {
         let result = runData(
-            args, in: directory, allowingRepositoryHooks: allowingRepositoryHooks
+            args, in: directory, allowingRepositoryHooks: allowingRepositoryHooks,
+            timeout: timeout
         )
         // Undecodable output is treated as no output rather than repaired: the
         // callers parse NUL-delimited records where a replacement character
@@ -121,13 +124,17 @@ public nonisolated enum GitCommand {
     public static func runData(
         _ args: [String], in directory: GitDirectory,
         allowingRepositoryHooks: Bool = false,
-        maxBytes: Int? = nil, input: Data? = nil
+        maxBytes: Int? = nil, input: Data? = nil,
+        timeout: TimeInterval? = nil
     ) -> (status: Int32, stdout: Data, stderr: String) {
         let arguments = untrustedConfig
             + (allowingRepositoryHooks ? [] : noHooksConfig)
             + args
         guard let remote = directory.remote else {
-            return runLocal(arguments, in: directory.path, maxBytes: maxBytes, input: input)
+            return runLocal(
+                arguments, in: directory.path,
+                maxBytes: maxBytes, input: input, timeout: timeout
+            )
         }
         // `-C` rather than a remote `cd`: it is Git's own way of naming the
         // directory to work in, and it fails loudly on a path that is gone
@@ -183,8 +190,14 @@ public nonisolated enum GitCommand {
     /// Runs Git on this machine, draining stdout and stderr concurrently.
     /// Reading either pipe only after the process exits can deadlock when the
     /// other fills, and a status listing can fill one.
+    ///
+    /// `timeout` bounds the wait. Without one, a Git that never returns — a
+    /// disconnected volume, a credential helper waiting on a prompt, a corrupt
+    /// repository — leaves the panel that asked spinning for the rest of the
+    /// session.
     private static func runLocal(
-        _ arguments: [String], in path: String, maxBytes: Int?, input: Data?
+        _ arguments: [String], in path: String, maxBytes: Int?, input: Data?,
+        timeout: TimeInterval?
     ) -> (status: Int32, stdout: Data, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
@@ -200,6 +213,8 @@ public nonisolated enum GitCommand {
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+        let processExited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in processExited.signal() }
 
         do {
             try process.run()
@@ -219,28 +234,61 @@ public nonisolated enum GitCommand {
         let outData = PipeData()
         let errData = PipeData()
         let readers = DispatchGroup()
-        // These readers are on the synchronous completion path below. Match
-        // the caller so a user-initiated Git request never waits on utility
-        // threads, while background refreshes keep their lower priority.
-        let readerQoS = DispatchQoS.QoSClass(rawValue: qos_class_self()) ?? .utility
+        // Dedicated threads, not the global pool. Several panes can be in here
+        // at once from Swift's cooperative executor — restored diff tabs all
+        // loading at launch — and each one blocks below until its pipes reach
+        // EOF. Handing the drains back to a pool those blocked callers are
+        // themselves occupying is how every one of them ends up waiting on a
+        // reader that never gets a thread. Matching the caller's quality of
+        // service keeps a background refresh from running at a user-initiated
+        // priority, and vice versa.
+        let readerQualityOfService = Thread.current.qualityOfService
         readers.enter()
-        DispatchQueue.global(qos: readerQoS).async {
+        let stdoutReader = Thread {
             outData.value = read(stdout.fileHandleForReading, retaining: maxBytes)
             readers.leave()
         }
+        stdoutReader.qualityOfService = readerQualityOfService
+        stdoutReader.start()
         readers.enter()
-        DispatchQueue.global(qos: readerQoS).async {
+        let stderrReader = Thread {
             errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
             readers.leave()
         }
-        process.waitUntilExit()
+        stderrReader.qualityOfService = readerQualityOfService
+        stderrReader.start()
+
+        var timedOut = false
+        if let timeout {
+            timedOut = processExited.wait(timeout: .now() + timeout) == .timedOut
+            if timedOut {
+                process.terminate()
+                if processExited.wait(timeout: .now() + 1) == .timedOut {
+                    // Git can launch a helper that ignores SIGTERM — a
+                    // credential prompt is the usual one. It is our child, so
+                    // force it down rather than wait forever for pipe EOF.
+                    Darwin.kill(process.processIdentifier, SIGKILL)
+                    process.waitUntilExit()
+                }
+            }
+        } else {
+            process.waitUntilExit()
+        }
         readers.wait()
-        return (
-            process.terminationStatus,
-            outData.value,
-            String(data: errData.value, encoding: .utf8) ?? ""
-        )
+
+        var errorOutput = String(data: errData.value, encoding: .utf8) ?? ""
+        if timedOut {
+            if !errorOutput.isEmpty, !errorOutput.hasSuffix("\n") { errorOutput += "\n" }
+            errorOutput += String(localized: "Git did not respond in time.", bundle: .module)
+            return (timedOutStatus, outData.value, errorOutput)
+        }
+        return (process.terminationStatus, outData.value, errorOutput)
     }
+
+    /// Exit status standing for "we stopped waiting". Not one Git can return:
+    /// its own codes are positive, and -1 already means the process could not
+    /// be started at all.
+    public static let timedOutStatus: Int32 = -2
 
     /// Drains `handle`, keeping at most `limit` bytes plus one. Everything past
     /// that is read and dropped: the index can change between a `cat-file -s`
