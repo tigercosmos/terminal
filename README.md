@@ -21,8 +21,10 @@ the full feature list, every keyboard shortcut, and the changelog.
   so any agent CLI works unchanged, with your prompt, aliases, and dotfiles
   intact. Nothing is wrapped, proxied, or rewritten on its way through.
 - **Read what the agent wrote** — working-tree status, per-file diffs, and
-  per-line blame in the sidebar, so a change gets reviewed where it was made
-  instead of in a Git GUI or a second app.
+  per-line blame in the sidebar, with the recent commits and the files each one
+  touched behind them, so a change gets reviewed where it was made instead of
+  in a Git GUI or a second app. An optional toolbar under the tabs keeps the
+  branch and the lines pending in view.
 - **Compare before you trust it** — ⇧⌘C puts any branch or commit beside your
   working tree, editable on your side, with blame and per-file revert.
 - **Run several at once** — each repository is a project with its own tabs and
@@ -33,7 +35,8 @@ the full feature list, every keyboard shortcut, and the changelog.
   commands and bells reach Notification Center when the pane is unfocused.
 - **Terminal first** — the Alacritty emulator core by default, with libghostty
   a switch away, a command palette, and a file tree and editor in panes beside
-  the shell rather than in a separate window.
+  the shell rather than in a separate window. Command-click a path a command
+  printed to reveal it in Finder, or open it as a pane.
 - **Native and localized** — macOS appearance and keyboard conventions, in
   English, Simplified Chinese, and Japanese.
 

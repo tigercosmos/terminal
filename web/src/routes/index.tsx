@@ -24,9 +24,9 @@ const BREW_COMMAND = ''
 
 // Shown only if the release can't be looked up; kept current so downloads still work.
 const FALLBACK: Release = {
-  version: '0.5.0',
+  version: '0.6.0',
   minSystem: '15.6',
-  dmg: `${GITHUB_URL}/releases/download/v0.5.0/terminal-0.5.0.dmg`,
+  dmg: `${GITHUB_URL}/releases/download/v0.6.0/terminal-0.6.0.dmg`,
 }
 
 /**
@@ -171,6 +171,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'Cmd+D splits right, Cmd+Shift+D splits down, Opt+Cmd+arrows moves focus between panes, or drag a tab onto the content to split it there — a tab that is already split keeps its panes and their proportions',
       },
       {
+        name: 'Clear the clutter',
+        detail:
+          "Close Files and Close Diffs in a tab's context menu drop those panes everywhere at once, leaving the terminals alone",
+      },
+      {
         name: 'Restored on relaunch',
         detail:
           'quit and reopen: projects, tabs, and pane layout come back, each shell fresh beneath its previous scrollback',
@@ -232,7 +237,12 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Built on Alacritty, or Ghostty',
         detail:
-          "Alacritty's emulator core by default, drawn by terminal's own Metal renderer; libghostty is a switch away in Settings",
+          "Alacritty's emulator core by default, drawn by terminal's own Metal renderer — Shift+Return, Ctrl with the number row, and the application keypad reach the program, and programs can set the pointer's shape; libghostty is a switch away in Settings",
+      },
+      {
+        name: 'Paths you can click',
+        detail:
+          "Cmd+click a file path in the terminal to reveal it in Finder, or Cmd+right-click a path or URL to open it as a file or browser tab or pane — resolved against that pane's own directory, and the file:12:5 suffixes compilers print are understood",
       },
       {
         name: 'Scrollback that glides',
@@ -297,6 +307,10 @@ const SHORTCUTS: Row[] = [
       'zoom in, out, or back to the default size — whatever you last clicked into: the terminal text, the page in a browser pane, or the sidebars and panels',
   },
   { name: 'Cmd+S', detail: 'save the open file' },
+  {
+    name: 'Cmd+click / Cmd+right-click',
+    detail: 'a path in the terminal: reveal it in Finder, or open it as a tab or pane',
+  },
 ]
 
 const FAQ: { q: string; a: ReactNode }[] = [
