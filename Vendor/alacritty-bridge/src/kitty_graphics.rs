@@ -1148,7 +1148,8 @@ mod removable_temporary_path_tests {
     /// Unique per test without a clock or an RNG, both of which the workflow
     /// harness forbids and neither of which this needs.
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("terminal-kgtest-{}-{tag}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("terminal-kgtest-{}-{tag}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir

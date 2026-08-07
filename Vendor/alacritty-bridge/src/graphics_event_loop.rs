@@ -347,7 +347,9 @@ where
                     if needs_write != interest.writable {
                         interest.writable = needs_write;
                         if let Err(error) = self.pty.reregister(&self.poller, interest, poll_mode) {
-                            eprintln!("terminal: Alacritty PTY registration update failed: {error}");
+                            eprintln!(
+                                "terminal: Alacritty PTY registration update failed: {error}"
+                            );
                             break;
                         }
                     }

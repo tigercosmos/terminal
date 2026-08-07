@@ -530,9 +530,13 @@ impl StreamScanner {
                 } else {
                     SyncUpdateEvent::End
                 })),
-                b"9" | b"1000" | b"1002" | b"1003" => events.push(ScanEvent::MouseShape(
-                    if enabled { "default" } else { "text" },
-                )),
+                b"9" | b"1000" | b"1002" | b"1003" => {
+                    events.push(ScanEvent::MouseShape(if enabled {
+                        "default"
+                    } else {
+                        "text"
+                    }))
+                }
                 _ => {}
             }
         }
@@ -668,6 +672,11 @@ struct SwiftContext(*mut c_void);
 unsafe impl Send for SwiftContext {}
 unsafe impl Sync for SwiftContext {}
 
+/// Wraps an OSC 52 reply around the clipboard text once the user has allowed
+/// the read. Held rather than rebuilt so the reply keeps the terminator — BEL
+/// or ST — that the requesting program used.
+type ClipboardFormatter = Arc<dyn Fn(&str) -> String + Sync + Send + 'static>;
+
 /// State the PTY thread needs in order to answer queries without calling into
 /// Swift: the palette for color reports, and the geometry for size reports.
 /// Per terminal, since Terminal runs many panes at different sizes.
@@ -679,7 +688,7 @@ struct Shared {
     synchronized_update_deadline: Option<Instant>,
     /// OSC 52 read formatters waiting for Terminal's confirmation sheet. Keeping
     /// the formatter here preserves whether the request used BEL or ST.
-    pending_clipboard: VecDeque<(u64, Arc<dyn Fn(&str) -> String + Sync + Send + 'static>)>,
+    pending_clipboard: VecDeque<(u64, ClipboardFormatter)>,
     next_clipboard_id: u64,
 }
 
@@ -750,7 +759,9 @@ impl Proxy {
             }
             OscEvent::ShellPromptStart => self.emit(TERMINAL_EVENT_SHELL_PROMPT_START, &[]),
             OscEvent::ShellCommandStart => self.emit(TERMINAL_EVENT_SHELL_COMMAND_START, &[]),
-            OscEvent::ShellCommandExecuting => self.emit(TERMINAL_EVENT_SHELL_COMMAND_EXECUTING, &[]),
+            OscEvent::ShellCommandExecuting => {
+                self.emit(TERMINAL_EVENT_SHELL_COMMAND_EXECUTING, &[])
+            }
             OscEvent::ShellCommandFinished(exit_code) => self.emit(
                 TERMINAL_EVENT_SHELL_COMMAND_FINISHED,
                 &exit_code.unwrap_or(-1).to_le_bytes(),
@@ -1458,7 +1469,10 @@ pub unsafe extern "C" fn terminal_alacritty_scroll(handle: *mut TerminalHandle, 
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn terminal_alacritty_scroll_to_offset(handle: *mut TerminalHandle, offset: usize) {
+pub unsafe extern "C" fn terminal_alacritty_scroll_to_offset(
+    handle: *mut TerminalHandle,
+    offset: usize,
+) {
     if handle.is_null() {
         return;
     }
@@ -2127,594 +2141,13 @@ pub unsafe extern "C" fn terminal_alacritty_clear(handle: *mut TerminalHandle) {
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn terminal_alacritty_synchronized_update(handle: *mut TerminalHandle) -> bool {
+pub unsafe extern "C" fn terminal_alacritty_synchronized_update(
+    handle: *mut TerminalHandle,
+) -> bool {
     if handle.is_null() {
         return false;
     }
     (*handle).shared.lock().synchronized_update
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use alacritty_terminal::event::VoidListener;
-    use alacritty_terminal::vte::ansi::Processor;
-
-    fn intercept(interceptor: &mut OscInterceptor, input: &[u8]) -> (Vec<u8>, Vec<OscEvent>) {
-        let (output, events) = interceptor.process(input);
-        (output.into_owned(), events)
-    }
-
-    #[test]
-    fn stream_scanner_handles_every_chunk_boundary() {
-        let input = b"\x1b[?2026hframe\x1b[?2026l\x1bc";
-        let expected = vec![
-            ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
-            ScanEvent::SyncUpdate(SyncUpdateEvent::End),
-            ScanEvent::MouseShape("text"),
-        ];
-
-        for split in 0..=input.len() {
-            let mut scanner = StreamScanner::default();
-            let mut events = scanner.process(&input[..split]);
-            events.extend(scanner.process(&input[split..]));
-            assert_eq!(events, expected, "split at {split}");
-        }
-    }
-
-    #[test]
-    fn stream_scanner_ignores_sequences_inside_control_strings() {
-        let mut scanner = StreamScanner::default();
-        let events = scanner.process(b"\x1b]0;\x1b[?2026h\x07\x1bPpayload\x1b[?2026l\x1b\\");
-
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn stream_scanner_accepts_c1_csi() {
-        let mut scanner = StreamScanner::default();
-        assert_eq!(
-            scanner.process(b"\x9b?2026h\x9b?2026l"),
-            vec![
-                ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
-                ScanEvent::SyncUpdate(SyncUpdateEvent::End),
-            ]
-        );
-    }
-
-    #[test]
-    fn stream_scanner_couples_mouse_reporting_to_pointer_shape() {
-        let mut scanner = StreamScanner::default();
-        assert_eq!(
-            scanner.process(b"\x1b[?1002;1006h\x1b[?1000l"),
-            vec![
-                ScanEvent::MouseShape("default"),
-                ScanEvent::MouseShape("text"),
-            ]
-        );
-        // Non-private modes and unrelated DEC modes stay silent.
-        assert!(scanner.process(b"\x1b[9h\x1b[?25l").is_empty());
-    }
-
-    #[test]
-    fn stream_scanner_restores_text_shape_on_full_reset() {
-        let mut scanner = StreamScanner::default();
-        assert_eq!(
-            scanner.process(b"\x1bc"),
-            vec![ScanEvent::MouseShape("text")]
-        );
-        // A charset designation's final byte and a `c` inside a control
-        // string must not read as RIS.
-        assert!(scanner.process(b"\x1b(c").is_empty());
-        assert!(scanner.process(b"\x1b]0;\x1bc\x07").is_empty());
-    }
-
-    fn theme() -> AlacrittyPalette {
-        let mut palette = [0; 256];
-        for (index, color) in palette.iter_mut().enumerate() {
-            *color = index as u32 * 0x010101;
-        }
-        AlacrittyPalette {
-            palette,
-            foreground: 0xeeeeee,
-            background: 0x111111,
-            cursor: 0xffffff,
-        }
-    }
-
-    fn parse(input: &[u8]) -> Term<VoidListener> {
-        let size = TermSize {
-            columns: 40,
-            screen_lines: 3,
-        };
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        let mut processor: Processor = Processor::new();
-        processor.advance(&mut term, input);
-        term
-    }
-
-    fn url_in(term: &Term<VoidListener>, point: Point) -> Option<String> {
-        let mut regex = RegexSearch::new(LINK_REGEX).unwrap();
-        plain_url_at(term, &mut regex, point).map(|(url, _)| url)
-    }
-
-    fn url_match_in(term: &Term<VoidListener>, point: Point) -> Option<(String, Match)> {
-        let mut regex = RegexSearch::new(LINK_REGEX).unwrap();
-        plain_url_at(term, &mut regex, point)
-    }
-
-    fn ascii_point(content: &str, needle: &str) -> Point {
-        let offset = content.find(needle).unwrap();
-        Point::new(Line((offset / 40) as i32), Column(offset % 40))
-    }
-
-    #[test]
-    fn plain_url_lookup_uses_alacritty_hint_delimiters() {
-        let content = "visit (https://example.com/docs). next";
-        let term = parse(content.as_bytes());
-
-        assert_eq!(
-            url_in(&term, ascii_point(content, "example")),
-            Some("https://example.com/docs".to_owned())
-        );
-        assert_eq!(url_in(&term, ascii_point(content, ").")), None);
-    }
-
-    #[test]
-    fn plain_url_lookup_follows_soft_wrapped_lines() {
-        let content = "prefix https://example.com/a/very/long/path/that/wraps suffix";
-        let term = parse(content.as_bytes());
-
-        let (url, bounds) = url_match_in(&term, ascii_point(content, "that")).unwrap();
-        assert_eq!(url, "https://example.com/a/very/long/path/that/wraps");
-        assert_eq!(*bounds.start(), ascii_point(content, "https"));
-        assert_eq!(bounds.end().line, Line(1));
-    }
-
-    #[test]
-    fn plain_url_lookup_keeps_balanced_parentheses() {
-        let content = "https://example.com/a_(balanced)";
-        let term = parse(content.as_bytes());
-
-        assert_eq!(
-            url_in(&term, ascii_point(content, "balanced")),
-            Some(content.to_owned())
-        );
-    }
-
-    #[test]
-    fn plain_url_lookup_matches_local_file_paths() {
-        for path in [
-            "/tmp/terminal/main.swift",
-            "~/Developer/terminal/main.swift",
-            "./Sources/main.swift",
-            "../Shared/main.swift",
-            "Sources/Terminal/main.swift:42:8",
-        ] {
-            let term = parse(path.as_bytes());
-            assert_eq!(
-                url_in(&term, ascii_point(path, "main")),
-                Some(path.to_owned())
-            );
-        }
-    }
-
-    #[test]
-    fn plain_url_lookup_does_not_match_bare_file_names() {
-        let path = "main.swift";
-        let term = parse(path.as_bytes());
-
-        assert_eq!(url_in(&term, ascii_point(path, "main")), None);
-    }
-
-    #[test]
-    fn history_export_preserves_style_and_combining_marks() {
-        let term = parse(b"\x1b[1;3;38;2;12;34;56mCafe\xcc\x81\x1b[0m");
-        let output = serialize_vt(&term, &theme(), false);
-        let text = String::from_utf8(output).unwrap();
-
-        assert!(text.contains("\x1b[0;38;2;12;34;56;48;2;17;17;17;1;3m"));
-        assert!(text.contains("Cafe\u{301}"));
-        assert!(text.contains("\x1b[0m\r\n"));
-    }
-
-    #[test]
-    fn history_export_preserves_osc8_links() {
-        let term = parse(b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\");
-        let output = serialize_vt(&term, &theme(), false);
-        let text = String::from_utf8(output).unwrap();
-
-        assert!(text.contains("\x1b]8;;https://example.com\x1b\\"));
-        assert!(text.contains("Terminal"));
-        assert!(text.contains("\x1b]8;;\x1b\\"));
-    }
-
-    #[test]
-    fn osc8_url_lookup_returns_visible_cell_bounds() {
-        let term = parse(b"x\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\ y");
-        let (url, bounds) = hyperlink_url_at(&term, Point::new(Line(0), Column(2))).unwrap();
-
-        assert_eq!(url, "https://example.com");
-        // "Terminal" is the anchor text: 8 cells, starting after the leading "x".
-        assert_eq!(
-            bounds,
-            Point::new(Line(0), Column(1))..=Point::new(Line(0), Column(8))
-        );
-    }
-
-    #[test]
-    fn osc_interceptor_extracts_host_integrations() {
-        let mut interceptor = OscInterceptor::default();
-        let input = concat!(
-            "before",
-            "\x1b]7;file://host/Users/example/My%20Project\x07",
-            "\x1b]9;4;1;150\x1b\\",
-            "\x1b]9;Build complete\x07",
-            "\x1b]777;notify;Grok;Turn complete\x1b\\",
-            "\x1b]133;A\x07",
-            "\x1b]133;B\x1b\\",
-            "\x1b]133;C\x07",
-            "\x1b]133;D;0\x1b\\",
-            "after"
-        );
-        let (output, events) = intercept(&mut interceptor, input.as_bytes());
-
-        assert_eq!(output, b"beforeafter");
-        assert_eq!(
-            events,
-            vec![
-                OscEvent::WorkingDirectory("host\0/Users/example/My Project".to_owned()),
-                OscEvent::Progress {
-                    state: 1,
-                    percent: Some(100),
-                },
-                OscEvent::Notification("Build complete".to_owned()),
-                OscEvent::Notification("Turn complete".to_owned()),
-                OscEvent::ShellPromptStart,
-                OscEvent::ShellCommandStart,
-                OscEvent::ShellCommandExecuting,
-                OscEvent::ShellCommandFinished(Some(0)),
-            ]
-        );
-    }
-
-    #[test]
-    fn osc_interceptor_parses_osc777_notification_variants() {
-        let mut interceptor = OscInterceptor::default();
-        let input = concat!(
-            "\x1b]777;notify;Grok;Approval required\x07",
-            "\x1b]777;notify;Task complete\x1b\\",
-        );
-        let (output, events) = intercept(&mut interceptor, input.as_bytes());
-
-        assert!(output.is_empty());
-        assert_eq!(
-            events,
-            vec![
-                OscEvent::Notification("Approval required".to_owned()),
-                OscEvent::Notification("Task complete".to_owned()),
-            ]
-        );
-    }
-
-    #[test]
-    fn osc_interceptor_parses_shell_completion_variants() {
-        let mut interceptor = OscInterceptor::default();
-        let input = concat!(
-            "\x1b]133;D\x07",
-            "\x1b]133;D;\x07",
-            "\x1b]133;D;17;aid=build\x07",
-        );
-        let (output, events) = intercept(&mut interceptor, input.as_bytes());
-
-        assert!(output.is_empty());
-        assert_eq!(
-            events,
-            vec![
-                OscEvent::ShellCommandFinished(None),
-                OscEvent::ShellCommandFinished(None),
-                OscEvent::ShellCommandFinished(Some(17)),
-            ]
-        );
-    }
-
-    #[test]
-    fn osc_interceptor_parses_mouse_shape_variants() {
-        let mut interceptor = OscInterceptor::default();
-        let input = concat!(
-            "\x1b]22;pointer\x07",
-            "\x1b]22;ns-resize\x1b\\",
-            // Empty and control-laden names are dropped, but still consumed so
-            // Alacritty never sees a sequence it cannot use.
-            "\x1b]22;\x07",
-            "\x1b]22;bad\nshape\x07",
-        );
-        let (output, events) = intercept(&mut interceptor, input.as_bytes());
-
-        assert!(output.is_empty());
-        assert_eq!(
-            events,
-            vec![
-                OscEvent::MouseShape("pointer".to_owned()),
-                OscEvent::MouseShape("ns-resize".to_owned()),
-            ]
-        );
-    }
-
-    #[test]
-    fn osc_interceptor_preserves_sequences_owned_by_alacritty() {
-        let mut interceptor = OscInterceptor::default();
-        let input = b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\";
-        let (output, events) = intercept(&mut interceptor, input);
-
-        assert_eq!(output, b"\x1b]8;;https://example.com\x07Terminal\x1b]8;;\x07");
-        assert!(events.is_empty());
-    }
-
-    #[test]
-    fn osc_interceptor_handles_every_chunk_boundary() {
-        let input = b"left\x1b]133;D;17\x1b\\right";
-        let expected = (
-            b"leftright".to_vec(),
-            vec![OscEvent::ShellCommandFinished(Some(17))],
-        );
-
-        for split in 0..=input.len() {
-            let mut interceptor = OscInterceptor::default();
-            let (first_output, mut events) = intercept(&mut interceptor, &input[..split]);
-            let (second_output, second_events) = intercept(&mut interceptor, &input[split..]);
-            let mut output = first_output;
-            output.extend(second_output);
-            events.extend(second_events);
-            assert_eq!((output, events), expected, "split at {split}");
-        }
-    }
-
-    #[test]
-    fn osc_interceptor_rejects_control_characters_in_host_events() {
-        let mut interceptor = OscInterceptor::default();
-        let (output, events) = intercept(
-            &mut interceptor,
-            b"\x1b]7;file://host/tmp/project\nspoof\x07\x1b]9;bad\nmessage\x07",
-        );
-
-        assert!(output.is_empty());
-        assert!(events.is_empty());
-    }
-
-    /// The host is what tells the app whether the reported path is one it can
-    /// open. A shell inside ssh reports a path that looks perfectly local, so
-    /// dropping the host would send the file panel to the wrong machine.
-    #[test]
-    fn osc7_keeps_a_host_that_is_not_this_machine() {
-        assert_eq!(
-            working_directory_from_osc7("file://build-box/srv/app"),
-            Some("build-box\0/srv/app".to_owned())
-        );
-        assert_eq!(
-            working_directory_from_osc7("file:///Users/example"),
-            Some("/Users/example".to_owned())
-        );
-        assert_eq!(
-            working_directory_from_osc7("/Users/example"),
-            Some("/Users/example".to_owned())
-        );
-        assert_eq!(working_directory_from_osc7("file://host/tmp/a\nb"), None);
-        // A host the app cannot read must not decay into "no host at all":
-        // that is how a shell on another machine passes for a local one.
-        assert_eq!(working_directory_from_osc7("file://ho%00st/tmp/x"), None);
-    }
-
-    fn row_text(term: &Term<VoidListener>, line: Line) -> String {
-        let row = &term.grid()[line];
-        (0..term.columns())
-            .map(|column| row[Column(column)].c)
-            .collect::<String>()
-            .trim_end()
-            .to_owned()
-    }
-
-    /// The visible grid as plain rows, trailing blanks trimmed — what a
-    /// content assertion actually wants to look at.
-    fn screen_rows<T: EventListener>(term: &Term<T>) -> Vec<String> {
-        let grid = term.grid();
-        (0..grid.screen_lines())
-            .map(|line| {
-                let row: String = (0..grid.columns())
-                    .map(|column| grid[Line(line as i32)][Column(column)].c)
-                    .collect();
-                row.trim_end().to_string()
-            })
-            .collect()
-    }
-
-    fn parse_sized(columns: usize, screen_lines: usize, input: &[u8]) -> Term<VoidListener> {
-        let size = TermSize {
-            columns,
-            screen_lines,
-        };
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        let mut processor: Processor = Processor::new();
-        processor.advance(&mut term, input);
-        term
-    }
-
-    /// Erase-in-display clears what is on screen without disturbing what
-    /// scrolled off, which is what makes `clear` keep the scrollback.
-    #[test]
-    fn erase_in_display_leaves_the_scrollback_alone() {
-        let mut term = parse_sized(20, 2, b"first\r\nsecond\r\nthird\r\n");
-        assert!(term.grid().history_size() > 0);
-
-        let mut processor: Processor = Processor::new();
-        processor.advance(&mut term, b"\x1b[2J\x1b[H");
-        assert_eq!(screen_rows(&term), vec!["", ""]);
-        assert!(
-            term.grid().history_size() > 0,
-            "erase-in-display must not take the scrollback with it"
-        );
-    }
-
-    /// Erase-in-line takes the rest of the row and nothing else — a prompt
-    /// redrawing itself does this on every keystroke.
-    #[test]
-    fn erase_in_line_stops_at_the_end_of_the_row() {
-        let term = parse_sized(20, 2, b"keepdrop\r\nnext\x1b[1;5H\x1b[K");
-        assert_eq!(screen_rows(&term), vec!["keep", "next"]);
-    }
-
-    /// A double-width character occupies two cells, so the text after it lands
-    /// one column further along than its character count suggests.
-    #[test]
-    fn a_wide_character_takes_two_cells() {
-        let term = parse_sized(10, 1, "\u{4f60}x".as_bytes());
-        let grid = term.grid();
-        assert_eq!(grid[Line(0)][Column(0)].c, '\u{4f60}');
-        assert_eq!(grid[Line(0)][Column(2)].c, 'x');
-    }
-
-    /// Text past the last column wraps to the next row rather than being
-    /// dropped, and the row is marked as wrapped so a reflow can rejoin it.
-    #[test]
-    fn text_past_the_last_column_wraps_to_the_next_row() {
-        let term = parse_sized(5, 2, b"abcdefgh");
-        assert_eq!(screen_rows(&term), vec!["abcde", "fgh"]);
-    }
-
-    /// Narrowing the terminal rejoins a wrapped line and lays it out again, so
-    /// the text a user can see survives a window resize.
-    #[test]
-    fn narrowing_reflows_a_wrapped_line_without_losing_text() {
-        let mut term = parse_sized(12, 4, b"abcdefghijklmnop");
-        assert_eq!(screen_rows(&term), vec!["abcdefghijkl", "mnop", "", ""]);
-
-        term.resize(TermSize {
-            columns: 8,
-            screen_lines: 4,
-        });
-        let rows = screen_rows(&term);
-        assert_eq!(
-            rows.join("").trim_end(),
-            "abcdefghijklmnop",
-            "reflow changed the text, not only where it breaks"
-        );
-        assert_eq!(rows[0], "abcdefgh");
-    }
-
-    /// Widening puts a line that had been broken back onto one row.
-    #[test]
-    fn widening_rejoins_a_line_that_had_been_broken() {
-        let mut term = parse_sized(8, 4, b"abcdefghijklmnop");
-        assert_eq!(screen_rows(&term)[0], "abcdefgh");
-
-        term.resize(TermSize {
-            columns: 16,
-            screen_lines: 4,
-        });
-        assert_eq!(screen_rows(&term)[0], "abcdefghijklmnop");
-    }
-
-    /// Shrinking the height pushes the top rows into the scrollback rather
-    /// than discarding them.
-    #[test]
-    fn shrinking_the_height_pushes_rows_into_the_scrollback() {
-        let mut term = parse_sized(20, 4, b"one\r\ntwo\r\nthree\r\nfour");
-        assert_eq!(term.grid().history_size(), 0);
-
-        term.resize(TermSize {
-            columns: 20,
-            screen_lines: 2,
-        });
-        assert_eq!(screen_rows(&term), vec!["three", "four"]);
-        assert!(term.grid().history_size() > 0);
-    }
-
-    // MARK: - Selection
-
-    fn select_text(
-        term: &mut Term<VoidListener>,
-        ty: SelectionType,
-        from: Point,
-        to: Point,
-    ) -> String {
-        let mut selection = Selection::new(ty, from, Side::Left);
-        selection.update(to, Side::Right);
-        term.selection = Some(selection);
-        term.selection_to_string().unwrap_or_default()
-    }
-
-    #[test]
-    fn a_simple_selection_is_the_cells_it_covers() {
-        let mut term = parse_sized(20, 2, b"hello world");
-        let text = select_text(
-            &mut term,
-            SelectionType::Simple,
-            Point::new(Line(0), Column(0)),
-            Point::new(Line(0), Column(4)),
-        );
-        assert_eq!(text, "hello");
-    }
-
-    /// A selection that runs off the end of a row picks up the newline the row
-    /// stands for — copying two lines has to paste as two lines.
-    #[test]
-    fn a_selection_across_rows_carries_the_line_break() {
-        let mut term = parse_sized(20, 2, b"one\r\ntwo");
-        let text = select_text(
-            &mut term,
-            SelectionType::Simple,
-            Point::new(Line(0), Column(0)),
-            Point::new(Line(1), Column(2)),
-        );
-        assert_eq!(text, "one\ntwo");
-    }
-
-    /// A soft-wrapped line is one line: selecting across the break must not
-    /// insert a newline that was never typed, or pasting it runs the two
-    /// halves as separate commands.
-    #[test]
-    fn a_soft_wrapped_line_selects_without_a_line_break() {
-        let mut term = parse_sized(5, 2, b"abcdefgh");
-        let text = select_text(
-            &mut term,
-            SelectionType::Simple,
-            Point::new(Line(0), Column(0)),
-            Point::new(Line(1), Column(2)),
-        );
-        assert_eq!(text, "abcdefgh");
-    }
-
-    /// A block selection takes the same columns from every row, which is the
-    /// whole reason to have one.
-    #[test]
-    fn a_block_selection_takes_a_column_range_from_every_row() {
-        let mut term = parse_sized(20, 2, b"abcdef\r\nghijkl");
-        let text = select_text(
-            &mut term,
-            SelectionType::Block,
-            Point::new(Line(0), Column(1)),
-            Point::new(Line(1), Column(3)),
-        );
-        assert_eq!(text, "bcd\nhij");
-    }
-
-    #[test]
-    fn overscan_line_is_the_row_below_the_viewport() {
-        // Six lines into a three-row screen leaves three in the scrollback,
-        // so the viewport shows four/five/six.
-        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
-
-        // At the live bottom nothing follows the viewport's last row.
-        assert!(overscan_line(&term).is_none());
-
-        // Each row scrolled back pushes one more off the bottom, and it is
-        // that row — not one still showing — the overscan strip needs.
-        for expected in ["six", "five", "four"] {
-            term.scroll_display(Scroll::Delta(1));
-            let line = overscan_line(&term).expect("a row below the viewport");
-            assert_eq!(row_text(&term, line), expected);
-        }
-    }
 }
 
 /// Which viewport rows changed since the last call, resetting the emulator's
@@ -3066,4 +2499,590 @@ pub unsafe extern "C" fn terminal_alacritty_mark_exited(handle: *mut TerminalHan
         return;
     }
     (*handle).exited = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alacritty_terminal::event::VoidListener;
+    use alacritty_terminal::vte::ansi::Processor;
+
+    fn intercept(interceptor: &mut OscInterceptor, input: &[u8]) -> (Vec<u8>, Vec<OscEvent>) {
+        let (output, events) = interceptor.process(input);
+        (output.into_owned(), events)
+    }
+
+    #[test]
+    fn stream_scanner_handles_every_chunk_boundary() {
+        let input = b"\x1b[?2026hframe\x1b[?2026l\x1bc";
+        let expected = vec![
+            ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
+            ScanEvent::SyncUpdate(SyncUpdateEvent::End),
+            ScanEvent::MouseShape("text"),
+        ];
+
+        for split in 0..=input.len() {
+            let mut scanner = StreamScanner::default();
+            let mut events = scanner.process(&input[..split]);
+            events.extend(scanner.process(&input[split..]));
+            assert_eq!(events, expected, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn stream_scanner_ignores_sequences_inside_control_strings() {
+        let mut scanner = StreamScanner::default();
+        let events = scanner.process(b"\x1b]0;\x1b[?2026h\x07\x1bPpayload\x1b[?2026l\x1b\\");
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn stream_scanner_accepts_c1_csi() {
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process(b"\x9b?2026h\x9b?2026l"),
+            vec![
+                ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
+                ScanEvent::SyncUpdate(SyncUpdateEvent::End),
+            ]
+        );
+    }
+
+    #[test]
+    fn stream_scanner_couples_mouse_reporting_to_pointer_shape() {
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process(b"\x1b[?1002;1006h\x1b[?1000l"),
+            vec![
+                ScanEvent::MouseShape("default"),
+                ScanEvent::MouseShape("text"),
+            ]
+        );
+        // Non-private modes and unrelated DEC modes stay silent.
+        assert!(scanner.process(b"\x1b[9h\x1b[?25l").is_empty());
+    }
+
+    #[test]
+    fn stream_scanner_restores_text_shape_on_full_reset() {
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process(b"\x1bc"),
+            vec![ScanEvent::MouseShape("text")]
+        );
+        // A charset designation's final byte and a `c` inside a control
+        // string must not read as RIS.
+        assert!(scanner.process(b"\x1b(c").is_empty());
+        assert!(scanner.process(b"\x1b]0;\x1bc\x07").is_empty());
+    }
+
+    fn theme() -> AlacrittyPalette {
+        let mut palette = [0; 256];
+        for (index, color) in palette.iter_mut().enumerate() {
+            *color = index as u32 * 0x010101;
+        }
+        AlacrittyPalette {
+            palette,
+            foreground: 0xeeeeee,
+            background: 0x111111,
+            cursor: 0xffffff,
+        }
+    }
+
+    fn parse(input: &[u8]) -> Term<VoidListener> {
+        let size = TermSize {
+            columns: 40,
+            screen_lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, input);
+        term
+    }
+
+    fn url_in(term: &Term<VoidListener>, point: Point) -> Option<String> {
+        let mut regex = RegexSearch::new(LINK_REGEX).unwrap();
+        plain_url_at(term, &mut regex, point).map(|(url, _)| url)
+    }
+
+    fn url_match_in(term: &Term<VoidListener>, point: Point) -> Option<(String, Match)> {
+        let mut regex = RegexSearch::new(LINK_REGEX).unwrap();
+        plain_url_at(term, &mut regex, point)
+    }
+
+    fn ascii_point(content: &str, needle: &str) -> Point {
+        let offset = content.find(needle).unwrap();
+        Point::new(Line((offset / 40) as i32), Column(offset % 40))
+    }
+
+    #[test]
+    fn plain_url_lookup_uses_alacritty_hint_delimiters() {
+        let content = "visit (https://example.com/docs). next";
+        let term = parse(content.as_bytes());
+
+        assert_eq!(
+            url_in(&term, ascii_point(content, "example")),
+            Some("https://example.com/docs".to_owned())
+        );
+        assert_eq!(url_in(&term, ascii_point(content, ").")), None);
+    }
+
+    #[test]
+    fn plain_url_lookup_follows_soft_wrapped_lines() {
+        let content = "prefix https://example.com/a/very/long/path/that/wraps suffix";
+        let term = parse(content.as_bytes());
+
+        let (url, bounds) = url_match_in(&term, ascii_point(content, "that")).unwrap();
+        assert_eq!(url, "https://example.com/a/very/long/path/that/wraps");
+        assert_eq!(*bounds.start(), ascii_point(content, "https"));
+        assert_eq!(bounds.end().line, Line(1));
+    }
+
+    #[test]
+    fn plain_url_lookup_keeps_balanced_parentheses() {
+        let content = "https://example.com/a_(balanced)";
+        let term = parse(content.as_bytes());
+
+        assert_eq!(
+            url_in(&term, ascii_point(content, "balanced")),
+            Some(content.to_owned())
+        );
+    }
+
+    #[test]
+    fn plain_url_lookup_matches_local_file_paths() {
+        for path in [
+            "/tmp/terminal/main.swift",
+            "~/Developer/terminal/main.swift",
+            "./Sources/main.swift",
+            "../Shared/main.swift",
+            "Sources/Terminal/main.swift:42:8",
+        ] {
+            let term = parse(path.as_bytes());
+            assert_eq!(
+                url_in(&term, ascii_point(path, "main")),
+                Some(path.to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn plain_url_lookup_does_not_match_bare_file_names() {
+        let path = "main.swift";
+        let term = parse(path.as_bytes());
+
+        assert_eq!(url_in(&term, ascii_point(path, "main")), None);
+    }
+
+    #[test]
+    fn history_export_preserves_style_and_combining_marks() {
+        let term = parse(b"\x1b[1;3;38;2;12;34;56mCafe\xcc\x81\x1b[0m");
+        let output = serialize_vt(&term, &theme(), false);
+        let text = String::from_utf8(output).unwrap();
+
+        assert!(text.contains("\x1b[0;38;2;12;34;56;48;2;17;17;17;1;3m"));
+        assert!(text.contains("Cafe\u{301}"));
+        assert!(text.contains("\x1b[0m\r\n"));
+    }
+
+    #[test]
+    fn history_export_preserves_osc8_links() {
+        let term = parse(b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\");
+        let output = serialize_vt(&term, &theme(), false);
+        let text = String::from_utf8(output).unwrap();
+
+        assert!(text.contains("\x1b]8;;https://example.com\x1b\\"));
+        assert!(text.contains("Terminal"));
+        assert!(text.contains("\x1b]8;;\x1b\\"));
+    }
+
+    #[test]
+    fn osc8_url_lookup_returns_visible_cell_bounds() {
+        let term = parse(b"x\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\ y");
+        let (url, bounds) = hyperlink_url_at(&term, Point::new(Line(0), Column(2))).unwrap();
+
+        assert_eq!(url, "https://example.com");
+        // "Terminal" is the anchor text: 8 cells, starting after the leading "x".
+        assert_eq!(
+            bounds,
+            Point::new(Line(0), Column(1))..=Point::new(Line(0), Column(8))
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_extracts_host_integrations() {
+        let mut interceptor = OscInterceptor::default();
+        let input = concat!(
+            "before",
+            "\x1b]7;file://host/Users/example/My%20Project\x07",
+            "\x1b]9;4;1;150\x1b\\",
+            "\x1b]9;Build complete\x07",
+            "\x1b]777;notify;Grok;Turn complete\x1b\\",
+            "\x1b]133;A\x07",
+            "\x1b]133;B\x1b\\",
+            "\x1b]133;C\x07",
+            "\x1b]133;D;0\x1b\\",
+            "after"
+        );
+        let (output, events) = intercept(&mut interceptor, input.as_bytes());
+
+        assert_eq!(output, b"beforeafter");
+        assert_eq!(
+            events,
+            vec![
+                OscEvent::WorkingDirectory("host\0/Users/example/My Project".to_owned()),
+                OscEvent::Progress {
+                    state: 1,
+                    percent: Some(100),
+                },
+                OscEvent::Notification("Build complete".to_owned()),
+                OscEvent::Notification("Turn complete".to_owned()),
+                OscEvent::ShellPromptStart,
+                OscEvent::ShellCommandStart,
+                OscEvent::ShellCommandExecuting,
+                OscEvent::ShellCommandFinished(Some(0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_parses_osc777_notification_variants() {
+        let mut interceptor = OscInterceptor::default();
+        let input = concat!(
+            "\x1b]777;notify;Grok;Approval required\x07",
+            "\x1b]777;notify;Task complete\x1b\\",
+        );
+        let (output, events) = intercept(&mut interceptor, input.as_bytes());
+
+        assert!(output.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                OscEvent::Notification("Approval required".to_owned()),
+                OscEvent::Notification("Task complete".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_parses_shell_completion_variants() {
+        let mut interceptor = OscInterceptor::default();
+        let input = concat!(
+            "\x1b]133;D\x07",
+            "\x1b]133;D;\x07",
+            "\x1b]133;D;17;aid=build\x07",
+        );
+        let (output, events) = intercept(&mut interceptor, input.as_bytes());
+
+        assert!(output.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                OscEvent::ShellCommandFinished(None),
+                OscEvent::ShellCommandFinished(None),
+                OscEvent::ShellCommandFinished(Some(17)),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_parses_mouse_shape_variants() {
+        let mut interceptor = OscInterceptor::default();
+        let input = concat!(
+            "\x1b]22;pointer\x07",
+            "\x1b]22;ns-resize\x1b\\",
+            // Empty and control-laden names are dropped, but still consumed so
+            // Alacritty never sees a sequence it cannot use.
+            "\x1b]22;\x07",
+            "\x1b]22;bad\nshape\x07",
+        );
+        let (output, events) = intercept(&mut interceptor, input.as_bytes());
+
+        assert!(output.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                OscEvent::MouseShape("pointer".to_owned()),
+                OscEvent::MouseShape("ns-resize".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_interceptor_preserves_sequences_owned_by_alacritty() {
+        let mut interceptor = OscInterceptor::default();
+        let input = b"\x1b]8;;https://example.com\x1b\\Terminal\x1b]8;;\x1b\\";
+        let (output, events) = intercept(&mut interceptor, input);
+
+        assert_eq!(
+            output,
+            b"\x1b]8;;https://example.com\x07Terminal\x1b]8;;\x07"
+        );
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn osc_interceptor_handles_every_chunk_boundary() {
+        let input = b"left\x1b]133;D;17\x1b\\right";
+        let expected = (
+            b"leftright".to_vec(),
+            vec![OscEvent::ShellCommandFinished(Some(17))],
+        );
+
+        for split in 0..=input.len() {
+            let mut interceptor = OscInterceptor::default();
+            let (first_output, mut events) = intercept(&mut interceptor, &input[..split]);
+            let (second_output, second_events) = intercept(&mut interceptor, &input[split..]);
+            let mut output = first_output;
+            output.extend(second_output);
+            events.extend(second_events);
+            assert_eq!((output, events), expected, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn osc_interceptor_rejects_control_characters_in_host_events() {
+        let mut interceptor = OscInterceptor::default();
+        let (output, events) = intercept(
+            &mut interceptor,
+            b"\x1b]7;file://host/tmp/project\nspoof\x07\x1b]9;bad\nmessage\x07",
+        );
+
+        assert!(output.is_empty());
+        assert!(events.is_empty());
+    }
+
+    /// The host is what tells the app whether the reported path is one it can
+    /// open. A shell inside ssh reports a path that looks perfectly local, so
+    /// dropping the host would send the file panel to the wrong machine.
+    #[test]
+    fn osc7_keeps_a_host_that_is_not_this_machine() {
+        assert_eq!(
+            working_directory_from_osc7("file://build-box/srv/app"),
+            Some("build-box\0/srv/app".to_owned())
+        );
+        assert_eq!(
+            working_directory_from_osc7("file:///Users/example"),
+            Some("/Users/example".to_owned())
+        );
+        assert_eq!(
+            working_directory_from_osc7("/Users/example"),
+            Some("/Users/example".to_owned())
+        );
+        assert_eq!(working_directory_from_osc7("file://host/tmp/a\nb"), None);
+        // A host the app cannot read must not decay into "no host at all":
+        // that is how a shell on another machine passes for a local one.
+        assert_eq!(working_directory_from_osc7("file://ho%00st/tmp/x"), None);
+    }
+
+    fn row_text(term: &Term<VoidListener>, line: Line) -> String {
+        let row = &term.grid()[line];
+        (0..term.columns())
+            .map(|column| row[Column(column)].c)
+            .collect::<String>()
+            .trim_end()
+            .to_owned()
+    }
+
+    /// The visible grid as plain rows, trailing blanks trimmed — what a
+    /// content assertion actually wants to look at.
+    fn screen_rows<T: EventListener>(term: &Term<T>) -> Vec<String> {
+        let grid = term.grid();
+        (0..grid.screen_lines())
+            .map(|line| {
+                let row: String = (0..grid.columns())
+                    .map(|column| grid[Line(line as i32)][Column(column)].c)
+                    .collect();
+                row.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    fn parse_sized(columns: usize, screen_lines: usize, input: &[u8]) -> Term<VoidListener> {
+        let size = TermSize {
+            columns,
+            screen_lines,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, input);
+        term
+    }
+
+    /// Erase-in-display clears what is on screen without disturbing what
+    /// scrolled off, which is what makes `clear` keep the scrollback.
+    #[test]
+    fn erase_in_display_leaves_the_scrollback_alone() {
+        let mut term = parse_sized(20, 2, b"first\r\nsecond\r\nthird\r\n");
+        assert!(term.grid().history_size() > 0);
+
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b[2J\x1b[H");
+        assert_eq!(screen_rows(&term), vec!["", ""]);
+        assert!(
+            term.grid().history_size() > 0,
+            "erase-in-display must not take the scrollback with it"
+        );
+    }
+
+    /// Erase-in-line takes the rest of the row and nothing else — a prompt
+    /// redrawing itself does this on every keystroke.
+    #[test]
+    fn erase_in_line_stops_at_the_end_of_the_row() {
+        let term = parse_sized(20, 2, b"keepdrop\r\nnext\x1b[1;5H\x1b[K");
+        assert_eq!(screen_rows(&term), vec!["keep", "next"]);
+    }
+
+    /// A double-width character occupies two cells, so the text after it lands
+    /// one column further along than its character count suggests.
+    #[test]
+    fn a_wide_character_takes_two_cells() {
+        let term = parse_sized(10, 1, "\u{4f60}x".as_bytes());
+        let grid = term.grid();
+        assert_eq!(grid[Line(0)][Column(0)].c, '\u{4f60}');
+        assert_eq!(grid[Line(0)][Column(2)].c, 'x');
+    }
+
+    /// Text past the last column wraps to the next row rather than being
+    /// dropped, and the row is marked as wrapped so a reflow can rejoin it.
+    #[test]
+    fn text_past_the_last_column_wraps_to_the_next_row() {
+        let term = parse_sized(5, 2, b"abcdefgh");
+        assert_eq!(screen_rows(&term), vec!["abcde", "fgh"]);
+    }
+
+    /// Narrowing the terminal rejoins a wrapped line and lays it out again, so
+    /// the text a user can see survives a window resize.
+    #[test]
+    fn narrowing_reflows_a_wrapped_line_without_losing_text() {
+        let mut term = parse_sized(12, 4, b"abcdefghijklmnop");
+        assert_eq!(screen_rows(&term), vec!["abcdefghijkl", "mnop", "", ""]);
+
+        term.resize(TermSize {
+            columns: 8,
+            screen_lines: 4,
+        });
+        let rows = screen_rows(&term);
+        assert_eq!(
+            rows.join("").trim_end(),
+            "abcdefghijklmnop",
+            "reflow changed the text, not only where it breaks"
+        );
+        assert_eq!(rows[0], "abcdefgh");
+    }
+
+    /// Widening puts a line that had been broken back onto one row.
+    #[test]
+    fn widening_rejoins_a_line_that_had_been_broken() {
+        let mut term = parse_sized(8, 4, b"abcdefghijklmnop");
+        assert_eq!(screen_rows(&term)[0], "abcdefgh");
+
+        term.resize(TermSize {
+            columns: 16,
+            screen_lines: 4,
+        });
+        assert_eq!(screen_rows(&term)[0], "abcdefghijklmnop");
+    }
+
+    /// Shrinking the height pushes the top rows into the scrollback rather
+    /// than discarding them.
+    #[test]
+    fn shrinking_the_height_pushes_rows_into_the_scrollback() {
+        let mut term = parse_sized(20, 4, b"one\r\ntwo\r\nthree\r\nfour");
+        assert_eq!(term.grid().history_size(), 0);
+
+        term.resize(TermSize {
+            columns: 20,
+            screen_lines: 2,
+        });
+        assert_eq!(screen_rows(&term), vec!["three", "four"]);
+        assert!(term.grid().history_size() > 0);
+    }
+
+    // MARK: - Selection
+
+    fn select_text(
+        term: &mut Term<VoidListener>,
+        ty: SelectionType,
+        from: Point,
+        to: Point,
+    ) -> String {
+        let mut selection = Selection::new(ty, from, Side::Left);
+        selection.update(to, Side::Right);
+        term.selection = Some(selection);
+        term.selection_to_string().unwrap_or_default()
+    }
+
+    #[test]
+    fn a_simple_selection_is_the_cells_it_covers() {
+        let mut term = parse_sized(20, 2, b"hello world");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(0), Column(4)),
+        );
+        assert_eq!(text, "hello");
+    }
+
+    /// A selection that runs off the end of a row picks up the newline the row
+    /// stands for — copying two lines has to paste as two lines.
+    #[test]
+    fn a_selection_across_rows_carries_the_line_break() {
+        let mut term = parse_sized(20, 2, b"one\r\ntwo");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(1), Column(2)),
+        );
+        assert_eq!(text, "one\ntwo");
+    }
+
+    /// A soft-wrapped line is one line: selecting across the break must not
+    /// insert a newline that was never typed, or pasting it runs the two
+    /// halves as separate commands.
+    #[test]
+    fn a_soft_wrapped_line_selects_without_a_line_break() {
+        let mut term = parse_sized(5, 2, b"abcdefgh");
+        let text = select_text(
+            &mut term,
+            SelectionType::Simple,
+            Point::new(Line(0), Column(0)),
+            Point::new(Line(1), Column(2)),
+        );
+        assert_eq!(text, "abcdefgh");
+    }
+
+    /// A block selection takes the same columns from every row, which is the
+    /// whole reason to have one.
+    #[test]
+    fn a_block_selection_takes_a_column_range_from_every_row() {
+        let mut term = parse_sized(20, 2, b"abcdef\r\nghijkl");
+        let text = select_text(
+            &mut term,
+            SelectionType::Block,
+            Point::new(Line(0), Column(1)),
+            Point::new(Line(1), Column(3)),
+        );
+        assert_eq!(text, "bcd\nhij");
+    }
+
+    #[test]
+    fn overscan_line_is_the_row_below_the_viewport() {
+        // Six lines into a three-row screen leaves three in the scrollback,
+        // so the viewport shows four/five/six.
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+
+        // At the live bottom nothing follows the viewport's last row.
+        assert!(overscan_line(&term).is_none());
+
+        // Each row scrolled back pushes one more off the bottom, and it is
+        // that row — not one still showing — the overscan strip needs.
+        for expected in ["six", "five", "four"] {
+            term.scroll_display(Scroll::Delta(1));
+            let line = overscan_line(&term).expect("a row below the viewport");
+            assert_eq!(row_text(&term, line), expected);
+        }
+    }
 }
