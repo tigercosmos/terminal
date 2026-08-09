@@ -16,6 +16,11 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- The command palette can put a frames-per-second badge in the sidebar
+  header, for seeing how fast a window is really redrawing. It counts the
+  frames the display presented rather than the time that passed, and stops
+  counting while Terminal is in the background so a window you switched away
+  from does not read as slow
 - Panes no longer freeze on the last frame before a TUI stops to ask you
   something — Claude Code's selection menus being the everyday case. The
   Alacritty backend misread multibyte characters such as ❯ as control codes,

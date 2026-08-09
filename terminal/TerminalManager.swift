@@ -22,6 +22,9 @@ final class TerminalManager: nonisolated ObservableObject {
     /// Visibility of the left project sidebar (⌘B). `isPanelVisible` above is
     /// the separate right panel.
     @Published var isLeftSidebarVisible = true
+    /// Debug FPS badge in the sidebar header. Deliberately not persisted:
+    /// every launch starts with it hidden.
+    @Published var isFPSCounterVisible = false
     @Published private(set) var isCommandPaletteVisible = false
 
     /// Projects publish their own changes (session list, session selection);
@@ -659,6 +662,10 @@ final class TerminalManager: nonisolated ObservableObject {
 
     func toggleLeftSidebar() {
         isLeftSidebarVisible.toggle()
+    }
+
+    func toggleFPSCounter() {
+        isFPSCounterVisible.toggle()
     }
 
     func toggleCommandPalette() {

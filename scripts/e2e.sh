@@ -188,6 +188,18 @@ automate runCommand toggle-git
 sleep 1
 check "the window survives closing it again" '"projects"' "$(automate queryState)"
 
+# --- the FPS badge ------------------------------------------------------------
+
+# Showing the badge starts a display link on the main run loop. The badge's own
+# reading is a rendering detail this channel cannot see; what it can see is that
+# the counter runs and stops without taking the window's main thread with it.
+automate runCommand toggle-fps-counter
+sleep 2
+check "the window survives showing the FPS counter" '"projects"' "$(automate queryState)"
+automate runCommand toggle-fps-counter
+sleep 1
+check "the window survives hiding it again" '"projects"' "$(automate queryState)"
+
 # An action the app does not offer is refused rather than run.
 if automate eval "rm -rf /" 2>/dev/null; then
     fail "an unknown automation action was accepted"

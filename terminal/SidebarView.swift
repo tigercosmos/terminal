@@ -27,6 +27,10 @@ struct SidebarView: View {
             HStack(spacing: 0) {
                 WindowDragArea()
                     .frame(maxWidth: .infinity)
+                if manager.isFPSCounterVisible {
+                    FPSBadge()
+                        .padding(.trailing, 8)
+                }
                 ChromeIconButton(
                     systemImage: "sidebar.left",
                     tooltip: "Toggle Left Sidebar (⌘B)"
@@ -175,6 +179,28 @@ struct ChromeIconButton: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .tooltip(tooltip, edge: tooltipEdge, alignment: tooltipAlignment)
+    }
+}
+
+/// Live frames-per-second readout in the header strip, fed by `FPSCounter`.
+/// It exists only while the manager's toggle is on, so the counter starts
+/// when the badge appears and stops when it leaves the hierarchy.
+private struct FPSBadge: View {
+    @StateObject private var counter = FPSCounter()
+
+    var body: some View {
+        Text("\(counter.fps) fps")
+            .font(.system(size: 10, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.primary.opacity(0.07))
+            )
+            .onAppear { counter.start() }
+            .onDisappear { counter.stop() }
     }
 }
 

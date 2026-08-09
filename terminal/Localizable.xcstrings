@@ -703,6 +703,9 @@
     "%lld" : {
       "shouldTranslate" : false
     },
+    "%lld fps" : {
+      "shouldTranslate" : false
+    },
     "%lld incoming commits" : {
       "localizations" : {
         "en" : {
@@ -3061,6 +3064,22 @@
         }
       }
     },
+    "Hide FPS Counter" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FPSカウンターを非表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏 FPS 计数器"
+          }
+        }
+      }
+    },
     "Hide Git Output" : {
       "localizations" : {
         "ja" : {
@@ -5383,6 +5402,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在显示此终端所连接主机上的文件"
+          }
+        }
+      }
+    },
+    "Show FPS Counter" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FPSカウンターを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 FPS 计数器"
           }
         }
       }

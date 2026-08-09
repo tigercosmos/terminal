@@ -200,6 +200,13 @@ func paletteCommands(
         PaletteCommand(id: "toggle-info", title: "Toggle Info Panel", systemImage: "info.circle", shortcut: "⇧⌘I") {
             manager.togglePanel(.info)
         },
+        PaletteCommand(
+            id: "toggle-fps-counter",
+            title: manager.isFPSCounterVisible ? "Hide FPS Counter" : "Show FPS Counter",
+            systemImage: "gauge.with.needle"
+        ) {
+            manager.toggleFPSCounter()
+        },
         PaletteCommand(id: "next-tab", title: "Next Tab", systemImage: "arrow.right", shortcut: "⇧⌘]") {
             manager.selectNextTab()
         },
