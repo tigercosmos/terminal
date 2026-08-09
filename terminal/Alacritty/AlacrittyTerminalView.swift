@@ -103,6 +103,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     private static let sharedDevice = MTLCreateSystemDefaultDevice()
     private let metalDevice = AlacrittyTerminalView.sharedDevice
     private var renderScheduled = false
+    /// A retry is pending for a frame the synchronized-update gate skipped.
+    private var syncGateRetryScheduled = false
     /// Forces the next frame regardless of emulator damage. Set for changes
     /// the emulator knows nothing about — a resize, a new theme or font, a
     /// selection drag, focus — since those move pixels without touching a cell.
@@ -581,6 +583,18 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         // Full-screen TUIs use DEC mode 2026 to replace a frame atomically.
         // A host cursor tick must not expose the cleared intermediate grid.
         if !waitUntilCompleted, terminal_alacritty_synchronized_update(handle) {
+            // Come back once the bridge's timeout has expired the update.
+            // The PTY wakeup that normally redraws never comes if the update
+            // was left open and the program is idle waiting for input, and
+            // the skipped frame's damage is still pending in the emulator.
+            if !syncGateRetryScheduled {
+                syncGateRetryScheduled = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self else { return }
+                    syncGateRetryScheduled = false
+                    scheduleRender()
+                }
+            }
             return true
         }
         revalidateURLHoverForRender()

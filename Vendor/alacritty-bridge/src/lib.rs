@@ -405,6 +405,12 @@ impl OscInterceptor {
 struct StreamScanner {
     state: ScanState,
     parameters: Vec<u8>,
+    /// Continuation bytes still owed by a UTF-8 lead byte. C1 byte values
+    /// (0x80–0xBF) double as continuation bytes, so without this the middle
+    /// byte of a glyph like `❯` (E2 9D AF) reads as an OSC introducer and the
+    /// scanner swallows every real sequence after it — leaving the host's
+    /// synchronized-update flag set and the pane frozen.
+    utf8_remaining: u8,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -451,6 +457,34 @@ impl StreamScanner {
         let mut events = Vec::new();
 
         for &byte in input {
+            // Decode the UTF-8 boundary the way `vte` does before giving C1
+            // byte values any meaning, so the scanner and the emulator agree
+            // on where sequences start. A truncated sequence falls through:
+            // the interrupting byte is scanned normally.
+            if self.utf8_remaining > 0 {
+                if (0x80..=0xbf).contains(&byte) {
+                    self.utf8_remaining -= 1;
+                    continue;
+                }
+                self.utf8_remaining = 0;
+            }
+            if matches!(self.state, ScanState::Ground | ScanState::ControlString) {
+                match byte {
+                    0xc2..=0xdf => {
+                        self.utf8_remaining = 1;
+                        continue;
+                    }
+                    0xe0..=0xef => {
+                        self.utf8_remaining = 2;
+                        continue;
+                    }
+                    0xf0..=0xf4 => {
+                        self.utf8_remaining = 3;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
             match self.state {
                 ScanState::Ground => match byte {
                     0x1b => self.state = ScanState::Escape,
@@ -692,6 +726,19 @@ struct Shared {
     next_clipboard_id: u64,
 }
 
+impl Shared {
+    fn synchronized_update_timed_out(&self) -> bool {
+        self.synchronized_update_deadline
+            .is_some_and(|deadline| deadline <= Instant::now())
+    }
+
+    fn clear_synchronized_update(&mut self) {
+        self.synchronized_update = false;
+        self.synchronized_update_ending = false;
+        self.synchronized_update_deadline = None;
+    }
+}
+
 #[derive(Clone)]
 struct Proxy {
     callback: TerminalEventCallback,
@@ -735,13 +782,10 @@ impl Proxy {
 
     fn finish_synchronized_update_if_ready(&self) {
         let mut shared = self.shared.lock();
-        let timed_out = shared
-            .synchronized_update_deadline
-            .is_some_and(|deadline| deadline <= Instant::now());
-        if shared.synchronized_update && (shared.synchronized_update_ending || timed_out) {
-            shared.synchronized_update = false;
-            shared.synchronized_update_ending = false;
-            shared.synchronized_update_deadline = None;
+        if shared.synchronized_update
+            && (shared.synchronized_update_ending || shared.synchronized_update_timed_out())
+        {
+            shared.clear_synchronized_update();
         }
     }
 
@@ -2138,6 +2182,12 @@ pub unsafe extern "C" fn terminal_alacritty_clear(handle: *mut TerminalHandle) {
 
 /// Whether Alacritty is buffering a DEC synchronized update.
 ///
+/// Expires the deadline here as well as on wakeup: wakeups stop when the PTY
+/// goes idle, so an update whose terminator never arrived would otherwise
+/// gate frames until the program produced output again — a stuck pane rather
+/// than a stale one. The ending flag stays wakeup-only, because it precedes
+/// the parser committing the buffered frame.
+///
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
@@ -2147,7 +2197,11 @@ pub unsafe extern "C" fn terminal_alacritty_synchronized_update(
     if handle.is_null() {
         return false;
     }
-    (*handle).shared.lock().synchronized_update
+    let mut shared = (*handle).shared.lock();
+    if shared.synchronized_update && shared.synchronized_update_timed_out() {
+        shared.clear_synchronized_update();
+    }
+    shared.synchronized_update
 }
 
 /// Which viewport rows changed since the last call, resetting the emulator's
@@ -2514,7 +2568,9 @@ mod tests {
 
     #[test]
     fn stream_scanner_handles_every_chunk_boundary() {
-        let input = b"\x1b[?2026hframe\x1b[?2026l\x1bc";
+        // The frame text includes ❯ (E2 9D AF) so the splits also land inside
+        // a multibyte character.
+        let input = "\x1b[?2026h \u{276f} frame\x1b[?2026l\x1bc".as_bytes();
         let expected = vec![
             ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
             ScanEvent::SyncUpdate(SyncUpdateEvent::End),
@@ -2535,6 +2591,37 @@ mod tests {
         let events = scanner.process(b"\x1b]0;\x1b[?2026h\x07\x1bPpayload\x1b[?2026l\x1b\\");
 
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn stream_scanner_reads_c1_values_inside_utf8_as_text() {
+        // Claude Code's selection list: a synchronized update whose frame
+        // contains ❯ (E2 9D AF). Taken as a lone byte, 0x9D introduces an OSC
+        // string, which would swallow the closing sequence and freeze the
+        // pane on the frame before the list.
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process("\x1b[?2026h \u{276f} option\x1b[?2026l".as_bytes()),
+            vec![
+                ScanEvent::SyncUpdate(SyncUpdateEvent::Start),
+                ScanEvent::SyncUpdate(SyncUpdateEvent::End),
+            ]
+        );
+
+        // ✓ (E2 9C 93) carries 0x9C, the string terminator: a title must not
+        // end early and expose its remaining payload to the scanner.
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process("\x1b]0;\u{2713}\x1b[?2026h\x07".as_bytes()),
+            vec![]
+        );
+
+        // A truncated sequence must not eat the escape that interrupts it.
+        let mut scanner = StreamScanner::default();
+        assert_eq!(
+            scanner.process(b"\xe2\x9d\x1b[?2026h"),
+            vec![ScanEvent::SyncUpdate(SyncUpdateEvent::Start)]
+        );
     }
 
     #[test]

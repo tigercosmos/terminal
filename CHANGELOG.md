@@ -14,6 +14,14 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- Panes no longer freeze on the last frame before a TUI stops to ask you
+  something — Claude Code's selection menus being the everyday case. The
+  Alacritty backend misread multibyte characters such as ❯ as control codes,
+  lost track of the frame the program was drawing atomically, and kept
+  holding presentation until the next keystroke produced output
+
 ## [0.6.0]
 
 - Recent Commits in the Git panel opens: each commit shows the files it
