@@ -78,6 +78,62 @@ key; if it did not, [LOCALIZATION.md](LOCALIZATION.md) says what is owed.
 
 ## Log
 
+### 2026-08-10 — `kero/main` at `7268a31`
+
+Eight upstream commits after `ae67b6f`, spanning 0.1.45. **Not a merge**, for
+the reason the entry below gives: the previous sync's commits are still not
+ancestors here, so `git merge kero/main` would replay all 52 of them. The one
+commit taken was applied by hand.
+
+**Read the next sync's commit list against `7268a31`.** Same caveat as last
+time, one range further along: use both entries to tell what has already been
+taken.
+
+Taken:
+
+| Commit | What it brought |
+| --- | --- |
+| `7fd3616` | An FPS badge in the sidebar header, toggled from the command palette |
+
+The badge counts `CADisplayLink` callbacks, so it reports the cadence the
+window actually presents at rather than elapsed time. Upstream shipped its
+three catalog keys untranslated; `ja` and `zh-Hans` were written here, and
+`%lld fps` is marked `shouldTranslate: false` — a count and a unit symbol, the
+way `%lld` beside it already is. `scripts/e2e.sh` gained a check that the
+window survives the counter starting and stopping, which is as far as a
+channel that reads no pixels can go.
+
+Not taken:
+
+- `ac0bb3d` — `[release] 0.1.45`. Version bump and a numbered heading for
+  upstream's release, per [RELEASING.md](RELEASING.md). Its one note describes
+  the automation work below, which this fork has not taken, so there was
+  nothing to fold into `## [unrelease]`.
+- `7268a31` — upstream's `/docs` site: fumadocs, a `home-page.tsx` split out
+  of `index.tsx`, and 14 pages written twice, in English and Chinese. This
+  fork's site is hand-written on purpose ([CLAUDE.md](CLAUDE.md)) and its
+  `index.tsx` has diverged 286 lines of 602, so taking this would overwrite
+  the home page and leave 28 files describing upstream's product to rewrite.
+  Terminal's own docs are a project of their own, not a sync.
+
+**Outstanding, deliberately.** Upstream's 0.1.45 headline is guarded pane and
+agent automation — `4433b6f`, then `692a59e`, `a7f2990`, `38d197f`, `38a5e8d`
+refining it. Roughly 5,400 lines: a project-scoped CLI (`+pane`, `+agent`),
+agent integrations for OpenCode, Pi and Grok Build, status badges, completion
+notifications, and an agent skill shipped in the bundle. It was not taken this
+round, and nothing about it is resolved by waiting. Two things a future sync
+has to settle first:
+
+- **The env var collides.** Upstream's `KERO_AUTOMATION` renames onto
+  `TERMINAL_AUTOMATION`, which this fork already spends on the DEBUG-only e2e
+  channel (`TerminalCLIService+Automation.swift`). One of the two needs a
+  different name, and the fork's is the one `scripts/e2e.sh` and
+  [CONTRIBUTING.md](CONTRIBUTING.md) already document.
+- **Two automation surfaces.** The fork's channel is debug-only and drives the
+  app for tests; upstream's is a shipped, authenticated, project-scoped feature
+  for agents. They are different products that happen to share a word. Decide
+  whether they stay separate or one grows into the other before porting either.
+
 ### 2026-08-06 — `kero/main` at `ae67b6f`
 
 Merge base `2163068`; 44 upstream commits spanning 0.1.36–0.1.44. **Not a
