@@ -188,7 +188,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             rows: UInt16(size.rows),
             cellWidth: UInt16(metrics.cellWidth.rounded()),
             cellHeight: UInt16(metrics.cellHeight.rounded()),
-            scrollbackLines: Self.scrollbackLines
+            scrollbackLines: Self.scrollbackLines,
+            cursorShape: AppSettings.shared.cursorShape.alacrittyValue,
+            cursorBlinking: AppSettings.shared.cursorBlinking
         ) { config in
             withUnsafePointer(to: &theme) { themePointer in
                 terminal_alacritty_new(
@@ -438,6 +440,14 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         var theme = AlacrittyTheme.current()
         if let handle {
             withUnsafePointer(to: &theme) { terminal_alacritty_set_theme(handle, $0) }
+            // The emulator holds the configured default separately from a
+            // program's DECSCUSR choice, so this reaches live panes without
+            // overriding a TUI that picked its own cursor.
+            terminal_alacritty_set_cursor_style(
+                handle,
+                AppSettings.shared.cursorShape.alacrittyValue,
+                AppSettings.shared.cursorBlinking
+            )
         }
         // A new cell size means a different column count.
         synchronizeGridSize()
@@ -2104,6 +2114,8 @@ extension TerminalLaunch {
         cellWidth: UInt16,
         cellHeight: UInt16,
         scrollbackLines: Int,
+        cursorShape: UInt8,
+        cursorBlinking: Bool,
         _ body: (UnsafePointer<TerminalConfig>) -> T
     ) -> T {
         let programCopy = strdup(program)
@@ -2133,7 +2145,9 @@ extension TerminalLaunch {
                     rows: rows,
                     cell_width: cellWidth,
                     cell_height: cellHeight,
-                    scrollback_lines: scrollbackLines
+                    scrollback_lines: scrollbackLines,
+                    cursor_shape: cursorShape,
+                    cursor_blinking: cursorBlinking
                 )
                 return withUnsafePointer(to: &config) { body($0) }
             }

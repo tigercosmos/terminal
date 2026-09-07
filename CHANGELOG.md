@@ -16,6 +16,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Choose the terminal cursor in Settings → Terminal: block, bar, or underline,
+  blinking or steady. It reaches terminals that are already open, and steps
+  aside for programs that ask for a cursor of their own
 - Dictation and other assistive tools can enter text in a terminal pane. Panes
   are text areas to VoiceOver now, and only the focused, visible one accepts
   what is typed into it

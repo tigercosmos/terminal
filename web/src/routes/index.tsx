@@ -274,6 +274,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size, or zoom with Cmd+Plus and Cmd+Minus — which resizes the sidebars instead when that is what you last clicked into',
       },
       {
+        name: 'A cursor you choose',
+        detail:
+          'block, bar or underline, blinking or steady, on both backends and applied to terminals already open — until a program asks for its own cursor, as editors and shells often do',
+      },
+      {
         name: 'Dictation into a pane',
         detail:
           'terminal panes are text areas to VoiceOver and dictation, so assistive tools can type into the focused one — a parked or unfocused pane never accepts the text',
