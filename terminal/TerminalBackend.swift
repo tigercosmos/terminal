@@ -192,7 +192,18 @@ protocol TerminalBackendSurface: NSView, TerminalFindSurface {
     /// under the layout mid-frame.
     func detach()
 
+    /// Inserts `text` at the cursor the way a paste does. A newline in it is
+    /// text, not a Return: a shell's line editor puts it in its buffer and
+    /// waits. Use this to put something in front of the user to run.
     func sendText(_ text: String)
+
+    /// Types `text` as if the user had, so a trailing newline runs the line.
+    ///
+    /// Separate from ``sendText(_:)`` because libghostty wraps that call in
+    /// bracketed-paste markers whenever the program has enabled mode 2004,
+    /// and every shell Terminal ships against does. A command sent that way
+    /// lands at the prompt and sits there unexecuted.
+    func sendTypedText(_ text: String)
 
     /// Clears the screen and scrollback, then repaints the shell's prompt at
     /// the top.

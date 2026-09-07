@@ -69,6 +69,27 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
         performBindingAction("text:\\x0c")
     }
 
+    /// Splits the line breaks out of `text` and delivers each one as a typed
+    /// Return, because `sendText` reaches the program inside bracketed-paste
+    /// markers and a line editor treats a newline there as buffer content.
+    /// The same binding action already carries the form feed `clearScreen`
+    /// sends, which is the one path into this surface that bypasses the paste
+    /// wrapper.
+    func sendTypedText(_ text: String) {
+        // Split on `isNewline` rather than "\n" so CR and LF both submit, the
+        // way writing either straight to a PTY does. Swift reads CRLF as one
+        // Character, so a Windows line ending is one Return and not two.
+        let lines = text.split(
+            omittingEmptySubsequences: false, whereSeparator: \.isNewline
+        )
+        for (index, line) in lines.enumerated() {
+            if !line.isEmpty { sendText(String(line)) }
+            // A trailing newline leaves a final empty component, so this runs
+            // the line rather than typing another one.
+            if index < lines.count - 1 { performBindingAction("text:\\x0d") }
+        }
+    }
+
     func scroll(toFraction fraction: Double) {
         guard let lastScroll else { return }
         scrollToRow(UInt(clamping: lastScroll.row(atDragFraction: fraction)))

@@ -1100,6 +1100,13 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         write(Array(text.utf8))
     }
 
+    /// This surface writes straight to the PTY with no bracketed-paste
+    /// wrapper, so typed and pasted text already travel the same way and a
+    /// newline already submits. The distinction exists for Ghostty's sake.
+    func sendTypedText(_ text: String) {
+        sendText(text)
+    }
+
     func clearScreen() {
         guard let handle else { return }
         terminal_alacritty_clear(handle)

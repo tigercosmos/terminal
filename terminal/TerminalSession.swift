@@ -265,7 +265,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     }
 
     func sendCommand(_ text: String) {
-        surface.sendText(text)
+        surface.sendTypedText(text)
     }
 
     /// Clears the emulator's visible screen and scrollback, then asks the
