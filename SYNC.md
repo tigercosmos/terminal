@@ -166,12 +166,19 @@ Not taken:
   outstanding over the `TERMINAL_AUTOMATION` collision. Still nothing to port
   until that is settled; the standing note below is unchanged.
 
-**Noticed, not this sync's doing.** `sendText` over the automation channel
-does not reach the shell on the libghostty backend — the text never lands,
-while the same call works on Alacritty (`make e2e`, 15 checks). It fails
-identically on `43f8f45` and `ce74e0a`, so the submodule bump did not cause it.
-Left for its own investigation; `scripts/e2e.sh` only ever drives the default
-backend, which is why it went unnoticed.
+**Found while checking the bump, and fixed separately.** Verifying that
+`ce74e0a` had not broken input turned up a pre-existing divergence: a command
+sent with a trailing newline ran on Alacritty and sat unexecuted at the prompt
+on Ghostty. libghostty wraps every `sendText` in bracketed-paste markers when
+the program has enabled mode 2004, and a line editor treats a newline inside a
+paste as buffer content; the Alacritty surface writes straight to the PTY, so
+the same call submitted. Both satisfied `TerminalBackendSurface.sendText` and
+disagreed about what it meant. **cd Here** in the Files panel did nothing on
+Ghostty as a result. It reproduces identically on `43f8f45`, so the bump did
+not cause it. Fixed by splitting the requirement — `sendText` keeps paste
+semantics for the callers that want them, `sendTypedText` types — and
+`scripts/e2e.sh`, which had only ever driven the default backend, now runs
+once per backend so the next divergence fails a check.
 
 **Still outstanding.** The 0.1.45 pane and agent automation
 (`4433b6f`, `692a59e`, `a7f2990`, `38d197f`, `38a5e8d`) and its refinement
