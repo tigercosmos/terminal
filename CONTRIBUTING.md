@@ -67,10 +67,16 @@ make e2e         # launch a Debug build and drive it over the CLI channel
 
 `make e2e` needs a GUI session, so it is not part of `make test`. It arms the
 build with `TERMINAL_AUTOMATION=1` and drives the running app through the same
-channel the `terminal` CLI uses: input goes in through the backend's own
-`sendText` and state comes back as text, so neither Screen Recording nor
+channel the `terminal` CLI uses: input goes in through the backend's own typed
+input and state comes back as text, so neither Screen Recording nor
 Accessibility is ever requested — which matters because debug builds are
 unsigned and lose a TCC grant on every rebuild.
+
+The suite runs once per backend, selecting each in
+`~/.config/terminal-dev/config.toml` and restoring your own file afterwards.
+Both surfaces implement one protocol separately, so a run that only drove the
+default would not see where they disagree. `make e2e E2E_BACKENDS=alacritty`
+narrows it while iterating.
 
 Logic that needs no window lives in the `TerminalCore` package and is covered
 by `make test-swift`. When a change belongs there, a test is the verification —

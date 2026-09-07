@@ -11,6 +11,9 @@ BRIDGE      := Vendor/alacritty-bridge/Cargo.toml
 CORE        := TerminalCore
 DESTINATION ?= platform=macOS,arch=$(shell uname -m)
 INSTALL_DIR ?= /Applications
+# The e2e suite runs once per backend: the two surfaces implement one protocol
+# separately, so only driving the default hides where they disagree.
+E2E_BACKENDS ?= alacritty libghostty
 
 # xcodebuild reads DEVELOPER_DIR from the environment, not the command line.
 ifdef DEVELOPER_DIR
@@ -98,7 +101,9 @@ test-swift: ## Test the TerminalCore package
 # Screen Recording nor Accessibility is ever requested.
 e2e: build ## Drive a running Debug build over the CLI channel
 	@$(call resolve_app,Debug); \
-	scripts/e2e.sh "$$app"
+	for backend in $(E2E_BACKENDS); do \
+		scripts/e2e.sh "$$app" "$$backend" || exit 1; \
+	done
 
 test-rust: ## Test the Alacritty backend's Rust bridge
 	cargo test --locked --manifest-path $(BRIDGE)
