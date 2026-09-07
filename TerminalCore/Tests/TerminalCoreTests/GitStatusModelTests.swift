@@ -220,7 +220,8 @@ struct GitStatusParsingTests {
             "? kept.txt",
         ])
         #expect(result.entries.map(\.path) == ["kept.txt"])
-        // Git's own short format shows the deletion, not the untracked row.
+        // Of the two rows Git reports, the staged deletion is the one kept:
+        // tracked entries come first and it carries the more useful status.
         #expect(result.entries.first?.staged == "D")
         #expect(result.entries.first?.unstaged == ".")
     }

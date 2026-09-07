@@ -1509,9 +1509,12 @@ public final class GitStatusModel: nonisolated ObservableObject {
         var index = 0
         // Porcelain v2 can name the same path twice: a file removed from the
         // index (`git rm --cached`) but still on disk is reported both as a
-        // staged deletion ("1 D.") and as untracked ("? "). Git's own short
-        // format shows only the deletion, and everything downstream keys rows
-        // by path, so the first record for a path wins.
+        // staged deletion ("1 D.") and as untracked ("? "). `git status -s`
+        // prints both rows as well, so this is Terminal's policy rather than
+        // Git's: the panel keys every row by path — `Entry.id` is the path,
+        // and so is `fileDecorations` — so one of the two has to win. Git
+        // emits tracked entries before untracked ones, so taking the first
+        // keeps the staged deletion, which carries the more useful status.
         var parsedPaths: Set<String> = []
         func addEntry(_ entry: Entry) {
             guard parsedPaths.insert(entry.path).inserted else { return }
