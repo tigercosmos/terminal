@@ -78,6 +78,108 @@ key; if it did not, [LOCALIZATION.md](LOCALIZATION.md) says what is owed.
 
 ## Log
 
+### 2026-09-07 — `kero/main` at `50f7302`
+
+Eleven upstream commits after `7268a31`, spanning 0.1.46–0.1.48. **Not a
+merge**, for the same reason as the last two entries: those passes applied
+their commits by hand, so nothing in this range is an ancestor and
+`git merge kero/main` would replay all of it. Each commit below was applied by
+hand.
+
+**Read the next sync's commit list against `50f7302`.**
+
+Taken:
+
+| Commit | What it brought |
+| --- | --- |
+| `06dad48` | The Git panel survives a file removed from the index but left on disk |
+| `96cde14` | The Ghostty backend stops leaking two descriptors per screen export |
+| `c73544a` | Dictation and other assistive tools can type into a terminal pane |
+| `c49fe51` | A block, bar or underline cursor, blinking or steady |
+
+`06dad48` landed verbatim in intent: this fork had the same
+`Dictionary(uniqueKeysWithValues:)` trap fed by the same double-reported path,
+and the app died on every Git refresh until the file was committed or
+restored. `GitStatusModel` lives in the `TerminalCore` package here rather than
+the app target, so the guard is covered by a package test upstream did not
+write.
+
+`96cde14` is the one that needed deciding rather than porting. The fix is not
+in the commit — `ec1ab90` adds only a patch source file, and the working code
+ships inside the prebuilt `storage.1.3.6` xcframework that `3a930fd` pins — so
+cherry-picking the commit alone would have changed nothing in the built app.
+The submodule moves `43f8f45` → `ce74e0a` instead. `43f8f45` was the unmerged
+side of libghostty-spm's PR #5 with the same tree as its merge, so this is a
+fast-forward, and `9a943a9`'s renderer change rides along because it is
+compiled into the same artifact.
+
+**Upstream reverted this bump itself**, in `8cdfe12`, an hour after taking it,
+and shipped 0.1.46 with a release note describing a fix its binary does not
+contain. Nothing explains the revert, so the leak was measured here rather
+than trusted — 200 screen exports over the automation channel on the Ghostty
+backend, counting open descriptors before and after:
+
+| libghostty | before → after | leaked |
+| --- | --- | --- |
+| `storage.1.3.3` (`43f8f45`) | 423 → 823, every one a `DIR` | +2 per export |
+| `storage.1.3.6` (`ce74e0a`) | 371 → 371 | none |
+
+This fork leaks harder than upstream does: `TerminalHistory` exports the
+screen for the Ctrl-Tab thumbnail and the scrollback when a pane parks, so
+ordinary tab switching walks the process to its descriptor limit.
+
+`c49fe51` was re-implemented rather than line-translated. Upstream ships the
+controls as a 173-line AppKit file with its own row types; this fork's
+Settings is a plain SwiftUI Form, so the setting arrives as a Picker and a
+Toggle in the section's existing idiom. The bridge's snapshot cursor mapping
+was extracted into `snapshot_cursor_shape` so the integer the Metal renderer
+draws from can be asserted — upstream leaves that untested, and this fork
+draws the Alacritty cursor itself rather than letting the emulator do it.
+
+Not taken:
+
+- `2371dcf`, `51d0cf7`, `50f7302` — `[release] 0.1.46`, `0.1.47`, `0.1.48`.
+  Version bumps and numbered headings, per [RELEASING.md](RELEASING.md). Each
+  was read for a real change riding along; none carried one. Their notes are
+  folded into `## [unrelease]` for the commits taken above.
+- `8cdfe12` — upstream putting the `libghostty-spm` pointer back to `9a943a9`,
+  undoing `96cde14`. Not a change to port; it is the reason the bump above was
+  measured instead of trusted.
+- `d964ad2` — upstream changelog wording only.
+- `0f68de9` — reapplying the saved appearance override from
+  `applicationWillFinishLaunching`. **This fork does not have the bug.**
+  Upstream's premise is that `AppSettings` is first touched from SwiftUI's
+  `App.init()` while `NSApp` is still nil, making the initial
+  `applyAppearance()` a silent no-op through its `NSApp?` chain. Here nothing
+  in `terminalApp.init()` reads `AppSettings` — not
+  `TerminalFont.registerBundledFonts`, `TerminalNotificationService.configure`,
+  or `PointerRegionTracker.start` — so the first access happens once AppKit is
+  up. Confirmed twice: a cold launch with `theme = "light"` against a Dark
+  system comes up light (the screen export reports an `ff/ff/ff` background),
+  and a temporary probe in `applyAppearance` recorded `NSApp=present` on the
+  first call. Porting it would have added a comment asserting something false
+  of this fork.
+- `fd2fbbd` — "Stop inferring agent progress from terminal text": −354 lines of
+  `AgentAutomation.swift` plus `KeroAgentIntegrations`,
+  `KeroAutomationCommandLine`, the bundled skill, and six `web/content/docs/`
+  pages. This refines the 0.1.45 automation feature the 2026-08-10 sync left
+  outstanding over the `TERMINAL_AUTOMATION` collision. Still nothing to port
+  until that is settled; the standing note below is unchanged.
+
+**Noticed, not this sync's doing.** `sendText` over the automation channel
+does not reach the shell on the libghostty backend — the text never lands,
+while the same call works on Alacritty (`make e2e`, 15 checks). It fails
+identically on `43f8f45` and `ce74e0a`, so the submodule bump did not cause it.
+Left for its own investigation; `scripts/e2e.sh` only ever drives the default
+backend, which is why it went unnoticed.
+
+**Still outstanding.** The 0.1.45 pane and agent automation
+(`4433b6f`, `692a59e`, `a7f2990`, `38d197f`, `38a5e8d`) and its refinement
+`fd2fbbd`. The two questions the 2026-08-10 entry raises — the
+`TERMINAL_AUTOMATION` name collision and whether the two automation surfaces
+stay separate — are unchanged and still have to be answered before any of it
+is ported.
+
 ### 2026-08-10 — `kero/main` at `7268a31`
 
 Eight upstream commits after `ae67b6f`, spanning 0.1.45. **Not a merge**, for
