@@ -6393,6 +6393,23 @@
         }
       }
     },
+    "Type to enter terminal text." : {
+      "comment" : "Accessibility help for a terminal pane, which accepts text but reports none.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入力するとターミナルにテキストが送信されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键入以向终端输入文本。"
+          }
+        }
+      }
+    },
     "Type to filter:" : {
       "localizations" : {
         "ja" : {

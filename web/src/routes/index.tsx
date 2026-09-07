@@ -274,6 +274,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size, or zoom with Cmd+Plus and Cmd+Minus — which resizes the sidebars instead when that is what you last clicked into',
       },
       {
+        name: 'Dictation into a pane',
+        detail:
+          'terminal panes are text areas to VoiceOver and dictation, so assistive tools can type into the focused one — a parked or unfocused pane never accepts the text',
+      },
+      {
         name: 'No update checks',
         detail:
           'Sparkle is built in but never starts — this fork ships no update feed and no signing key, so nothing checks in; download the newest release or pull and rebuild to move up',

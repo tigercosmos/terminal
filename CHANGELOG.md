@@ -16,6 +16,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Dictation and other assistive tools can enter text in a terminal pane. Panes
+  are text areas to VoiceOver now, and only the focused, visible one accepts
+  what is typed into it
 - Fixed a crash on every Git refresh once a file had been removed from the
   index but left on disk, as `git rm --cached` leaves it
 - Fixed new panes failing to start a shell after a long session on the Ghostty

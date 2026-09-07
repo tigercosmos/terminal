@@ -1876,6 +1876,88 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         }
         return pasteboard.string(forType: .string)
     }
+
+    // MARK: - Accessibility
+
+    /// A terminal has no document to read back: the grid is drawn by Metal and
+    /// the scrollback belongs to the emulator, so this surface is exposed as a
+    /// text area that can be *written* and reports itself as empty. That is
+    /// enough for dictation and switch control, which need somewhere to put
+    /// text, and it keeps a screen reader from announcing a stale snapshot as
+    /// if it were the live screen.
+
+    override func isAccessibilityElement() -> Bool { isSurfaceVisible }
+
+    override func isAccessibilityEnabled() -> Bool { isSurfaceVisible }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
+
+    override func accessibilityRoleDescription() -> String? {
+        NSAccessibility.Role.description(for: self)
+    }
+
+    override func accessibilityLabel() -> String? {
+        String(localized: "Terminal")
+    }
+
+    override func accessibilityHelp() -> String? {
+        String(localized: "Type to enter terminal text.")
+    }
+
+    override func accessibilityValue() -> Any? { "" }
+
+    override func setAccessibilityValue(_ value: Any?) {
+        insertAccessibilityText(value)
+    }
+
+    override func accessibilityNumberOfCharacters() -> Int { 0 }
+
+    override func accessibilitySelectedText() -> String? { "" }
+
+    override func setAccessibilitySelectedText(_ text: String?) {
+        insertAccessibilityText(text)
+    }
+
+    override func accessibilitySelectedTextRange() -> NSRange {
+        NSRange(location: 0, length: 0)
+    }
+
+    override func accessibilityVisibleCharacterRange() -> NSRange {
+        NSRange(location: 0, length: 0)
+    }
+
+    override func isAccessibilityFocused() -> Bool {
+        hasEffectiveTerminalFocus
+    }
+
+    override func setAccessibilityFocused(_ focused: Bool) {
+        if !focused, window?.firstResponder === self {
+            window?.makeFirstResponder(nil)
+        } else if focused, isSurfaceVisible {
+            window?.makeFirstResponder(self)
+        }
+    }
+
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(setAccessibilityValue(_:))
+            || selector == #selector(setAccessibilitySelectedText(_:)) {
+            // Keep the setter discoverable while Terminal is inactive — a
+            // dictation session targets a window that is not yet key — but
+            // never advertise a parked or unfocused pane as writable.
+            return isSurfaceVisible && window?.firstResponder === self
+        }
+        return super.isAccessibilitySelectorAllowed(selector)
+    }
+
+    /// A terminal appends at the cursor rather than holding a value that can be
+    /// replaced, so both editable AX routes feed the PTY instead of a buffer —
+    /// and only while this exact surface is the live text destination.
+    private func insertAccessibilityText(_ value: Any?) {
+        guard isSurfaceVisible, hasEffectiveTerminalFocus else { return }
+        let text = (value as? String) ?? (value as? NSAttributedString)?.string ?? ""
+        guard !text.isEmpty else { return }
+        sendText(text)
+    }
 }
 
 // MARK: - Text input
