@@ -18,6 +18,9 @@ the original feature bullet instead of adding separate entries for them.
 
 - Fixed a crash on every Git refresh once a file had been removed from the
   index but left on disk, as `git rm --cached` leaves it
+- Fixed new panes failing to start a shell after a long session on the Ghostty
+  backend. Every tab switch exported the screen, and each export leaked two
+  file descriptors, so a day's work could exhaust the process's table
 - **Never read protected folders** in Settings → Privacy keeps Terminal's own
   file, Git, and search panels out of Desktop, Documents, Downloads, your
   media folders, iCloud Drive, and mounted volumes, so macOS stops asking for
