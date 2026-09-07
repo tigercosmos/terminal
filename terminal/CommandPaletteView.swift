@@ -407,8 +407,11 @@ struct CommandPaletteView: View {
     }
 
     /// A directory on this machine, unless it is home — an account boundary
-    /// rather than a project root, and far too much to index.
+    /// rather than a project root, and far too much to index — or one the user
+    /// has put out of Terminal's reach, where walking the tree is exactly the
+    /// read that raises a privacy prompt.
     private func localIndexRoot(_ root: String) -> PanelRoot? {
+        guard !ProtectedDirectories.denies(root) else { return nil }
         let standardizedRoot = URL(fileURLWithPath: root).standardizedFileURL
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
         return standardizedRoot == home ? nil : .local(root)
@@ -904,6 +907,12 @@ struct CommandPaletteView: View {
         while let url = enumerator.nextObject() as? URL {
             if Task.isCancelled { break }
             if url.lastPathComponent == ".git" {
+                enumerator.skipDescendants()
+                continue
+            }
+            // The root itself is already refused, but it can still sit above a
+            // guarded folder — a directory pinned at `/` reaches `/Volumes`.
+            if ProtectedDirectories.denies(url.path) {
                 enumerator.skipDescendants()
                 continue
             }

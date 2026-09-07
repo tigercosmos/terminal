@@ -276,6 +276,22 @@
         }
       }
     },
+    "Never read protected folders" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保護されたフォルダを読み取らない"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从不读取受保护的文件夹"
+          }
+        }
+      }
+    },
     "New File" : {
       "localizations" : {
         "ja" : {
@@ -320,6 +336,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开此文件在 %@ 中的更改"
+          }
+        }
+      }
+    },
+    "Privacy" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライバシー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私"
           }
         }
       }
@@ -400,6 +432,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅在 Git 仓库中显示工具栏"
+          }
+        }
+      }
+    },
+    "Stops Terminal's own file, Git, and search panels from reading Desktop, Documents, Downloads, your media folders, iCloud Drive, and mounted volumes — so macOS never asks on their behalf. Commands you run in a terminal are unaffected: macOS asks about those itself." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal自身のファイル、Git、検索の各パネルが、デスクトップ、書類、ダウンロード、メディアフォルダ、iCloud Drive、マウント済みボリュームを読み取らないようにします。これらのパネルのためにmacOSがアクセスを求めることはなくなります。ターミナルで実行したコマンドには影響しません——それについてはmacOS自身が確認します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阻止 Terminal 自身的文件、Git 和搜索面板读取桌面、文稿、下载、媒体文件夹、iCloud 云盘以及已挂载的宗卷，因此 macOS 不会再为这些面板请求访问权限。你在终端中运行的命令不受影响——macOS 会自行询问那些命令。"
           }
         }
       }
@@ -529,6 +577,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "默认"
+          }
+        }
+      }
+    },
+    "protected folder" : {
+      "comment" : "Spoken after a file tree row's name for a folder Terminal is not allowed to read.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保護されたフォルダ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受保护的文件夹"
           }
         }
       }

@@ -203,6 +203,16 @@ struct SettingsView: View {
                 Toggle("Wrap lines to editor width", isOn: $settings.wrapLines)
             }
 
+            Section("Privacy") {
+                Toggle(
+                    "Never read protected folders",
+                    isOn: $settings.denyProtectedFolders
+                )
+                Text("Stops Terminal's own file, Git, and search panels from reading Desktop, Documents, Downloads, your media folders, iCloud Drive, and mounted volumes — so macOS never asks on their behalf. Commands you run in a terminal are unaffected: macOS asks about those itself.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Updates") {
                 Toggle(
                     "Automatically check for updates",
@@ -232,6 +242,7 @@ struct SettingsView: View {
                         && settings.themeLight == Theme.defaultLightThemeName
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
+                        && !settings.denyProtectedFolders
                         && settings.terminalBackend == .fallback)
                 }
             }

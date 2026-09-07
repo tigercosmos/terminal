@@ -64,6 +64,11 @@ public final class FileTreeModel: nonisolated ObservableObject {
         /// panel shows this instead, until the user retries or the terminal
         /// moves somewhere else.
         case unreachable(String)
+        /// The terminal is sitting in a folder the user has put out of
+        /// Terminal's reach — see ``ProtectedDirectories``. Distinct from an
+        /// empty listing, which is what an unexplained blank panel would look
+        /// like here.
+        case restricted
     }
 
     @Published public private(set) var rootPath = ""
@@ -126,6 +131,10 @@ public final class FileTreeModel: nonisolated ObservableObject {
     public func sync(root: String) {
         leaveHost(unless: .local)
         move(to: root, source: .local)
+        // Set on every sync rather than only on a move: the setting can be
+        // turned off while the tree is already pointed at a guarded folder,
+        // and the next tick is what has to notice.
+        status = ProtectedDirectories.denies(root) ? .restricted : .ready
         rebuild()
     }
 
@@ -199,8 +208,15 @@ public final class FileTreeModel: nonisolated ObservableObject {
         generation &+= 1
     }
 
+    /// Whether this row is a folder Terminal has been told to stay out of.
+    /// The panel draws it locked rather than hiding it: the folder is really
+    /// there, and a row that vanished would read as a folder that is gone.
+    public func isRestricted(_ item: Item) -> Bool {
+        source == .local && ProtectedDirectories.denies(item.path)
+    }
+
     public func toggle(_ item: Item) {
-        guard item.isDirectory else { return }
+        guard item.isDirectory, !isRestricted(item) else { return }
         if !expanded.insert(item.path).inserted {
             expanded.remove(item.path)
         }
@@ -432,14 +448,22 @@ public final class FileTreeModel: nonisolated ObservableObject {
     private func entries(in dir: String) -> [Entry]? {
         switch source {
         case .local:
+            // Before the listing, not after: reading a guarded folder is what
+            // raises the privacy prompt, so the refusal has to come first.
+            guard !ProtectedDirectories.denies(dir) else { return nil }
             let fm = FileManager.default
             guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
             return names.map { name in
+                let path = (dir as NSString).appendingPathComponent(name)
+                // A guarded child is one of the folders macOS names, all of
+                // which are directories — reported as one without asking, so
+                // that drawing the row of a folder we won't open doesn't
+                // become the one call that touches it.
+                guard !ProtectedDirectories.denies(path) else {
+                    return Entry(name: name, isDirectory: true)
+                }
                 var isDirectory: ObjCBool = false
-                fm.fileExists(
-                    atPath: (dir as NSString).appendingPathComponent(name),
-                    isDirectory: &isDirectory
-                )
+                fm.fileExists(atPath: path, isDirectory: &isDirectory)
                 return Entry(name: name, isDirectory: isDirectory.boolValue)
             }
         case .remote(let destination):

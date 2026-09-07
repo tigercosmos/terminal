@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import Foundation
+import TerminalCore
 
 /// The app-specific language macOS should use when Terminal next launches.
 ///
@@ -218,6 +219,21 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Keep Terminal itself out of the folders macOS guards behind a privacy
+    /// prompt — Desktop, Documents, Downloads, the media folders, iCloud Drive
+    /// and mounted volumes. Off by default: the panels are meant to follow the
+    /// shell wherever it goes, and the prompt is a one-time cost for everyone
+    /// who wants them to.
+    ///
+    /// See ``ProtectedDirectories`` for what "keep out" covers, and for why
+    /// this cannot speak for the commands the user runs.
+    @Published var denyProtectedFolders: Bool {
+        didSet {
+            ProtectedDirectories.deniesAccess = denyProtectedFolders
+            save()
+        }
+    }
+
     /// Which emulator drives terminal panes. Only ever holds a backend this
     /// build ships a surface for — see `TerminalBackend` — and a session binds
     /// its backend at creation, so a change here reaches terminals opened
@@ -263,6 +279,11 @@ final class AppSettings: nonisolated ObservableObject {
         compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
+        denyProtectedFolders = toml["privacy.deny-protected-folders"]?.bool ?? false
+        // Pushed by hand because `didSet` doesn't run during initialization,
+        // and the first panel read can happen before any of these are touched
+        // again.
+        ProtectedDirectories.deniesAccess = denyProtectedFolders
         applyAppearance()
         reloadThemeSelection()
         if existing == nil { save() }
@@ -347,6 +368,7 @@ final class AppSettings: nonisolated ObservableObject {
         compareLineBlame = true
         restoreTerminalHistory = false
         terminalBackend = .fallback
+        denyProtectedFolders = false
     }
 
     private func save() {
@@ -389,6 +411,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if terminalBackend != .fallback {
             lines.append("terminal.backend = \(TOML.quote(terminalBackend.rawValue))")
+        }
+        if denyProtectedFolders {
+            lines.append("privacy.deny-protected-folders = true")
         }
         let dir = Self.configURL.deletingLastPathComponent()
         do {

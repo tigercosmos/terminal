@@ -1179,6 +1179,22 @@
         }
       }
     },
+    "Terminal isn’t allowed to read this folder. Turn off “Never read protected folders” in Settings to browse it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminalはこのフォルダを読み取れません。閲覧するには、設定の「保護されたフォルダを読み取らない」をオフにしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 不能读取此文件夹。若要浏览，请在设置中关闭“从不读取受保护的文件夹”。"
+          }
+        }
+      }
+    },
     "That path couldn’t be read on the remote host." : {
       "localizations" : {
         "ja" : {

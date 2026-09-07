@@ -224,6 +224,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
         detail:
           'the processes running under a session and the TCP ports they are listening on',
       },
+      {
+        name: 'Folders the panels stay out of',
+        detail:
+          "Never read protected folders in Settings keeps the panels out of Desktop, Documents, Downloads, your media folders, iCloud Drive and mounted volumes, so macOS stops asking for access when a terminal cd's into one — they show as locked instead; commands you run are unaffected, macOS asks about those itself",
+      },
     ],
   },
   {

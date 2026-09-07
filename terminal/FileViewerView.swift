@@ -445,7 +445,17 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
     }
 
     private static func load(path: String) -> LoadedContent {
-        loadedContent(path: path, data: readData(path: path))
+        // Opening the file is what raises the privacy prompt, so a folder the
+        // user has put out of reach is refused before the read and says so —
+        // rather than coming back as a file that could not be read.
+        guard !ProtectedDirectories.denies(path) else {
+            return LoadedContent(
+                content: .unavailable(ProtectedDirectories.refusalMessage),
+                text: "",
+                imageFingerprint: nil
+            )
+        }
+        return loadedContent(path: path, data: readData(path: path))
     }
 
     private nonisolated static func readData(path: String) -> Data? {

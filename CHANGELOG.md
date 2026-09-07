@@ -14,6 +14,15 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- **Never read protected folders** in Settings → Privacy keeps Terminal's own
+  file, Git, and search panels out of Desktop, Documents, Downloads, your
+  media folders, iCloud Drive, and mounted volumes, so macOS stops asking for
+  access on their behalf when a terminal cd's into one. Those folders show as
+  locked in the file panel until you turn it back off. Commands you run in a
+  terminal are unaffected — macOS asks about those itself
+
 ## [0.7.0]
 
 - The command palette can put a frames-per-second badge in the sidebar

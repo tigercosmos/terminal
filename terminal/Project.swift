@@ -196,7 +196,8 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     private static func isLinkedWorktree(_ root: String) -> Bool {
         let gitPath = (root as NSString).appendingPathComponent(".git")
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: gitPath, isDirectory: &isDirectory),
+        guard !ProtectedDirectories.denies(root),
+              FileManager.default.fileExists(atPath: gitPath, isDirectory: &isDirectory),
               !isDirectory.boolValue,
               let contents = try? String(contentsOfFile: gitPath, encoding: .utf8)
         else { return false }

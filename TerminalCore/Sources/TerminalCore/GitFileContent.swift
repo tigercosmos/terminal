@@ -155,6 +155,10 @@ public nonisolated enum GitFileContent {
     }
 
     private static func localFile(at path: String, error: inout String?) -> String {
+        guard !ProtectedDirectories.denies(path) else {
+            error = ProtectedDirectories.refusalMessage
+            return ""
+        }
         let url = URL(fileURLWithPath: path)
         let fm = FileManager.default
         if let destination = try? fm.destinationOfSymbolicLink(atPath: url.path) {

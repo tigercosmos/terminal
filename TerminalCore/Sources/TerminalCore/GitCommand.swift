@@ -77,6 +77,12 @@ public nonisolated enum GitCommand {
     private static let untrustedConfig = ["-c", "core.fsmonitor="]
     private static let noHooksConfig = ["-c", "core.hooksPath=/dev/null"]
 
+    /// What a caller gets instead of Git's answer when the directory is one
+    /// the user has put out of Terminal's reach. Git's own fatal status, so a
+    /// panel reads it as a command that failed and shows the reason, rather
+    /// than as a directory that turned out not to be a repository.
+    public static let accessDeniedStatus: Int32 = 128
+
     /// The environment every Git invocation runs under. `GIT_TERMINAL_PROMPT`
     /// makes a credential prompt fail rather than hang behind the app, and the
     /// pinned locale is what makes Git's diagnostics safe to match on.
@@ -158,6 +164,7 @@ public nonisolated enum GitCommand {
     /// an interrupted rebase or merge, which no plumbing command reports.
     public static func existingNames(_ names: [String], in directory: GitDirectory) -> Set<String> {
         guard let remote = directory.remote else {
+            guard !ProtectedDirectories.denies(directory.path) else { return [] }
             let fm = FileManager.default
             return Set(names.filter { fm.fileExists(atPath: directory.appending($0)) })
         }
@@ -199,6 +206,13 @@ public nonisolated enum GitCommand {
         _ arguments: [String], in path: String, maxBytes: Int?, input: Data?,
         timeout: TimeInterval?
     ) -> (status: Int32, stdout: Data, stderr: String) {
+        // Git reads whatever directory it runs in, and macOS bills that read
+        // to Terminal — the app spawned it. Refusing before the spawn is what
+        // keeps the panels' polling from raising a privacy prompt every tick
+        // for a terminal that has cd'd into a guarded folder.
+        guard !ProtectedDirectories.denies(path) else {
+            return (accessDeniedStatus, Data(), ProtectedDirectories.refusalMessage)
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = arguments

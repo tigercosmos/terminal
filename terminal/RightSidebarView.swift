@@ -449,6 +449,8 @@ private struct FileTreePanel: View {
                 statusMessage(Text("Connecting…"))
             case .unreachable(let reason):
                 unreachable(reason)
+            case .restricted:
+                statusMessage(Text(verbatim: ProtectedDirectories.refusalMessage))
             case .ready:
                 ScrollView {
                     LazyVStack(spacing: 1) {
@@ -515,6 +517,11 @@ private struct FileTreeRow: View {
     @FocusState private var fieldFocused: Bool
 
     private var isRenaming: Bool { model.renamingPath == item.path }
+
+    /// A folder the user has told Terminal to stay out of. Still shown — it is
+    /// really there — but locked, and without the contents that reading it
+    /// would have prompted for.
+    private var isRestricted: Bool { model.isRestricted(item) }
 
     /// The file open in the active tab, so it reads as selected in the tree.
     private var isCurrent: Bool { !item.isDirectory && item.path == currentFilePath }
@@ -683,6 +690,13 @@ private struct FileTreeRow: View {
     }
 
     private var fileAccessibilityLabel: String {
+        if isRestricted {
+            return item.name + ", "
+                + String(
+                    localized: "protected folder",
+                    comment: "Spoken after a file tree row's name for a folder Terminal is not allowed to read."
+                )
+        }
         guard let gitDecoration else { return item.name }
         return item.name + ", " + gitDecoration.accessibilityName
     }
@@ -756,7 +770,10 @@ private struct FileTreeRow: View {
 
     private var leadingGlyphs: some View {
         Group {
-            if item.isDirectory && !item.isDraft {
+            // No disclosure triangle on a folder Terminal won't open: the
+            // lock is the whole story, and a triangle that does nothing when
+            // clicked reads as a folder that failed to expand.
+            if item.isDirectory && !item.isDraft && !isRestricted {
                 Image(systemName: "chevron.right")
                     .sidebarFont(size: 8, weight: .semibold)
                     .foregroundStyle(.tertiary)
@@ -765,7 +782,12 @@ private struct FileTreeRow: View {
             } else {
                 Spacer().frame(width: 10)
             }
-            if item.isDirectory {
+            if isRestricted {
+                Image(systemName: "lock.fill")
+                    .sidebarFont(size: 10)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14)
+            } else if item.isDirectory {
                 Image(systemName: "folder.fill")
                     .sidebarFont(size: 10)
                     .foregroundStyle(Color(nsColor: Theme.accent).opacity(0.8))
