@@ -16,6 +16,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Fixed a crash on every Git refresh once a file had been removed from the
+  index but left on disk, as `git rm --cached` leaves it
 - **Never read protected folders** in Settings → Privacy keeps Terminal's own
   file, Git, and search panels out of Desktop, Documents, Downloads, your
   media folders, iCloud Drive, and mounted volumes, so macOS stops asking for

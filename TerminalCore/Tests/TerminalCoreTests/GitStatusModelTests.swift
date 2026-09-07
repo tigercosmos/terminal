@@ -210,6 +210,21 @@ struct GitStatusParsingTests {
         #expect(result.branch == nil)
     }
 
+    /// `git rm --cached` leaves a path in the worktree but not the index, and
+    /// porcelain v2 then reports it twice — once staged-deleted, once
+    /// untracked. Two rows for one path used to reach a decoration dictionary
+    /// keyed by path and take the app down on every refresh.
+    @Test func aPathRemovedFromTheIndexButStillOnDiskIsListedOnce() {
+        let result = status([
+            "1 D. N... 100644 000000 000000 aaa bbb kept.txt",
+            "? kept.txt",
+        ])
+        #expect(result.entries.map(\.path) == ["kept.txt"])
+        // Git's own short format shows the deletion, not the untracked row.
+        #expect(result.entries.first?.staged == "D")
+        #expect(result.entries.first?.unstaged == ".")
+    }
+
     // MARK: - Recent commits
 
     /// One record as `log --pretty=… --name-status -z` writes it: the header's
