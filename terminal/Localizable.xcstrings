@@ -1049,6 +1049,22 @@
         }
       }
     },
+    "Applies until a program picks its own cursor, as full-screen editors and shells often do." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プログラムが独自のカーソルを選ぶまで適用されます。全画面のエディタやシェルではよくあることです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在程序自行选择光标之前生效；全屏编辑器和 Shell 通常会这样做。"
+          }
+        }
+      }
+    },
     "Authorize Clipboard Access" : {
       "localizations" : {
         "ja" : {
@@ -1130,6 +1146,23 @@
         }
       }
     },
+    "Bar" : {
+      "comment" : "A thin vertical terminal cursor, as opposed to a block.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "縦線"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "竖线"
+          }
+        }
+      }
+    },
     "Binary file" : {
       "localizations" : {
         "ja" : {
@@ -1142,6 +1175,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "二进制文件"
+          }
+        }
+      }
+    },
+    "Blink cursor" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カーソルを点滅させる"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "光标闪烁"
+          }
+        }
+      }
+    },
+    "Block" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブロック"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方块"
           }
         }
       }
@@ -2141,6 +2206,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前目录"
+          }
+        }
+      }
+    },
+    "Cursor shape" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カーソルの形状"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "光标形状"
           }
         }
       }
@@ -6393,6 +6474,23 @@
         }
       }
     },
+    "Type to enter terminal text." : {
+      "comment" : "Accessibility help for a terminal pane, which accepts text but reports none.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入力するとターミナルにテキストが送信されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键入以向终端输入文本。"
+          }
+        }
+      }
+    },
     "Type to filter:" : {
       "localizations" : {
         "ja" : {
@@ -6422,6 +6520,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不可用"
+          }
+        }
+      }
+    },
+    "Underline" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下線"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下划线"
           }
         }
       }

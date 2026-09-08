@@ -16,6 +16,20 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Choose the terminal cursor in Settings → Terminal: block, bar, or underline,
+  blinking or steady. It reaches terminals that are already open, and steps
+  aside for programs that ask for a cursor of their own
+- Dictation and other assistive tools can enter text in a terminal pane. Panes
+  are text areas to VoiceOver now, and only the focused, visible one accepts
+  what is typed into it
+- Fixed a crash on every Git refresh once a file had been removed from the
+  index but left on disk, as `git rm --cached` leaves it
+- Fixed new panes failing to start a shell after a long session on the Ghostty
+  backend. Every tab switch exported the screen, and each export leaked two
+  file descriptors, so a day's work could exhaust the process's table
+- Fixed **cd Here** in the Files panel doing nothing on the Ghostty backend:
+  the command was typed at the prompt but never ran until you pressed Return
+  yourself
 - **Never read protected folders** in Settings → Privacy keeps Terminal's own
   file, Git, and search panels out of Desktop, Documents, Downloads, your
   media folders, iCloud Drive, and mounted volumes, so macOS stops asking for

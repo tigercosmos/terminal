@@ -108,7 +108,7 @@ final class TerminalManager: nonisolated ObservableObject {
         // queue because @Published emits in willSet — by then `didSet` has
         // pushed the theme onto NSApp (and the selection into `Theme`), so
         // `refreshAppearance` reads the new state.
-        settingsObservation = Publishers.CombineLatest3(
+        settingsObservation = Publishers.CombineLatest4(
             Publishers.CombineLatest4(
                 AppSettings.shared.$fontFamily.removeDuplicates(),
                 AppSettings.shared.$fontSize.removeDuplicates(),
@@ -119,7 +119,11 @@ final class TerminalManager: nonisolated ObservableObject {
                 AppSettings.shared.$themeDark.removeDuplicates(),
                 AppSettings.shared.$themeLight.removeDuplicates()
             ),
-            AppSettings.shared.$macosOptionAsAlt.removeDuplicates()
+            AppSettings.shared.$macosOptionAsAlt.removeDuplicates(),
+            Publishers.CombineLatest(
+                AppSettings.shared.$cursorShape.removeDuplicates(),
+                AppSettings.shared.$cursorBlinking.removeDuplicates()
+            )
         )
             .dropFirst()
             .receive(on: DispatchQueue.main)

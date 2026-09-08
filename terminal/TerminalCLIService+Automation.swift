@@ -47,7 +47,10 @@ extension TerminalCLIService {
             guard let surface = focusedSurface() else {
                 return .failure("no terminal is focused")
             }
-            surface.sendText(text)
+            // A driver sends a command to be run, not pasted, so this is the
+            // typed path — the two backends otherwise disagree about whether a
+            // trailing newline submits.
+            surface.sendTypedText(text)
             return .success()
 
         case .readScreen, .readScrollback:

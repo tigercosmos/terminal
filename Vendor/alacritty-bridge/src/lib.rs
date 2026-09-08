@@ -221,6 +221,37 @@ pub struct TerminalConfig {
     pub cell_width: u16,
     pub cell_height: u16,
     pub scrollback_lines: usize,
+    /// 0 block, 1 underline, 2 beam.
+    pub cursor_shape: u8,
+    pub cursor_blinking: bool,
+}
+
+/// How a cursor shape reaches the host renderer, which draws from the integer
+/// rather than from the emulator's enum. Separate from the host's *setting*
+/// encoding (``configured_cursor_style``): this one also has to carry
+/// `HollowBlock`, which a program can produce but a user cannot choose.
+fn snapshot_cursor_shape(shape: CursorShape) -> u32 {
+    match shape {
+        CursorShape::Block => 0,
+        CursorShape::Underline => 1,
+        CursorShape::Beam => 2,
+        CursorShape::HollowBlock => 3,
+        _ => 0,
+    }
+}
+
+/// The cursor a program sees before it selects one with DECSCUSR. The host
+/// passes the user's setting; anything unrecognized is the block Alacritty
+/// would have defaulted to.
+fn configured_cursor_style(shape: u8, blinking: bool) -> CursorStyle {
+    CursorStyle {
+        shape: match shape {
+            1 => CursorShape::Underline,
+            2 => CursorShape::Beam,
+            _ => CursorShape::Block,
+        },
+        blinking,
+    }
 }
 
 // MARK: - OSC interception
@@ -1013,6 +1044,10 @@ impl Dimensions for TermSize {
 
 pub struct TerminalHandle {
     term: Arc<FairMutex<Term<Proxy>>>,
+    /// Kept so a cursor change can restate the whole config: `Term` takes
+    /// options wholesale, and rebuilding one here would silently reset the
+    /// scrollback and OSC 52 policy chosen at spawn.
+    term_config: Config,
     notifier: GraphicsNotifier,
     shared: Arc<FairMutex<Shared>>,
     kitty_graphics: Arc<FairMutex<KittyGraphicsStore>>,
@@ -1256,10 +1291,7 @@ pub unsafe extern "C" fn terminal_alacritty_new(
 
     let term_config = Config {
         scrolling_history: config.scrollback_lines.max(1),
-        default_cursor_style: CursorStyle {
-            shape: CursorShape::Block,
-            blinking: true,
-        },
+        default_cursor_style: configured_cursor_style(config.cursor_shape, config.cursor_blinking),
         // Terminal owns clipboard policy at the app level. Reads are enabled in
         // the emulator only so the host can present its confirmation sheet;
         // the bridge writes nothing back until that request is approved.
@@ -1270,7 +1302,11 @@ pub unsafe extern "C" fn terminal_alacritty_new(
         columns,
         screen_lines,
     };
-    let term = Arc::new(FairMutex::new(Term::new(term_config, &size, proxy.clone())));
+    let term = Arc::new(FairMutex::new(Term::new(
+        term_config.clone(),
+        &size,
+        proxy.clone(),
+    )));
     let kitty_graphics = Arc::new(FairMutex::new(KittyGraphicsStore::default()));
     let kitty_graphics_size = Arc::new(FairMutex::new(KittyGraphicsSize {
         columns,
@@ -1307,6 +1343,7 @@ pub unsafe extern "C" fn terminal_alacritty_new(
 
     Box::into_raw(Box::new(TerminalHandle {
         term,
+        term_config,
         notifier: GraphicsNotifier(sender),
         shared,
         kitty_graphics,
@@ -1551,6 +1588,27 @@ pub unsafe extern "C" fn terminal_alacritty_set_theme(
         return;
     }
     (*handle).shared.lock().theme = *theme;
+}
+
+/// Replaces the cursor a program sees before it selects one with DECSCUSR.
+/// A program that already asked for its own style keeps it — `Term` holds
+/// that choice separately from the configured default.
+///
+/// # Safety
+/// `handle` must be live.
+#[no_mangle]
+pub unsafe extern "C" fn terminal_alacritty_set_cursor_style(
+    handle: *mut TerminalHandle,
+    shape: u8,
+    blinking: bool,
+) {
+    if handle.is_null() {
+        return;
+    }
+    let terminal = &mut *handle;
+    terminal.term_config.default_cursor_style = configured_cursor_style(shape, blinking);
+    let term_config = terminal.term_config.clone();
+    terminal.term.lock().set_options(term_config);
 }
 
 // MARK: - Selection
@@ -2339,13 +2397,7 @@ pub unsafe extern "C" fn terminal_alacritty_snapshot(
         rows: screen_lines,
         cursor_line,
         cursor_column,
-        cursor_shape: match cursor.shape {
-            CursorShape::Block => 0,
-            CursorShape::Underline => 1,
-            CursorShape::Beam => 2,
-            CursorShape::HollowBlock => 3,
-            _ => 0,
-        },
+        cursor_shape: snapshot_cursor_shape(cursor.shape),
         cursor_color: colors[NamedColor::Cursor as usize]
             .map(pack)
             .unwrap_or(theme.cursor),
@@ -2564,6 +2616,87 @@ mod tests {
     fn intercept(interceptor: &mut OscInterceptor, input: &[u8]) -> (Vec<u8>, Vec<OscEvent>) {
         let (output, events) = interceptor.process(input);
         (output.into_owned(), events)
+    }
+
+    #[test]
+    fn configured_cursor_style_maps_shape_and_blinking() {
+        let block = configured_cursor_style(0, true);
+        assert_eq!(block.shape, CursorShape::Block);
+        assert!(block.blinking);
+
+        let underline = configured_cursor_style(1, false);
+        assert_eq!(underline.shape, CursorShape::Underline);
+        assert!(!underline.blinking);
+
+        let beam = configured_cursor_style(2, true);
+        assert_eq!(beam.shape, CursorShape::Beam);
+        assert!(beam.blinking);
+
+        // An unknown discriminant is the host disagreeing with this file about
+        // the enum; a block cursor is a better answer than a panic.
+        assert_eq!(configured_cursor_style(9, false).shape, CursorShape::Block);
+    }
+
+    #[test]
+    fn setting_options_replaces_the_default_cursor_on_a_live_term() {
+        let size = TermSize {
+            columns: 40,
+            screen_lines: 3,
+        };
+        let mut config = Config::default();
+        let mut term = Term::new(config.clone(), &size, VoidListener);
+
+        config.default_cursor_style = configured_cursor_style(1, false);
+        term.set_options(config);
+
+        let cursor = term.cursor_style();
+        assert_eq!(cursor.shape, CursorShape::Underline);
+        assert!(!cursor.blinking);
+    }
+
+    /// The whole chain the setting travels: the host's integer becomes a
+    /// `CursorStyle`, the live `Term` adopts it, and the snapshot hands the
+    /// renderer back the integer it draws from. Nothing here reads pixels, but
+    /// this is the last value the Metal renderer is given.
+    #[test]
+    fn a_configured_shape_reaches_the_snapshot_the_renderer_draws_from() {
+        let size = TermSize {
+            columns: 40,
+            screen_lines: 3,
+        };
+        for (setting, expected) in [(0u8, 0u32), (1, 1), (2, 2)] {
+            let config = Config {
+                default_cursor_style: configured_cursor_style(setting, false),
+                ..Default::default()
+            };
+            let term = Term::new(config, &size, VoidListener);
+            assert_eq!(
+                snapshot_cursor_shape(term.cursor_style().shape),
+                expected,
+                "setting {setting} should reach the renderer as {expected}"
+            );
+            assert!(!term.cursor_style().blinking);
+        }
+    }
+
+    #[test]
+    fn a_program_selected_cursor_survives_a_settings_change() {
+        let size = TermSize {
+            columns: 40,
+            screen_lines: 3,
+        };
+        let mut config = Config::default();
+        let mut term = Term::new(config.clone(), &size, VoidListener);
+
+        // DECSCUSR 5: a blinking beam, chosen by the program rather than the
+        // user. Changing the setting underneath it must not take it away.
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b[5 q");
+
+        config.default_cursor_style = configured_cursor_style(1, false);
+        term.set_options(config);
+
+        assert_eq!(term.cursor_style().shape, CursorShape::Beam);
     }
 
     #[test]

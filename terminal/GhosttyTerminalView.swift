@@ -37,6 +37,10 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
     private let progressBar = GhosttyTerminalProgressBarView(frame: .zero)
     private var isCapturingHistoryExport = false
     private var capturedHistoryExportPath: String?
+    /// Mirrors what `setSurfaceVisible` was last told. The Alacritty surface
+    /// keeps this state anyway; here it exists only so accessibility can tell a
+    /// live pane from a parked one, which `AppTerminalView` does not expose.
+    private var isSurfaceVisible = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -54,10 +58,36 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
 
     // MARK: - TerminalBackendSurface
 
+    override func setSurfaceVisible(_ visible: Bool) {
+        isSurfaceVisible = visible
+        super.setSurfaceVisible(visible)
+    }
+
     func clearScreen() {
         performBindingAction("clear_screen")
         // Ask the foreground shell to repaint its prompt at the top.
         performBindingAction("text:\\x0c")
+    }
+
+    /// Splits the line breaks out of `text` and delivers each one as a typed
+    /// Return, because `sendText` reaches the program inside bracketed-paste
+    /// markers and a line editor treats a newline there as buffer content.
+    /// The same binding action already carries the form feed `clearScreen`
+    /// sends, which is the one path into this surface that bypasses the paste
+    /// wrapper.
+    func sendTypedText(_ text: String) {
+        // Split on `isNewline` rather than "\n" so CR and LF both submit, the
+        // way writing either straight to a PTY does. Swift reads CRLF as one
+        // Character, so a Windows line ending is one Return and not two.
+        let lines = text.split(
+            omittingEmptySubsequences: false, whereSeparator: \.isNewline
+        )
+        for (index, line) in lines.enumerated() {
+            if !line.isEmpty { sendText(String(line)) }
+            // A trailing newline leaves a final empty component, so this runs
+            // the line rather than typing another one.
+            if index < lines.count - 1 { performBindingAction("text:\\x0d") }
+        }
     }
 
     func scroll(toFraction fraction: Double) {
@@ -128,6 +158,90 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
     var hasEffectiveTerminalFocus: Bool {
         NSApp.isActive && window?.isKeyWindow == true && window?.firstResponder === self
     }
+
+    // MARK: - Accessibility
+
+    /// A terminal has no document to read back: the grid belongs to Ghostty's
+    /// renderer and the scrollback to its emulator, so this surface is exposed
+    /// as a text area that can be *written* and reports itself as empty. That
+    /// is enough for dictation and switch control, which need somewhere to put
+    /// text, and it keeps a screen reader from announcing a stale snapshot as
+    /// if it were the live screen.
+
+    override func isAccessibilityElement() -> Bool { isSurfaceVisible }
+
+    override func isAccessibilityEnabled() -> Bool { isSurfaceVisible }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
+
+    override func accessibilityRoleDescription() -> String? {
+        NSAccessibility.Role.description(for: self)
+    }
+
+    override func accessibilityLabel() -> String? {
+        String(localized: "Terminal")
+    }
+
+    override func accessibilityHelp() -> String? {
+        String(localized: "Type to enter terminal text.")
+    }
+
+    override func accessibilityValue() -> Any? { "" }
+
+    override func setAccessibilityValue(_ value: Any?) {
+        insertAccessibilityText(value)
+    }
+
+    override func accessibilityNumberOfCharacters() -> Int { 0 }
+
+    override func accessibilitySelectedText() -> String? { "" }
+
+    override func setAccessibilitySelectedText(_ text: String?) {
+        insertAccessibilityText(text)
+    }
+
+    override func accessibilitySelectedTextRange() -> NSRange {
+        NSRange(location: 0, length: 0)
+    }
+
+    override func accessibilityVisibleCharacterRange() -> NSRange {
+        NSRange(location: 0, length: 0)
+    }
+
+    override func isAccessibilityFocused() -> Bool {
+        hasEffectiveTerminalFocus
+    }
+
+    override func setAccessibilityFocused(_ focused: Bool) {
+        if !focused, window?.firstResponder === self {
+            window?.makeFirstResponder(nil)
+        } else if focused, isSurfaceVisible {
+            window?.makeFirstResponder(self)
+        }
+    }
+
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(setAccessibilityValue(_:))
+            || selector == #selector(setAccessibilitySelectedText(_:)) {
+            // Keep the setter discoverable while Terminal is inactive — a
+            // dictation session targets a window that is not yet key — but
+            // never advertise a parked or unfocused pane as writable.
+            return isSurfaceVisible && window?.firstResponder === self
+        }
+        return super.isAccessibilitySelectorAllowed(selector)
+    }
+
+    /// A terminal appends at the cursor rather than holding a value that can be
+    /// replaced, so both editable AX routes feed the PTY instead of a buffer —
+    /// and only while this exact surface is the live text destination.
+    private func insertAccessibilityText(_ value: Any?) {
+        guard isSurfaceVisible, hasEffectiveTerminalFocus else { return }
+        let text = (value as? String) ?? (value as? NSAttributedString)?.string ?? ""
+        guard !text.isEmpty else { return }
+        sendText(text)
+    }
+
+    // MARK: - Focus
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()

@@ -7,7 +7,15 @@
 # for — which matters because debug builds are unsigned and lose a TCC grant on
 # every rebuild.
 #
-#   make e2e
+#   make e2e                      every backend, in turn
+#   make e2e E2E_BACKENDS=alacritty
+#
+# Runs the checks against one backend; `make e2e` invokes it once per backend,
+# because Terminal's two surfaces are separate implementations of one protocol
+# and a divergence between them is invisible to a run that only drives the
+# default. `sendText` meant "paste" on one and "type" on the other for as long
+# as this script tested Alacritty alone, which is how **cd Here** came to do
+# nothing on Ghostty.
 #
 # Launches a debug build with TERMINAL_AUTOMATION=1, drives it, and leaves it
 # running. Requires a GUI session; this cannot run on a headless runner.
@@ -18,19 +26,56 @@ setopt err_return
 # nothing yet is expected, not an error.
 setopt null_glob
 
-app=${1:?usage: e2e.sh /path/to/Terminal Debug.app}
+app=${1:?usage: e2e.sh /path/to/Terminal Debug.app [backend]}
+backend=${2:-alacritty}
 
 fail() { print -u2 "e2e: $*"; exit 1; }
 
+cli="$app/Contents/MacOS/terminal"
+[[ -x $cli ]] || fail "no terminal CLI inside $app"
+
+# --- the backend under test --------------------------------------------------
+
+# Debug builds read this file; see `AppSettings.configURL`. The developer's own
+# copy is put back on the way out, including when a check fails and exits.
+config="$HOME/.config/terminal-dev/config.toml"
+config_backup=$(mktemp)
+had_config=false
+if [[ -f $config ]]; then
+    cp "$config" "$config_backup"
+    had_config=true
+fi
+restore_config() {
+    if [[ $had_config == true ]]; then
+        cp "$config_backup" "$config"
+    else
+        rm -f "$config"
+    fi
+    rm -f "$config_backup"
+}
+trap restore_config EXIT INT TERM
+
+mkdir -p "${config:h}"
+if [[ $had_config == true ]]; then
+    grep -v '^terminal.backend' "$config_backup" > "$config" || true
+else
+    : > "$config"
+fi
+print "terminal.backend = \"$backend\"" >> "$config"
+
 # --- launch, armed -----------------------------------------------------------
+
+# An app that is already up has read its config, and `open` would only activate
+# it — so without this the backend under test would silently be whichever one
+# launched first.
+pkill -f 'Terminal Debug.app/Contents/MacOS/terminal' 2>/dev/null || true
+sleep 2
+rm -rf "${TMPDIR%/}"/terminal-cli-* 2>/dev/null || true
 
 # The bridge in this shell's environment, if any, belongs to whichever build
 # opened it; dropping it makes `open` start the app rather than talk to one.
 env -u TERMINAL_CLI_STATE -u TERMINAL_CLI_TOKEN -u TERMINAL_CLI_BUNDLE \
     open -a "$app" --env TERMINAL_AUTOMATION=1
-
-cli="$app/Contents/MacOS/terminal"
-[[ -x $cli ]] || fail "no terminal CLI inside $app"
 
 # The app writes its bridge once it has a state directory. Wait for the newest
 # one to appear rather than guessing how long a launch takes.
@@ -57,6 +102,9 @@ for key, value in {
 
 automate() { "$cli" +automation "$@"; }
 
+# The first shell has to reach its prompt before anything is typed at it.
+sleep 3
+
 # --- checks ------------------------------------------------------------------
 
 passed=0
@@ -73,7 +121,7 @@ check() {
     fi
 }
 
-print "e2e: driving $app"
+print "e2e: driving $app on the $backend backend"
 
 # A shell is there and answering: send a command and read the grid back. This
 # is the loop every content-level check is built out of.
@@ -133,7 +181,10 @@ sleep 2
 # which matches this grep, and wraps across two rows in a narrow pane. Drop the
 # echoed line so only the expanded values are read.
 env_line=$(automate readScreen | grep -v 'printf' | grep 'TERM_ENV term=' | tail -1)
-check "the session exports TERMINAL_TERM" "term=[alacritty]" "$env_line"
+# `TerminalBackend.environmentName`: the libghostty surface calls itself
+# ghostty, which is also what both backends report for TERM_PROGRAM below.
+[[ $backend == libghostty ]] && term_name=ghostty || term_name=$backend
+check "the session exports TERMINAL_TERM" "term=[$term_name]" "$env_line"
 check "TERM_PROGRAM advertises the Ghostty protocols" "program=[ghostty]" "$env_line"
 
 # --- OSC sequences the host intercepts ----------------------------------------
@@ -207,4 +258,4 @@ fi
 print "  ok   an unknown action is refused"
 (( passed += 1 ))
 
-print "e2e: $passed checks passed"
+print "e2e: $passed checks passed on the $backend backend"

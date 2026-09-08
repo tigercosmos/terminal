@@ -175,6 +175,9 @@ typedef struct {
   uint16_t cell_width;
   uint16_t cell_height;
   size_t scrollback_lines;
+  /// 0 block, 1 underline, 2 beam.
+  uint8_t cursor_shape;
+  bool cursor_blinking;
 } TerminalConfig;
 
 /// Spawns a shell on a new PTY and starts reading it. Returns NULL on failure.
@@ -210,6 +213,8 @@ void terminal_alacritty_scroll_to_offset(TerminalHandle *handle, size_t offset);
 /// snapshot, which rebuilds every visible cell.
 size_t terminal_alacritty_display_offset(TerminalHandle *handle);
 void terminal_alacritty_set_theme(TerminalHandle *handle, const AlacrittyPalette *theme);
+/// Replaces the default cursor, unless the program selected its own with DECSCUSR.
+void terminal_alacritty_set_cursor_style(TerminalHandle *handle, uint8_t shape, bool blinking);
 
 /// `kind`: 0 simple, 1 semantic (word), 2 line — single, double, triple click.
 void terminal_alacritty_selection_start(TerminalHandle *handle, int32_t line, size_t column,
