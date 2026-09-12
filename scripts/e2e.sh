@@ -45,23 +45,31 @@ if [[ -f $config ]]; then
     cp "$config" "$config_backup"
     had_config=true
 fi
-restore_config() {
+# The developer's clipboard is theirs too: the paste check overwrites it, and
+# a check that fails between the two exits through this trap rather than
+# reaching the line that puts it back. Plain text is as far as this carries.
+clipboard_backup=$(pbpaste 2>/dev/null) || true
+restore_state() {
     if [[ $had_config == true ]]; then
         cp "$config_backup" "$config"
     else
         rm -f "$config"
     fi
     rm -f "$config_backup"
+    print -rn -- "$clipboard_backup" | pbcopy
 }
-trap restore_config EXIT INT TERM
+trap restore_state EXIT INT TERM
 
 mkdir -p "${config:h}"
 if [[ $had_config == true ]]; then
-    grep -v '^terminal.backend' "$config_backup" > "$config" || true
+    grep -vE '^terminal.(backend|paste-protection)' "$config_backup" > "$config" || true
 else
     : > "$config"
 fi
 print "terminal.backend = \"$backend\"" >> "$config"
+# Written out rather than left to the default, so the paste check asserts the
+# shipped behaviour even on a machine whose config turns protection on.
+print "terminal.paste-protection = false" >> "$config"
 
 # --- launch, armed -----------------------------------------------------------
 
@@ -168,6 +176,20 @@ snapshot = json.load(sys.stdin)
 print(len(snapshot["projects"][snapshot.get("selectedProjectIndex") or 0]["tabs"]))
 ')
 check "runCommand new-session adds a tab" "$(( tabs_before + 1 ))" "$tabs_after"
+
+# --- the clipboard ------------------------------------------------------------
+
+# A multi-line paste is the one paste protection would stop. It is off by
+# default, so the text must reach the shell with no sheet in the way; a sheet
+# would leave the grid unchanged and fail this check rather than block it,
+# because the automation action returns as soon as the paste is dispatched.
+paste_marker="e2e-paste-$RANDOM"
+printf 'printf "%%s\\n" %s\n' "$paste_marker" | pbcopy
+automate paste
+sleep 1.5
+check "a multi-line paste reaches the shell without a confirmation sheet" \
+      "$paste_marker" "$(automate readScreen)"
+# The clipboard goes back on the way out, in `restore_state`.
 
 # --- what the shell is told it is running under -------------------------------
 

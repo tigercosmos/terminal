@@ -117,6 +117,11 @@ public enum TerminalCLIAutomationAction: String, CaseIterable, Sendable {
     case readScreen = "automation.readScreen"
     /// The scrollback, as text.
     case readScrollback = "automation.readScrollback"
+    /// Paste the clipboard into the focused surface through the same
+    /// responder-chain action Cmd-V sends, so a driver exercises the real
+    /// paste path — paste protection included — without an Accessibility
+    /// grant to synthesize the key.
+    case paste = "automation.paste"
     /// Run a command-palette action by its identifier.
     case runCommand = "automation.runCommand"
     /// The model-layer state a test wants to assert on, as the same JSON a

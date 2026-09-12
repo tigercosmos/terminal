@@ -53,6 +53,16 @@ extension TerminalCLIService {
             surface.sendTypedText(text)
             return .success()
 
+        case .paste:
+            guard let surface = focusedSurface() else {
+                return .failure("no terminal is focused")
+            }
+            guard let responder = Self.pasteResponder(in: surface) else {
+                return .failure("the focused terminal accepted no paste")
+            }
+            responder.perform(#selector(NSText.paste(_:)), with: nil)
+            return .success()
+
         case .readScreen, .readScrollback:
             guard let surface = focusedSurface() else {
                 return .failure("no terminal is focused")
@@ -117,6 +127,26 @@ extension TerminalCLIService {
         } catch {
             NSLog("terminal: failed to write the automation bridge: \(error)")
         }
+    }
+
+    /// The view inside `surface` that implements `paste(_:)` — the backend's
+    /// own paste, so a driver's paste goes through whatever it decides to
+    /// confirm first, exactly as Cmd-V does.
+    ///
+    /// Searched inside the surface rather than sent through `NSApp` or walked
+    /// up from the window's first responder. `NSApp` only has a target while
+    /// Terminal is active, and a driver runs with its own shell in front; the
+    /// window's first responder is the window itself for as long as a pane
+    /// opened a moment ago has yet to take focus, and nothing above a window
+    /// pastes. Both made the action depend on timing the driver cannot see.
+    /// Which view answers is still the backend's choice: the Alacritty
+    /// surface pastes itself, libghostty's is a subview of ours.
+    private static func pasteResponder(in surface: NSView) -> NSResponder? {
+        if surface.responds(to: #selector(NSText.paste(_:))) { return surface }
+        for subview in surface.subviews {
+            if let responder = pasteResponder(in: subview) { return responder }
+        }
+        return nil
     }
 
     private func focusedSurface() -> (any TerminalBackendSurface)? {
