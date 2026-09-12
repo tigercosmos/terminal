@@ -250,6 +250,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           "Cmd+click a file path in the terminal to reveal it in Finder, or Cmd+right-click a path or URL to open it as a file or browser tab or pane — resolved against that pane's own directory, and the file:12:5 suffixes compilers print are understood",
       },
       {
+        name: 'Selection that holds its place',
+        detail:
+          'drag to select, then Shift+click anywhere — even after scrolling the scrollback away from where you started — and the selection stretches to meet you instead of starting over',
+      },
+      {
         name: 'Scrollback that glides',
         detail:
           'a trackpad scrolls the scrollback by the pixel, not a row at a time — it tracks your fingers and stops where you let go',

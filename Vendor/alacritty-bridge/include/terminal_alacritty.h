@@ -221,6 +221,10 @@ void terminal_alacritty_selection_start(TerminalHandle *handle, int32_t line, si
                                     uint32_t kind, bool right_half);
 void terminal_alacritty_selection_update(TerminalHandle *handle, int32_t line, size_t column,
                                      bool right_half);
+/// Moves the loose end of an existing selection, as a shift-click does. False
+/// means there was none, so the caller should start one instead.
+bool terminal_alacritty_selection_extend(TerminalHandle *handle, int32_t line, size_t column,
+                                     bool right_half);
 void terminal_alacritty_selection_clear(TerminalHandle *handle);
 void terminal_alacritty_select_all(TerminalHandle *handle);
 bool terminal_alacritty_has_selection(TerminalHandle *handle);

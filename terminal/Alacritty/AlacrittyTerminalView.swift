@@ -1406,9 +1406,21 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         default: 0
         }
         selectionAnchor = (point.line, point.column)
-        terminal_alacritty_selection_start(
-            handle, Int32(point.line), point.column, kind, point.rightHalf
-        )
+        // Shift-click grows the selection that is already there instead of
+        // starting over, the way Alacritty and Ghostty do. The emulator keeps
+        // the selection in grid coordinates, so the old end survives however
+        // far the view scrolled between the two clicks. The extend reports
+        // whether it found a selection, since a bare click leaves an anchor
+        // that is real but still holds no text.
+        let extended = event.modifierFlags.contains(.shift)
+            && terminal_alacritty_selection_extend(
+                handle, Int32(point.line), point.column, point.rightHalf
+            )
+        if !extended {
+            terminal_alacritty_selection_start(
+                handle, Int32(point.line), point.column, kind, point.rightHalf
+            )
+        }
         scheduleRender(force: true)
     }
 

@@ -1613,6 +1613,14 @@ pub unsafe extern "C" fn terminal_alacritty_set_cursor_style(
 
 // MARK: - Selection
 
+/// The grid point under a viewport row, at the current scroll position. A
+/// selection is kept in grid coordinates, which is what lets a shift-click
+/// extend one after the view has scrolled away from where it started.
+fn viewport_point<T>(term: &Term<T>, line: i32, column: usize) -> Point {
+    let offset = term.grid().display_offset() as i32;
+    Point::new(Line(line - offset), Column(column))
+}
+
 /// Starts a selection at a viewport cell. `kind` is 0 simple, 1 semantic
 /// (word), 2 line — matching single, double, and triple click.
 ///
@@ -1631,8 +1639,7 @@ pub unsafe extern "C" fn terminal_alacritty_selection_start(
     }
     let terminal = &mut *handle;
     let mut term = terminal.term.lock();
-    let offset = term.grid().display_offset();
-    let point = Point::new(Line(line - offset as i32), Column(column));
+    let point = viewport_point(&term, line, column);
     let side = if right_half { Side::Right } else { Side::Left };
     let selection_type = match kind {
         1 => SelectionType::Semantic,
@@ -1656,12 +1663,43 @@ pub unsafe extern "C" fn terminal_alacritty_selection_update(
     }
     let terminal = &mut *handle;
     let mut term = terminal.term.lock();
-    let offset = term.grid().display_offset();
-    let point = Point::new(Line(line - offset as i32), Column(column));
+    let point = viewport_point(&term, line, column);
     let side = if right_half { Side::Right } else { Side::Left };
     if let Some(selection) = term.selection.as_mut() {
         selection.update(point, side);
     }
+}
+
+/// Moves the loose end of the selection already there to a viewport cell,
+/// which is what a shift-click does, and reports whether there was one to
+/// move. False means the caller should start a selection instead.
+///
+/// This is not `terminal_alacritty_has_selection` plus an update: that asks
+/// whether there is text to copy, and a bare click leaves an anchor holding
+/// none. Extending has to follow the anchor, or a click then a shift-click
+/// would select nothing.
+///
+/// # Safety
+/// `handle` must be live.
+#[no_mangle]
+pub unsafe extern "C" fn terminal_alacritty_selection_extend(
+    handle: *mut TerminalHandle,
+    line: i32,
+    column: usize,
+    right_half: bool,
+) -> bool {
+    if handle.is_null() {
+        return false;
+    }
+    let terminal = &mut *handle;
+    let mut term = terminal.term.lock();
+    let point = viewport_point(&term, line, column);
+    let side = if right_half { Side::Right } else { Side::Left };
+    let Some(selection) = term.selection.as_mut() else {
+        return false;
+    };
+    selection.update(point, side);
+    true
 }
 
 /// # Safety
@@ -3243,6 +3281,49 @@ mod tests {
             Point::new(Line(0), Column(4)),
         );
         assert_eq!(text, "hello");
+    }
+
+    /// A shift-click extends the selection to the clicked cell after the view
+    /// scrolled, so the anchor has to be resolved at the scroll position it
+    /// was clicked at and the extension at its own.
+    #[test]
+    fn a_selection_extended_after_scrolling_spans_both_clicks() {
+        // Six lines into a three-row screen leaves three in the scrollback.
+        let mut term = parse_sized(10, 3, b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+
+        // Scrolled to the top, the first viewport row is "one".
+        term.scroll_display(Scroll::Top);
+        let anchor = viewport_point(&term, 0, 0);
+        term.selection = Some(Selection::new(SelectionType::Simple, anchor, Side::Left));
+
+        // Back at the live bottom, the last viewport row is "six".
+        term.scroll_display(Scroll::Bottom);
+        let end = viewport_point(&term, 2, 2);
+        term.selection.as_mut().unwrap().update(end, Side::Right);
+
+        assert_eq!(
+            term.selection_to_string().unwrap_or_default(),
+            "one\ntwo\nthree\nfour\nfive\nsix"
+        );
+    }
+
+    /// A bare click leaves an anchor that copies nothing, so "is there text to
+    /// copy" is the wrong question to ask before extending one. Shift-clicking
+    /// after a plain click has to select the span between them.
+    #[test]
+    fn an_anchor_that_copies_nothing_can_still_be_extended() {
+        let mut term = parse_sized(10, 3, b"one\r\ntwo\r\nthree");
+
+        let anchor = viewport_point(&term, 0, 0);
+        term.selection = Some(Selection::new(SelectionType::Simple, anchor, Side::Left));
+
+        // What `terminal_alacritty_has_selection` answers: nothing to copy yet.
+        assert_eq!(term.selection_to_string().unwrap_or_default(), "");
+
+        // What the extend asks instead: there is an anchor to move.
+        let end = viewport_point(&term, 1, 2);
+        term.selection.as_mut().unwrap().update(end, Side::Right);
+        assert_eq!(term.selection_to_string().unwrap_or_default(), "one\ntwo");
     }
 
     /// A selection that runs off the end of a row picks up the newline the row

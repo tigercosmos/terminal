@@ -16,6 +16,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Shift-click extends the selection in Alacritty panes to the clicked cell,
+  including after scrolling away from where the selection began.
 - Choose the terminal cursor in Settings → Terminal: block, bar, or underline,
   blinking or steady. It reaches terminals that are already open, and steps
   aside for programs that ask for a cursor of their own
