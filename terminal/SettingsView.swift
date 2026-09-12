@@ -201,6 +201,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
 
                 Toggle(
+                    "Warn before pasting a command",
+                    isOn: $settings.pasteProtection
+                )
+                Text("Asks before pasting text that could run on its own, such as clipboard contents that end in a line break.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Toggle(
                     "Restore session history on relaunch",
                     isOn: $settings.restoreTerminalHistory
                 )
@@ -248,6 +256,7 @@ struct SettingsView: View {
                         && settings.cursorShape == .block
                         && settings.cursorBlinking
                         && !settings.macosOptionAsAlt
+                        && !settings.pasteProtection
                         && settings.language == .system
                         && settings.theme == .system
                         && settings.themeDark == Theme.defaultDarkThemeName

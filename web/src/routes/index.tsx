@@ -284,6 +284,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'block, bar or underline, blinking or steady, on both backends and applied to terminals already open — until a program asks for its own cursor, as editors and shells often do',
       },
       {
+        name: 'Paste without a sheet',
+        detail:
+          'Cmd+V puts the clipboard in the terminal, multi-line commands included — turn on Warn before pasting a command in Settings to be asked first; a program reading the clipboard over OSC 52 is always asked about',
+      },
+      {
         name: 'Dictation into a pane',
         detail:
           'terminal panes are text areas to VoiceOver and dictation, so assistive tools can type into the focused one — a parked or unfocused pane never accepts the text',

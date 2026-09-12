@@ -225,6 +225,17 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Ask for confirmation before pasting text that could submit a command
+    /// on its own — a newline, or an end-of-paste marker that closes the
+    /// bracket early. Off by default: Cmd-V is the user's own deliberate act,
+    /// and a sheet in front of every multi-line paste costs more than it
+    /// catches. Turn it on to be warned about clipboard contents copied from
+    /// a page that hid a command in them. Programs reading the clipboard over
+    /// OSC 52 are asked about regardless — that request isn't the user's.
+    @Published var pasteProtection: Bool {
+        didSet { save() }
+    }
+
     /// Restore each terminal's previous scrollback (as static, styled text)
     /// when the app relaunches, above the freshly started shell. Off by
     /// default: opt-in, and it writes captured output to disk.
@@ -292,6 +303,7 @@ final class AppSettings: nonisolated ObservableObject {
         ) ?? .block
         cursorBlinking = toml["terminal.cursor-blinking"]?.bool ?? true
         macosOptionAsAlt = toml["terminal.macos-option-as-alt"]?.bool ?? false
+        pasteProtection = toml["terminal.paste-protection"]?.bool ?? false
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
         compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
@@ -383,6 +395,7 @@ final class AppSettings: nonisolated ObservableObject {
         cursorShape = .block
         cursorBlinking = true
         macosOptionAsAlt = false
+        pasteProtection = false
         wrapLines = false
         compareLineBlame = true
         restoreTerminalHistory = false
@@ -424,6 +437,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if macosOptionAsAlt {
             lines.append("terminal.macos-option-as-alt = true")
+        }
+        if pasteProtection {
+            lines.append("terminal.paste-protection = true")
         }
         if wrapLines {
             lines.append("editor.wrap-lines = true")

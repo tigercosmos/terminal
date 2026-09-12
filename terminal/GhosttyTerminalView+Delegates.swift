@@ -128,21 +128,23 @@ extension GhosttyTerminalView {
                 settings.macosOptionAsAlt ? "true" : "false"
             )
             builder.withCustom("scrollbar", "never")
-            // Terminal-program clipboard access via OSC 52, matching the
-            // Ghostty app defaults: reads prompt the user per request
-            // (TerminalSession presents the confirmation sheet), writes
-            // are allowed so OSC 52 copy from remote tmux/vim works, and
-            // paste protection warns before pastes that look like they
-            // could execute commands. Never `allow` reads without a
+            // Terminal-program clipboard access via OSC 52: reads prompt
+            // the user per request (TerminalSession presents the
+            // confirmation sheet) and writes are allowed so OSC 52 copy
+            // from remote tmux/vim works. Never `allow` reads without a
             // prompt — that lets any program whose output reaches the
             // terminal, including a remote SSH host, silently exfiltrate
             // the macOS clipboard through the PTY. Set explicitly so the
             // wrapper's base config can never drift them. Cmd-C/Cmd-V are
-            // host-initiated and stay prompt-free (unless an unsafe paste
-            // trips protection).
+            // host-initiated and stay prompt-free unless the user turns on
+            // paste protection, which warns before pastes that look like
+            // they could execute commands.
             builder.withCustom("clipboard-read", "ask")
             builder.withCustom("clipboard-write", "allow")
-            builder.withCustom("clipboard-paste-protection", "true")
+            builder.withCustom(
+                "clipboard-paste-protection",
+                settings.pasteProtection ? "true" : "false"
+            )
         }
     }
 

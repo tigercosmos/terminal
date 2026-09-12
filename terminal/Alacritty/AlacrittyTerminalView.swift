@@ -1775,7 +1775,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             }
             return
         }
-        guard AlacrittyKeyMap.pasteNeedsConfirmation(text) else {
+        guard AppSettings.shared.pasteProtection,
+              AlacrittyKeyMap.pasteNeedsConfirmation(text)
+        else {
             write(AlacrittyKeyMap.paste(text, mode: terminalMode))
             return
         }

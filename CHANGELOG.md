@@ -24,6 +24,10 @@ the original feature bullet instead of adding separate entries for them.
 - Dictation and other assistive tools can enter text in a terminal pane. Panes
   are text areas to VoiceOver now, and only the focused, visible one accepts
   what is typed into it
+- Cmd+V pastes straight into the terminal, multi-line commands included,
+  instead of stopping at a confirmation sheet. Turn on **Warn before pasting a
+  command** in Settings → Terminal to be asked first. A program reading the
+  clipboard over OSC 52 is still asked about every time
 - Fixed a crash on every Git refresh once a file had been removed from the
   index but left on disk, as `git rm --cached` leaves it
 - Fixed new panes failing to start a shell after a long session on the Ghostty

@@ -120,9 +120,10 @@ final class TerminalManager: nonisolated ObservableObject {
                 AppSettings.shared.$themeLight.removeDuplicates()
             ),
             AppSettings.shared.$macosOptionAsAlt.removeDuplicates(),
-            Publishers.CombineLatest(
+            Publishers.CombineLatest3(
                 AppSettings.shared.$cursorShape.removeDuplicates(),
-                AppSettings.shared.$cursorBlinking.removeDuplicates()
+                AppSettings.shared.$cursorBlinking.removeDuplicates(),
+                AppSettings.shared.$pasteProtection.removeDuplicates()
             )
         )
             .dropFirst()

@@ -1065,6 +1065,22 @@
         }
       }
     },
+    "Asks before pasting text that could run on its own, such as clipboard contents that end in a line break." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "改行で終わるクリップボードの内容など、それだけで実行されうるテキストを貼り付ける前に確認します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在粘贴可能自行运行的文本前先询问，例如以换行符结尾的剪贴板内容。"
+          }
+        }
+      }
+    },
     "Authorize Clipboard Access" : {
       "localizations" : {
         "ja" : {
@@ -6842,6 +6858,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用所选内容查找"
+          }
+        }
+      }
+    },
+    "Warn before pasting a command" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コマンドの貼り付け前に警告"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴命令前警告"
           }
         }
       }
