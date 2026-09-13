@@ -78,6 +78,13 @@ final class TerminalManager: nonisolated ObservableObject {
     /// snapshot over the final full one.
     private static var isQuitting = false
     private static var didReopenWindows = false
+    #if DEBUG
+    /// Whatever the developer was working in when `make e2e` asked for a
+    /// window. SwiftUI activates the app as it opens one, which is the focus
+    /// theft the suite exists to avoid; `attach(to:)` hands activation
+    /// straight back and drops the window out of sight.
+    private static var automationDisplacedApp: NSRunningApplication?
+    #endif
 
     init() {
         if !Self.hasLoadedStore {
@@ -249,6 +256,9 @@ final class TerminalManager: nonisolated ObservableObject {
     func attach(to window: NSWindow) {
         self.window = window
         Self.isOpeningWindow = false
+        #if DEBUG
+        Self.keepAutomationWindowOutOfTheWay(window)
+        #endif
         let directories = Self.takePendingDirectories()
         if !directories.isEmpty, let startupProjectID,
            let startupProject = projects.first(where: { $0.id == startupProjectID }) {
@@ -294,6 +304,33 @@ final class TerminalManager: nonisolated ObservableObject {
         windowOpener = open
         requestWindowForPendingDirectories()
     }
+
+    #if DEBUG
+    /// `make e2e` launches the app without activating it, so the developer
+    /// keeps the keyboard — and SwiftUI opens no initial window for an app
+    /// that was never brought forward. The automation channel asks for one
+    /// here, through the same opener a Finder request uses after the last
+    /// window was closed. `attach(to:)` clears the guard once it lands.
+    static func openWindowForAutomation() {
+        guard !registry.contains(where: { $0.window != nil }),
+              !isOpeningWindow,
+              let windowOpener
+        else { return }
+        automationDisplacedApp = NSWorkspace.shared.frontmostApplication
+        isOpeningWindow = true
+        windowOpener()
+    }
+
+    private static func keepAutomationWindowOutOfTheWay(_ window: NSWindow) {
+        guard TerminalCLIAutomation.isEnabled() else { return }
+        if let displaced = automationDisplacedApp, NSApp.isActive {
+            NSApp.yieldActivation(to: displaced)
+            displaced.activate()
+        }
+        automationDisplacedApp = nil
+        window.orderOut(nil)
+    }
+    #endif
 
     private static func requestWindowForPendingDirectories() {
         guard !pendingDirectories.isEmpty,

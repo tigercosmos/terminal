@@ -32,6 +32,13 @@ extension TerminalCLIService {
                   to: request)
             return true
         }
+        // A background launch has no window until one is asked for; the
+        // driver polls `queryState` until this stops failing.
+        if TerminalManager.keyWindowManager == nil {
+            TerminalManager.openWindowForAutomation()
+            reply(.failure("no window is open yet"), to: request)
+            return true
+        }
         reply(perform(action, request), to: request)
         return true
     }

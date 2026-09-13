@@ -17,8 +17,10 @@
 # as this script tested Alacritty alone, which is how **cd Here** came to do
 # nothing on Ghostty.
 #
-# Launches a debug build with TERMINAL_AUTOMATION=1, drives it, and leaves it
-# running. Requires a GUI session; this cannot run on a headless runner.
+# Launches a debug build with TERMINAL_AUTOMATION=1 in the background with its
+# window kept off screen, drives it, and leaves it running. It never takes
+# focus, so the developer keeps typing where they were. Requires a GUI session
+# all the same; this cannot run on a headless runner.
 
 set -u
 setopt err_return
@@ -82,8 +84,16 @@ rm -rf "${TMPDIR%/}"/terminal-cli-* 2>/dev/null || true
 
 # The bridge in this shell's environment, if any, belongs to whichever build
 # opened it; dropping it makes `open` start the app rather than talk to one.
+#
+# `-g` starts the app without activating it, so focus stays where the
+# developer is working and no keystroke meant for the editor next door ends up
+# typed into the shell under test. SwiftUI opens no window for an app that was
+# never brought forward (nor for one launched hidden with `-j`), so the first
+# request over the channel asks for one; see `openWindowForAutomation`. The
+# suite never needs to see that window: every check reads the grid and the
+# session snapshot back over the CLI channel.
 env -u TERMINAL_CLI_STATE -u TERMINAL_CLI_TOKEN -u TERMINAL_CLI_BUNDLE \
-    open -a "$app" --env TERMINAL_AUTOMATION=1
+    open -g -a "$app" --env TERMINAL_AUTOMATION=1
 
 # The app writes its bridge once it has a state directory. Wait for the newest
 # one to appear rather than guessing how long a launch takes.
@@ -109,6 +119,14 @@ for key, value in {
 )"
 
 automate() { "$cli" +automation "$@"; }
+
+# An app that was never activated opens no window on its own; the first
+# request asks for one, and the answers fail until it has attached.
+for _ in {1..50}; do
+    automate queryState >/dev/null 2>&1 && break
+    sleep 0.2
+done
+automate queryState >/dev/null 2>&1 || fail "the app never opened a window"
 
 # The first shell has to reach its prompt before anything is typed at it.
 sleep 3

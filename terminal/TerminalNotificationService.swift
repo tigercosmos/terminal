@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import TerminalCore
 import UserNotifications
 
 /// Delivers terminal notification requests through macOS Notification Center.
@@ -37,6 +38,14 @@ final class TerminalNotificationService: NSObject, UNUserNotificationCenterDeleg
 
     func post(message: String, sessionID: UUID? = nil) {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        #if DEBUG
+        // `make e2e` sends OSC 9 and 777 only to prove the bytes after them
+        // still arrive; whether a banner was posted is not something it can
+        // read back. A real banner, and the permission sheet an unsigned
+        // rebuild re-raises, would land on the developer's screen — exactly
+        // what the suite promises not to do.
+        if TerminalCLIAutomation.isEnabled() { return }
+        #endif
         DispatchQueue.main.async { [weak self] in
             self?.checkAuthorization(for: message, sessionID: sessionID)
         }

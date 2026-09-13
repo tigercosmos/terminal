@@ -70,7 +70,10 @@ build with `TERMINAL_AUTOMATION=1` and drives the running app through the same
 channel the `terminal` CLI uses: input goes in through the backend's own typed
 input and state comes back as text, so neither Screen Recording nor
 Accessibility is ever requested — which matters because debug builds are
-unsigned and lose a TCC grant on every rebuild.
+unsigned and lose a TCC grant on every rebuild. The app is launched in the
+background and its window is kept off screen, so nothing comes forward and
+nothing you type meanwhile lands in the shell under test; keep working while
+it runs.
 
 The suite runs once per backend, selecting each in
 `~/.config/terminal-dev/config.toml` and restoring your own file afterwards.
