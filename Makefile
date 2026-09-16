@@ -11,6 +11,7 @@ BRIDGE      := Vendor/alacritty-bridge/Cargo.toml
 CORE        := TerminalCore
 DESTINATION ?= platform=macOS,arch=$(shell uname -m)
 INSTALL_DIR ?= /Applications
+DERIVED     ?= $(HOME)/Library/Developer/Xcode/DerivedData
 # The e2e suite runs once per backend: the two surfaces implement one protocol
 # separately, so only driving the default hides where they disagree.
 E2E_BACKENDS ?= alacritty libghostty
@@ -52,7 +53,7 @@ endef
 .DEFAULT_GOAL := help
 .PHONY: help deps build build-release run install uninstall \
         test test-swift test-rust test-web e2e lint fmt fmt-check \
-        web web-build dist clean
+        web web-build dist clean clean-derived prune-derived
 
 help: ## Show this help
 	@grep -hE '^[a-z][a-z-]*:.*## ' $(MAKEFILE_LIST) \
@@ -99,7 +100,7 @@ test-swift: ## Test the TerminalCore package
 # Needs a GUI session: it launches the app and drives it. Nothing is captured
 # from the screen and no input is synthesized from outside the app, so neither
 # Screen Recording nor Accessibility is ever requested.
-e2e: build ## Drive a running Debug build over the CLI channel
+e2e: prune-derived build ## Drive a running Debug build over the CLI channel
 	@$(call resolve_app,Debug); \
 	for backend in $(E2E_BACKENDS); do \
 		scripts/e2e.sh "$$app" "$$backend" || exit 1; \
@@ -129,8 +130,38 @@ web-build: ## Build the website
 dist: ## Cut a release (maintainers only — see RELEASING.md)
 	bun scripts/release.ts
 
-clean: ## Remove build products
+clean: clean-derived ## Remove build products
 	$(XCODEBUILD) -configuration Debug clean
 	$(XCODEBUILD) -configuration Release clean
 	cargo clean --manifest-path $(BRIDGE)
 	rm -rf build
+
+# Xcode keys derived data to the project's path, so every worktree builds its
+# own multi-gigabyte copy of "Terminal Debug.app" and every one of them answers
+# a Spotlight search for Terminal. Nothing here is a source of truth: a removed
+# directory is rebuilt on the next build, so the only cost of dropping one is
+# the rebuild.
+#
+# The checkout is identified by info.plist's WorkspacePath rather than by asking
+# xcodebuild, which would cost a settings load per invocation.
+define each_derived
+for dir in $(DERIVED)/terminal-*; do \
+	[ -d "$$dir" ] || continue; \
+	src=$$(plutil -extract WorkspacePath raw "$$dir/info.plist" 2>/dev/null) || continue
+endef
+
+clean-derived: ## Drop derived data belonging to other checkouts of this project
+	@$(each_derived); \
+		[ "$$src" = "$(CURDIR)/$(PROJECT)" ] && continue; \
+		echo "Removing derived data for $$src"; \
+		rm -rf "$$dir"; \
+	done
+
+# Safe enough to run before every e2e pass: it only touches derived data whose
+# checkout is gone, which no build can reach again.
+prune-derived: ## Drop derived data whose checkout no longer exists
+	@$(each_derived); \
+		[ -e "$$src" ] && continue; \
+		echo "Removing derived data for deleted $$src"; \
+		rm -rf "$$dir"; \
+	done
