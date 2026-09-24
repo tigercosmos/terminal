@@ -16,6 +16,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Text being composed with an input method (Bopomofo, Pinyin, Japanese) shows
+  every character as it is typed in Alacritty panes. The last one was hidden
+  until Enter confirmed it
 - Shift-click extends the selection in Alacritty panes to the clicked cell,
   including after scrolling away from where the selection began.
 - Choose the terminal cursor in Settings → Terminal: block, bar, or underline,

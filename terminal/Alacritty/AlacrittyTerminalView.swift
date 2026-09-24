@@ -841,8 +841,12 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         markedTextField.backgroundColor = Theme.terminal(
             dark: NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         ).backgroundNSColor
+        // Size from the field itself, not the string: the cell adds its own
+        // horizontal insets, and `.byClipping` drops any glyph that does not
+        // fit whole — so a frame sized to the string alone hid the last
+        // character of every composition until the IME committed it.
         let width = max(
-            attributed.size().width.rounded(.up) + 2,
+            markedTextField.fittingSize.width.rounded(.up),
             metrics.cellWidth
         )
         markedTextField.frame = NSRect(
