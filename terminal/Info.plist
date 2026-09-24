@@ -65,6 +65,15 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A program running within Terminal would like to use your microphone.</string>
 
+	<!-- Shell commands that read ~/Desktop or ~/Downloads trip the same
+	     per-folder privacy gate, again attributed to Terminal. macOS decides
+	     whether to ask and the user decides whether to allow; these strings
+	     only make the prompt explain itself instead of showing a generic one. -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>A program running within Terminal would like to access files in your Desktop folder.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>A program running within Terminal would like to access files in your Downloads folder.</string>
+
 	<!-- Sparkle auto-update configuration. Both values are deliberately empty:
 	     this fork has no release host and no signing key of its own yet, and a
 	     feed URL on a domain we do not control must never ship. The in-app
