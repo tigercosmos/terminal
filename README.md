@@ -37,6 +37,13 @@ the full feature list, every keyboard shortcut, and the changelog.
   a switch away, a command palette, and a file tree and editor in panes beside
   the shell rather than in a separate window. Command-click a path a command
   printed to reveal it in Finder, or open it as a pane.
+- **Yours to shape** — pick the cursor (block, bar, or underline, blinking or
+  steady), paste multi-line commands with ⌘V and no confirmation sheet unless
+  you ask for one, and type through any macOS input method or dictation.
+- **Stays out of your protected folders** — one setting keeps Terminal's own
+  file, Git, and search panels away from Desktop, Documents, Downloads, and
+  iCloud Drive, so macOS stops asking for access on their behalf whenever a
+  shell cd's into one.
 - **Native and localized** — macOS appearance and keyboard conventions, in
   English, Simplified Chinese, and Japanese.
 

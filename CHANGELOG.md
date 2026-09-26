@@ -14,7 +14,7 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
-## [unrelease]
+## [0.8.0]
 
 - Text being composed with an input method (Bopomofo, Pinyin, Japanese) shows
   every character as it is typed in Alacritty panes. The last one was hidden
