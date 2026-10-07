@@ -19,7 +19,9 @@ import TerminalCore
 /// ``TerminalBackendEvents``, and names no emulator's types itself.
 @MainActor
 final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated Identifiable {
-    nonisolated let id = UUID()
+    /// Chosen before the shell launches, because the shell's environment names
+    /// it: an automation capability is issued to this one terminal.
+    nonisolated let id: UUID
 
     @Published var title: String
     @Published var workingDirectory: String?
@@ -36,6 +38,9 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     @Published var hasExited = false
     @Published private(set) var commandLifecycle = TerminalCommandLifecycle()
     @Published private(set) var terminalCellSize: CGSize?
+    /// Recognized coding agent occupying this terminal, if any. The monitor
+    /// reconciles foreground process identity with explicit lifecycle events.
+    @Published var agentStatus: KeroAgentStatus?
 
     /// The emulator driving this session. Fixed for the session's lifetime —
     /// changing the setting only affects terminals opened afterwards.
@@ -76,6 +81,10 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     private var lastHistorySnapshot: String?
     private var isTerminating = false
     private var commandExecutionStartedAtNanos: UInt64?
+    /// Alternate-screen transcript paging must begin at the live prompt, never
+    /// from text the user has scrolled back to inspect.
+    var terminalIsAtLiveBottom = true
+    let agentObservation = KeroAgentObservationState()
 
     init(
         initialDirectory: String? = nil,
@@ -83,6 +92,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         commandArguments: [String]? = nil,
         environmentPath: String? = nil
     ) {
+        let sessionID = UUID()
         let directCommand = commandArguments.flatMap { $0.isEmpty ? nil : $0 }
         let shellPath = directCommand?.first ?? Self.loginShell()
         let directory = Self.validWorkingDirectory(initialDirectory)
@@ -100,9 +110,13 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
             arguments: ["-c", script],
             commandLine: "/bin/sh -c \(Self.shellQuote(script))",
             workingDirectory: directory,
-            environment: Self.surfaceEnvironment(pathOverride: environmentPath)
+            environment: Self.surfaceEnvironment(
+                pathOverride: environmentPath,
+                sessionID: sessionID
+            )
         )
 
+        id = sessionID
         self.shellPath = shellPath
         self.backend = backend
         launchWorkingDirectory = directory
@@ -119,6 +133,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         surface.events = self
         installOverlayScrollbar()
         applyTheme()
+        AgentAutomationMonitor.shared.register(self)
     }
 
     deinit {
@@ -214,6 +229,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     }
 
     private func removeLaunchArtifacts() {
+        TerminalCLIService.shared.revokeTerminal(id: id)
         guard let launchDirectoryURL else { return }
         try? FileManager.default.removeItem(at: launchDirectoryURL)
     }
@@ -322,13 +338,16 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
 
     // MARK: - Launch
 
-    private static func surfaceEnvironment(pathOverride: String?) -> [String: String] {
+    private static func surfaceEnvironment(
+        pathOverride: String?,
+        sessionID: UUID
+    ) -> [String: String] {
         var environment = [
             "TERM": "xterm-256color",
             "COLORTERM": "truecolor",
         ]
         environment.merge(
-            TerminalCLIService.shared.terminalEnvironment,
+            TerminalCLIService.shared.terminalEnvironment(for: sessionID),
             uniquingKeysWith: { _, cliValue in cliValue }
         )
         if let pathOverride, !pathOverride.isEmpty {
@@ -664,6 +683,7 @@ extension TerminalSession: TerminalBackendEvents {
     }
 
     func terminalDidScroll(_ position: TerminalScrollPosition) {
+        terminalIsAtLiveBottom = position.position >= 0.999
         overlayScrollbar.update(
             position: position.position,
             proportion: position.proportion,

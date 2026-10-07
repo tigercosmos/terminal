@@ -381,6 +381,14 @@ private struct TerminalCommands: Commands {
             .disabled(manager?.hasSelectedBrowser != true)
         }
 
+        CommandMenu("Agents") {
+            Button("Next Agent Needing Attention") {
+                manager?.focusNextAgentAttention()
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+            .disabled(manager?.hasAgentAttention != true)
+        }
+
         CommandMenu("Tabs") {
             Button("Split Right") {
                 manager?.splitRight()

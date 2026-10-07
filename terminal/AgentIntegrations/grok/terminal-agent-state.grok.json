@@ -1,0 +1,49 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration grok working # TERMINAL_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration grok idle --genuine-stop # TERMINAL_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration grok blocked # TERMINAL_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "agent_error",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration grok blocked # TERMINAL_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

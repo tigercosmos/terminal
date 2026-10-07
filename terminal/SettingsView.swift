@@ -13,6 +13,10 @@ struct SettingsView: View {
     @ObservedObject private var updater = Updater.shared
     @State private var relaunchError = ""
     @State private var isShowingRelaunchError = false
+    /// Why the last change to the agents setting was refused — a file Terminal
+    /// does not manage is in the way. Shown under the toggle, which stays as
+    /// it was.
+    @State private var aiError = ""
 
     /// Installed fixed-pitch families (bundled default first).
     private let families = TerminalFont.selectableFamilies()
@@ -221,6 +225,24 @@ struct SettingsView: View {
                 Toggle("Wrap lines to editor width", isOn: $settings.wrapLines)
             }
 
+            Section("Agents") {
+                Toggle(
+                    "Let coding agents coordinate panes",
+                    isOn: Binding(
+                        get: { settings.aiEnabled },
+                        set: setAIEnabled
+                    )
+                )
+                Text("Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if !aiError.isEmpty {
+                    Text(verbatim: aiError)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("Privacy") {
                 Toggle(
                     "Never read protected folders",
@@ -263,6 +285,7 @@ struct SettingsView: View {
                         && settings.themeLight == Theme.defaultLightThemeName
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
+                        && !settings.aiEnabled
                         && !settings.denyProtectedFolders
                         && settings.terminalBackend == .fallback)
                 }
@@ -282,6 +305,15 @@ struct SettingsView: View {
 
     private var previewFont: NSFont {
         TerminalFont.resolve(family: settings.fontFamily, size: CGFloat(settings.fontSize))
+    }
+
+    private func setAIEnabled(_ enabled: Bool) {
+        do {
+            try settings.setAIEnabled(enabled)
+            aiError = ""
+        } catch {
+            aiError = error.localizedDescription
+        }
     }
 
     private func relaunch() {

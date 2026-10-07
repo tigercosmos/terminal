@@ -171,6 +171,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'Cmd+D splits right, Cmd+Shift+D splits down, Opt+Cmd+arrows moves focus between panes, or drag a tab onto the content to split it there — a tab that is already split keeps its panes and their proportions',
       },
       {
+        name: 'Agents that hand off',
+        detail:
+          'an agent in one pane can split another, start Claude Code, Codex or seven other CLIs there, prompt it and wait for the result with terminal +pane and terminal +agent — kept inside its own project, never stealing focus, with a badge on every pane, tab and project saying who is working, blocked or done, and Cmd+Shift+A to jump to the next one waiting on you',
+      },
+      {
         name: 'Clear the clutter',
         detail:
           "Close Files and Close Diffs in a tab's context menu drop those panes everywhere at once, leaving the terminals alone",

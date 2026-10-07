@@ -42,6 +42,15 @@ enum PaneContent: nonisolated Identifiable {
         if case .file = self { return true }
         return false
     }
+
+    /// Diffs and comparisons fill their pane by design; a split beside one is
+    /// refused rather than squeezing the side-by-side view.
+    var canSplit: Bool {
+        switch self {
+        case .diff, .compare: return false
+        default: return true
+        }
+    }
 }
 
 extension PaneContent {
@@ -190,12 +199,7 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// stay in their own single-pane tab so their always-mounted web view keeps
     /// filling it; a comparison is already a two-column split of its own, and
     /// halving it again leaves neither column readable.
-    var canSplit: Bool {
-        switch focusedContent {
-        case .diff, .compare: return false
-        default: return true
-        }
-    }
+    var canSplit: Bool { focusedContent?.canSplit ?? true }
 
     // MARK: - Navigation
 
@@ -309,11 +313,23 @@ final class PaneTab: nonisolated ObservableObject, nonisolated Identifiable {
     /// Inserts `pane` inside the focused pane's rectangle, taking half of that
     /// rectangle on the requested edge. Focuses the new pane.
     func split(_ pane: Pane, toward edge: PaneDropEdge) {
+        split(pane, toward: edge, beside: focusedPaneID, focusInserted: true)
+    }
+
+    /// Automation can split a specific pane without stealing the user's tab
+    /// or pane focus. Interactive split commands keep using the convenience
+    /// overload above and therefore focus the inserted pane.
+    func split(
+        _ pane: Pane,
+        toward edge: PaneDropEdge,
+        beside requestedTarget: UUID,
+        focusInserted: Bool
+    ) {
         unzoom()
-        let target = layout.contains(focusedPaneID)
-            ? focusedPaneID : layout.allPanes[0].id
+        let target = layout.contains(requestedTarget)
+            ? requestedTarget : layout.allPanes[0].id
         layout = layout.inserting(pane, toward: edge, beside: target)
-        focusedPaneID = pane.id
+        if focusInserted { focusedPaneID = pane.id }
     }
 
     /// Inserts another tab's complete layout beside a pane in this tab. The

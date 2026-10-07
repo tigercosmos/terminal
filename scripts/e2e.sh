@@ -291,6 +291,134 @@ automate runCommand toggle-fps-counter
 sleep 1
 check "the window survives hiding it again" '"projects"' "$(automate queryState)"
 
+# --- pane and agent automation --------------------------------------------------
+
+# `terminal +pane` and `terminal +agent` run inside the app's own shell, the way
+# an agent would call them. Each writes its JSON to a file in a scratch
+# directory rather than to the grid, where a narrow pane would wrap it.
+work=$(mktemp -d)
+in_shell() {
+    local name=$1; shift
+    rm -f "$work/$name"
+    automate sendText "$* > '$work/$name' 2>&1
+"
+    for _ in {1..50}; do
+        sleep 0.2
+        [[ -s $work/$name ]] && { sleep 0.2; cat "$work/$name"; return; }
+    done
+    print "(no output from: $*)"
+}
+json_field() {
+    /usr/bin/python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+for key in sys.argv[1].split("."):
+    value = value[key]
+print(json.dumps(value) if isinstance(value, (dict, list, bool)) or value is None else value)
+' "$1"
+}
+
+check "the shell is told agent automation is on" "agent=[1]" \
+      "$(in_shell env.txt 'printf "agent=[%s]" "$TERMINAL_AGENT_AUTOMATION"')"
+
+current=$(in_shell current.json terminal +pane current)
+check "+pane current names the calling terminal" '"is_caller":true' "$current"
+
+forged=$(in_shell forged.txt 'TERMINAL_AGENT_AUTOMATION_TOKEN=forged terminal +pane list')
+check "a forged capability is refused" "unauthorized" "$forged"
+
+panes_before=$(automate queryState | /usr/bin/python3 -c '
+import json, sys
+snapshot = json.load(sys.stdin)
+tabs = snapshot["projects"][snapshot.get("selectedProjectIndex") or 0]["tabs"]
+print(len(json.dumps(tabs).split("\"pane\"")) - 1)
+')
+# Split and run in one command line, the way an agent does it. The split
+# answers before the new pane's shell exists, so the run has to wait for that
+# shell rather than be refused as busy.
+run_marker="e2e-run-$RANDOM"
+ran=$(in_shell run.json "W=\$(terminal +pane split --right --cwd '$work' | tee '$work/split.json' \
+    | /usr/bin/python3 -c 'import json, sys; print(json.load(sys.stdin)[\"pane_id\"])') \
+    && terminal +pane run --pane \$W -- printf '%s\\n' $run_marker")
+check "+pane run straight after a split waits for the new shell" '"content":"terminal"' "$ran"
+split=$(cat "$work/split.json")
+check "+pane split leaves focus where it was" '"is_focused":false' "$split"
+worker=$(print -r -- "$split" | json_field pane_id)
+panes_after=$(automate queryState | /usr/bin/python3 -c '
+import json, sys
+snapshot = json.load(sys.stdin)
+tabs = snapshot["projects"][snapshot.get("selectedProjectIndex") or 0]["tabs"]
+print(len(json.dumps(tabs).split("\"pane\"")) - 1)
+')
+check "+pane split adds a pane" "$(( panes_before + 1 ))" "$panes_after"
+
+waited=$(in_shell wait.json terminal +pane wait-output --pane "$worker" \
+    --contains "$run_marker" --timeout 10000)
+check "+pane run executes in the other pane and wait-output sees it" \
+      "$run_marker" "$(print -r -- "$waited" | json_field text)"
+
+# A stand-in agent: recognized as Claude Code because the script is named
+# `claude`, it turns on bracketed paste as a real agent does and records every
+# byte it is sent until Ctrl-C.
+mkdir -p "$work/bin"
+cat > "$work/bin/claude" <<'AGENT'
+#!/bin/zsh
+printf '\033[?2004h'
+stty raw -echo
+while IFS= read -r -u0 -k1 c; do
+    [[ $c == $'\x03' ]] && break
+    printf '%s' "$c" >> "$1"
+done
+printf '\033[?2004l'
+stty sane
+AGENT
+chmod +x "$work/bin/claude"
+in_shell path.json terminal +pane send --pane "$worker" \
+    --text "\"export PATH='$work/bin':\\\$PATH\"" --enter >/dev/null
+sleep 1
+
+started=$(in_shell start.json terminal +agent start stand-in --kind claude \
+    --pane "$worker" --timeout 10000 -- "'$work/agent.log'")
+check "+agent start returns once the agent is recognized" '"state":"created"' "$started"
+
+in_shell prompt.json terminal +agent prompt stand-in --text "\$'line one\\nline two'" >/dev/null
+sleep 1.5
+check "a prompt moves the agent to working" '"state":"working"' \
+      "$(in_shell get.json terminal +agent get stand-in)"
+# One bracketed paste and then one Return: typed input would have submitted
+# each line on its own, which is what the Ghostty surface does with newlines.
+prompt_bytes=$(/usr/bin/python3 -c '
+import sys
+data = open(sys.argv[1], "rb").read()
+start, end = data.find(b"\x1b[200~"), data.find(b"\x1b[201~")
+ok = 0 <= start < end and data[start:end].count(b"line") == 2 \
+    and data[end + 6:].startswith(b"\r")
+print("one-paste" if ok else repr(data))
+' "$work/agent.log" 2>&1)
+check "a multi-line prompt arrives as one paste, then Return" "one-paste" "$prompt_bytes"
+
+in_shell stop.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
+sleep 2.5
+check "an agent that exits leaves the agent list" "[]" \
+      "$(in_shell list.json terminal +agent list)"
+
+# Agents started by hand take their kind as their name, so two of them are
+# both `claude`. A prompt by that name must be refused, not sent to whichever
+# pane comes first.
+split2=$(in_shell split2.json terminal +pane split --down --pane "$worker" --cwd "'$work'")
+second=$(print -r -- "$split2" | json_field pane_id)
+in_shell hand1.json terminal +pane run --pane "$worker" -- "'$work/bin/claude'" "'$work/hand1.log'" >/dev/null
+in_shell hand2.json terminal +pane run --pane "$second" -- "'$work/bin/claude'" "'$work/hand2.log'" >/dev/null
+sleep 2
+check "two agents sharing a name are refused rather than guessed" "ambiguous_alias" \
+      "$(in_shell ambiguous.txt terminal +agent prompt claude --text hello)"
+for pane in $worker $second; do
+    in_shell "stop-$pane.json" terminal +pane send --pane "$pane" --text "\$'\\x03'" >/dev/null
+done
+[[ ! -s $work/hand1.log && ! -s $work/hand2.log ]] \
+    || fail "a refused prompt still reached an agent"
+rm -rf "$work"
+
 # An action the app does not offer is refused rather than run.
 if automate eval "rm -rf /" 2>/dev/null; then
     fail "an unknown automation action was accepted"

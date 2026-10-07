@@ -4,6 +4,214 @@
     "" : {
       "shouldTranslate" : false
     },
+    "\nRestart running agents to load the skill." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\n実行中のエージェントを再起動してスキルを読み込んでください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\n请重启正在运行的代理以加载该技能。"
+          }
+        }
+      }
+    },
+    "\nRestart running agents to refresh their available skills." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\n実行中のエージェントを再起動して、使えるスキルを更新してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\n请重启正在运行的代理以刷新其可用技能。"
+          }
+        }
+      }
+    },
+    "%@ finished" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@が完了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已完成"
+          }
+        }
+      }
+    },
+    "%@ needs attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@の対応が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要处理"
+          }
+        }
+      }
+    },
+    "%@ requires a positive integer." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ には正の整数が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要一个正整数。"
+          }
+        }
+      }
+    },
+    "%@ requires a value." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ には値が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要一个值。"
+          }
+        }
+      }
+    },
+    "%@ requires an agent alias, --pane, or --current." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ にはエージェントの別名、--pane、--current のいずれかが必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要代理别名、--pane 或 --current。"
+          }
+        }
+      }
+    },
+    "%lld agents finished" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントが完了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理已完成"
+          }
+        }
+      }
+    },
+    "%lld agents idle" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントが待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理空闲"
+          }
+        }
+      }
+    },
+    "%lld agents in an unknown state" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントの状態が不明"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理状态未知"
+          }
+        }
+      }
+    },
+    "%lld agents need attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントの対応が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理需要处理"
+          }
+        }
+      }
+    },
+    "%lld agents starting" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントを起動中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理正在启动"
+          }
+        }
+      }
+    },
+    "%lld agents working" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld個のエージェントが作業中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个代理正在工作"
+          }
+        }
+      }
+    },
     "%lld files" : {
       "localizations" : {
         "ja" : {
@@ -32,6 +240,246 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "+%lld、−%lld"
+          }
+        }
+      }
+    },
+    "--state accepts comma-separated created, working, blocked, done, idle, or unknown." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--state にはカンマ区切りで created、working、blocked、done、idle、unknown を指定できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--state 接受以逗号分隔的 created、working、blocked、done、idle 或 unknown。"
+          }
+        }
+      }
+    },
+    "`terminal +agent start` requires --kind." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +agent start` には --kind が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +agent start` 需要 --kind。"
+          }
+        }
+      }
+    },
+    "`terminal +agent start` requires an alias." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +agent start` には別名が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +agent start` 需要一个别名。"
+          }
+        }
+      }
+    },
+    "`terminal +pane run` requires `-- command [arguments...]`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane run` には `-- command [arguments...]` が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane run` 需要 `-- command [arguments...]`。"
+          }
+        }
+      }
+    },
+    "`terminal +pane send` requires --text." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane send` には --text が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane send` 需要 --text。"
+          }
+        }
+      }
+    },
+    "`terminal +pane wait-output` requires --contains." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane wait-output` には --contains が必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal +pane wait-output` 需要 --contains。"
+          }
+        }
+      }
+    },
+    "Agent finished" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントが完了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理已完成"
+          }
+        }
+      }
+    },
+    "Agent idle" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントは待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理空闲"
+          }
+        }
+      }
+    },
+    "Agent needs attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの対応が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理需要处理"
+          }
+        }
+      }
+    },
+    "Agent start timeout must be between 3000 and 300000 milliseconds." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント起動のタイムアウトは 3000～300000 ミリ秒で指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理启动超时必须介于 3000 到 300000 毫秒之间。"
+          }
+        }
+      }
+    },
+    "Agent starting" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントを起動中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理正在启动"
+          }
+        }
+      }
+    },
+    "Agent state unknown" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの状態は不明"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理状态未知"
+          }
+        }
+      }
+    },
+    "Agent working" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントが作業中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理正在工作"
+          }
+        }
+      }
+    },
+    "Agents" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代理"
+          }
+        }
+      }
+    },
+    "Already linked" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンク済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已链接"
           }
         }
       }
@@ -100,6 +548,38 @@
         }
       }
     },
+    "Choose exactly one agent alias, --pane, or --current." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの別名、--pane、--current のいずれか1つだけを指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请只指定代理别名、--pane 或 --current 中的一个。"
+          }
+        }
+      }
+    },
+    "Choose only one --provider value." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--provider の値は1つだけ指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只能指定一个 --provider 值。"
+          }
+        }
+      }
+    },
     "Clean" : {
       "localizations" : {
         "ja" : {
@@ -144,6 +624,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "关闭文件"
+          }
+        }
+      }
+    },
+    "Could not encode Terminal's automation response." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal の自動化の応答をエンコードできませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法编码 Terminal 的自动化响应。"
           }
         }
       }
@@ -260,6 +756,38 @@
         }
       }
     },
+    "Installed and current" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストール済み・最新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装且为最新"
+          }
+        }
+      }
+    },
+    "Installed Terminal automation skill." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自動化スキルをインストールしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已安装 Terminal 自动化技能。"
+          }
+        }
+      }
+    },
     "Keeps the toolbar hidden" : {
       "localizations" : {
         "ja" : {
@@ -272,6 +800,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "始终隐藏工具栏"
+          }
+        }
+      }
+    },
+    "Let coding agents coordinate panes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コーディングエージェントがペインを連携できるようにする"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许编程代理协调面板"
+          }
+        }
+      }
+    },
+    "Linked" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクしました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已链接"
+          }
+        }
+      }
+    },
+    "Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminalの自動化スキルをClaude Code、Codexなどのエージェントにリンクし、インストール済みのOpenCode、Pi、Grok Buildにはライフサイクルフックをリンクします。エージェントは`terminal +pane`と`terminal +agent`でペインを分割し、別のエージェントを起動して完了を待てるようになります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将 Terminal 的自动化技能链接到 Claude Code、Codex 等代理，并将生命周期钩子链接到已安装的 OpenCode、Pi 和 Grok Build。之后代理可以通过 `terminal +pane` 和 `terminal +agent` 拆分面板、启动其他代理并等待其完成。"
+          }
+        }
+      }
+    },
+    "Locally modified" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルで変更あり"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在本地修改"
+          }
+        }
+      }
+    },
+    "Name an agent alias or pass --pane." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの別名を指定するか、--pane を渡してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请指定代理别名或传入 --pane。"
+          }
+        }
+      }
+    },
+    "Needs relinking" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再リンクが必要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要重新链接"
           }
         }
       }
@@ -308,6 +932,38 @@
         }
       }
     },
+    "Next Agent Needing Attention" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応が必要な次のエージェント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一个需要处理的代理"
+          }
+        }
+      }
+    },
+    "No command was provided after `--`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`--` の後にコマンドが指定されていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`--` 之后没有提供命令。"
+          }
+        }
+      }
+    },
     "No file changes" : {
       "localizations" : {
         "ja" : {
@@ -320,6 +976,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无文件更改"
+          }
+        }
+      }
+    },
+    "Not installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未インストール"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装"
           }
         }
       }
@@ -340,6 +1012,38 @@
         }
       }
     },
+    "Pass prompt text with --text or after the alias." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロンプトのテキストは --text か別名の後に指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请通过 --text 或在别名之后传入提示文本。"
+          }
+        }
+      }
+    },
+    "Present but not managed by Terminal" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存在しますが Terminal の管理外です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存在，但不由 Terminal 管理"
+          }
+        }
+      }
+    },
     "Privacy" : {
       "localizations" : {
         "ja" : {
@@ -352,6 +1056,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隐私"
+          }
+        }
+      }
+    },
+    "Removed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除"
           }
         }
       }
@@ -484,6 +1204,118 @@
         }
       }
     },
+    "Terminal agent automation contract\n\n1. A pane is layout. A terminal is raw I/O. An agent is a recognized\n   terminal occupant with semantic state. These IDs are not interchangeable.\n2. Capabilities are scoped to the invoking terminal's project. Guessed\n   IDs in other projects and windows are never resolved.\n3. Creation is explicit: split first, then start an agent in that shell.\n   Neither start nor prompt silently creates or closes layout.\n4. Background operations default to no focus. Reading output never marks\n   a completion seen; focusing its pane does.\n5. Agent prompts require both a live recognized process and an allowed\n   lifecycle state. Raw +pane send is a visibly separate escape hatch\n   and can interact with any terminal program.\n6. A recognized process Terminal launched is created until its first prompt.\n   The model is never asked to report lifecycle, and Terminal never guesses\n   from rendered terminal text. Provider-native lifecycle events are the\n   only source of blocked and completed transitions. Without one, inspect\n   the terminal output directly. Reported unseen idle is presented as done.\n7. The optional terminal-automation Agent Skill teaches this workflow to\n   compatible agents. Turn on \"Let coding agents coordinate panes\" in\n   Settings → Agents, or install it explicitly with\n   `terminal +agent skill install`. That setting also manages only\n   the provider integrations Terminal can use as lifecycle authorities.\n   Both the skill and those integrations link to Terminal's app bundle so\n   app updates do not leave stale copies installed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal エージェント自動化の約束事\n\n1. ペインはレイアウト、ターミナルは生の入出力、エージェントは意味のある状態を持つ\n   認識済みのターミナル占有者です。これらの ID は互換ではありません。\n2. 権限は呼び出し元ターミナルのプロジェクトに限られます。他のプロジェクトや\n   ウインドウの ID を推測しても解決されません。\n3. 作成は明示的です。先に分割し、そのシェルでエージェントを起動します。\n   start も prompt も、黙ってレイアウトを作成したり閉じたりしません。\n4. バックグラウンド操作は既定でフォーカスしません。出力を読んでも完了は\n   既読になりません。そのペインにフォーカスすると既読になります。\n5. エージェントへのプロンプトには、動作中の認識済みプロセスと許可された\n   ライフサイクル状態の両方が必要です。生の +pane send は明確に別の抜け道で、\n   どのターミナルプログラムにも作用し得ます。\n6. Terminal が起動した認識済みプロセスは、最初のプロンプトまで created です。\n   モデルにライフサイクルの報告を求めることはなく、Terminal は表示された\n   テキストから推測しません。blocked と完了への遷移は提供元ネイティブの\n   ライフサイクルイベントだけが根拠です。それがない場合はターミナルの出力を\n   直接確認してください。未読の idle 報告は done として表示されます。\n7. 任意の terminal-automation エージェントスキルが、この手順を対応エージェントに\n   教えます。設定 → エージェントで「コーディングエージェントがペインを連携できる\n   ようにする」をオンにするか、`terminal +agent skill install` で明示的に\n   インストールしてください。この設定が管理するのは、Terminal がライフサイクルの\n   根拠として使える提供元の連携だけです。スキルと連携はどちらも Terminal の\n   アプリバンドルにリンクするため、アプリの更新で古いコピーが残りません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 代理自动化约定\n\n1. 面板是布局，终端是原始输入输出，代理是带有语义状态的已识别终端占用者。\n   这些 ID 不可互换。\n2. 权限仅限于调用终端所在的项目。其他项目和窗口中猜测的 ID 永远不会被解析。\n3. 创建是显式的：先拆分，再在该 Shell 中启动代理。start 和 prompt 都不会\n   悄悄创建或关闭布局。\n4. 后台操作默认不获取焦点。读取输出不会将完成标记为已读；聚焦其面板才会。\n5. 向代理发送提示既需要一个正在运行的已识别进程，也需要允许的生命周期状态。\n   原始的 +pane send 是明确分开的后门，可以与任何终端程序交互。\n6. Terminal 启动的已识别进程在收到第一个提示前处于 created 状态。从不要求模型\n   报告生命周期，Terminal 也从不根据渲染的终端文本猜测。blocked 和完成的转变\n   只来自提供方原生的生命周期事件。没有这类事件时，请直接检查终端输出。\n   未读的 idle 报告会显示为 done。\n7. 可选的 terminal-automation 代理技能会把这一流程教给兼容的代理。在“设置 →\n   代理”中打开“允许编程代理协调面板”，或用 `terminal +agent skill install`\n   明确安装。该设置也只管理 Terminal 可用作生命周期依据的提供方集成。技能和\n   这些集成都链接到 Terminal 的应用包，因此应用更新不会留下过时的副本。"
+          }
+        }
+      }
+    },
+    "Terminal automation skill" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自動化スキル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自动化技能"
+          }
+        }
+      }
+    },
+    "Terminal automation skill is already installed and current." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自動化スキルはインストール済みで最新です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自动化技能已安装且为最新。"
+          }
+        }
+      }
+    },
+    "Terminal automation skill is not installed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自動化スキルはインストールされていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自动化技能未安装。"
+          }
+        }
+      }
+    },
+    "Terminal rejected the automation request." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal が自動化の要求を拒否しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 拒绝了该自动化请求。"
+          }
+        }
+      }
+    },
+    "Terminal returned a mismatched automation response." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal が一致しない自動化の応答を返しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 返回了不匹配的自动化响应。"
+          }
+        }
+      }
+    },
+    "Terminal returned an agent without a pane ID." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal がペイン ID のないエージェントを返しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 返回了一个没有面板 ID 的代理。"
+          }
+        }
+      }
+    },
     "The file as of %@ (%@) — read-only" : {
       "localizations" : {
         "ja" : {
@@ -548,6 +1380,102 @@
         }
       }
     },
+    "The launched agent exited before Terminal recognized it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動したエージェントは Terminal が認識する前に終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已启动的代理在 Terminal 识别之前就退出了。"
+          }
+        }
+      }
+    },
+    "This terminal predates Terminal automation. Open a new terminal and try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このターミナルはTerminalの自動化より前に開かれました。新しいターミナルを開いて、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此终端早于 Terminal 自动化功能打开。请打开新的终端后重试。"
+          }
+        }
+      }
+    },
+    "Timed out waiting for agent state %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントの状態 %@ の待機がタイムアウトしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待代理状态 %@ 超时。"
+          }
+        }
+      }
+    },
+    "Timed out waiting for terminal output containing %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を含むターミナル出力の待機がタイムアウトしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待包含 %@ 的终端输出超时。"
+          }
+        }
+      }
+    },
+    "Timed out waiting for Terminal to recognize the launched agent." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動したエージェントを Terminal が認識するのを待つ間にタイムアウトしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 Terminal 识别已启动的代理超时。"
+          }
+        }
+      }
+    },
+    "Timeout must be between 100 and 3600000 milliseconds." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タイムアウトは 100～3600000 ミリ秒で指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超时必须介于 100 到 3600000 毫秒之间。"
+          }
+        }
+      }
+    },
     "Toolbar" : {
       "localizations" : {
         "ja" : {
@@ -594,6 +1522,166 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "受保护的文件夹"
+          }
+        }
+      }
+    },
+    "Unexpected positional arguments after --text." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--text の後に予期しない位置引数があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--text 之后有意外的位置参数。"
+          }
+        }
+      }
+    },
+    "Uninstalled Terminal automation skill." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 自動化スキルをアンインストールしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已卸载 Terminal 自动化技能。"
+          }
+        }
+      }
+    },
+    "Unknown +agent command %@. Run `terminal +agent --help`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明な +agent コマンド %@ です。`terminal +agent --help` を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 +agent 命令 %@。请运行 `terminal +agent --help`。"
+          }
+        }
+      }
+    },
+    "Unknown +agent skill command %@. Run `terminal +agent skill --help`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明な +agent skill コマンド %@ です。`terminal +agent skill --help` を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 +agent skill 命令 %@。请运行 `terminal +agent skill --help`。"
+          }
+        }
+      }
+    },
+    "Unknown +pane command %@. Run `terminal +pane --help`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明な +pane コマンド %@ です。`terminal +pane --help` を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的 +pane 命令 %@。请运行 `terminal +pane --help`。"
+          }
+        }
+      }
+    },
+    "Unknown automation namespace %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明な自動化の名前空間 %@ です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知的自动化命名空间 %@。"
+          }
+        }
+      }
+    },
+    "Unknown option %@ for `terminal %@`. Run `terminal %@ --help`." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal %2$@` に不明なオプション %1$@ があります。`terminal %3$@ --help` を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`terminal %2$@` 的选项 %1$@ 未知。请运行 `terminal %3$@ --help`。"
+          }
+        }
+      }
+    },
+    "Usage:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\nSupported kinds: codex, claude, gemini, grok, opencode, cursor-agent,\naider, amp, and pi. Agent start requires an existing available shell and\nnever creates layout; it returns after Terminal recognizes the launched process.\nGuarded prompts accept agents in created, working, idle, or done. While\nan agent is working, its CLI decides whether input steers the active\nturn or queues it. Use +pane send only when raw input is intentional.\nTerminal never infers lifecycle from rendered terminal text. After Terminal\nsubmits a prompt, only a provider-native hook or plugin can advance it\nto blocked, idle, or done. A reported idle background agent appears as\ndone until its pane is focused. Without an integration, inspect the\nterminal output instead of relying on a lifecycle wait. `skill install`\nexplicitly links Terminal's bundled coordination skill into supported\nagents; it never changes user files unless invoked." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使い方:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\n対応する種類: codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp、pi。エージェントの起動には利用可能な既存のシェルが必要で、\nレイアウトは作成しません。Terminal が起動したプロセスを認識した時点で戻ります。\n保護されたプロンプトは created、working、idle、done のエージェントに送れます。\nエージェントの作業中は、入力で現在のターンを誘導するか待ち行列に入れるかを\nその CLI が決めます。+pane send は生の入力が意図的な場合にのみ使ってください。\nTerminal は表示されたターミナルのテキストからライフサイクルを推測しません。\nTerminal がプロンプトを送信した後は、提供元ネイティブのフックやプラグインだけが\nblocked、idle、done へ進められます。バックグラウンドで idle と報告された\nエージェントは、そのペインにフォーカスするまで done と表示されます。連携がない\n場合は、ライフサイクルの待機に頼らずターミナルの出力を確認してください。\n`skill install` は Terminal に同梱された連携スキルを対応エージェントへ明示的に\nリンクします。実行しない限りユーザーのファイルは変更しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\n支持的类型：codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp 和 pi。启动代理需要一个现有的可用 Shell，且不会创建布局；\nTerminal 识别出启动的进程后即返回。受保护的提示接受处于 created、working、\nidle 或 done 状态的代理。代理工作时，由其 CLI 决定输入是引导当前轮次还是排队。\n仅在确实需要原始输入时使用 +pane send。Terminal 从不根据渲染的终端文本推断\n生命周期。Terminal 提交提示后，只有提供方原生的钩子或插件才能将其推进到\nblocked、idle 或 done。在后台报告为 idle 的代理会显示为 done，直到其面板获得\n焦点。没有集成时，请检查终端输出，而不要依赖生命周期等待。`skill install`\n会明确地将 Terminal 自带的协调技能链接到支持的代理；除非调用它，否则从不更改\n用户文件。"
+          }
+        }
+      }
+    },
+    "Usage:\n  terminal +agent skill path\n  terminal +agent skill print\n  terminal +agent skill status [--provider PROVIDER] [--json]\n  terminal +agent skill install [--provider PROVIDER] [--force] [--json]\n  terminal +agent skill uninstall [--provider PROVIDER] [--force] [--json]\n\nPROVIDER may be all, universal, codex, claude, gemini, grok, cursor,\nopencode, amp, or pi. The default is all. Codex, Gemini, Cursor,\nGrok, OpenCode, Amp, and Pi share ~/.agents/skills; Claude uses\n~/.claude/skills. Existing local changes are never replaced or removed\nwithout --force. Installation uses symlinks to Terminal's app bundle, so\napp updates update the skill without reinstalling it. Reload skills or\nrestart an already-running agent after first installation or a Terminal\nupdate.\n\npath and print expose Terminal's read-only bundled skill without installing\nit. Management commands are human-readable by default; pass --json for\nstable machine-readable output." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使い方:\n  terminal +agent skill path\n  terminal +agent skill print\n  terminal +agent skill status [--provider PROVIDER] [--json]\n  terminal +agent skill install [--provider PROVIDER] [--force] [--json]\n  terminal +agent skill uninstall [--provider PROVIDER] [--force] [--json]\n\nPROVIDER には all、universal、codex、claude、gemini、grok、cursor、\nopencode、amp、pi を指定できます。既定は all です。Codex、Gemini、Cursor、\nGrok、OpenCode、Amp、Pi は ~/.agents/skills を共有し、Claude は\n~/.claude/skills を使います。既存のローカルの変更は --force なしでは\n置き換えも削除もしません。インストールは Terminal のアプリバンドルへの\nシンボリックリンクを使うため、アプリを更新すれば再インストールせずにスキルも\n更新されます。初回のインストール後や Terminal の更新後は、スキルを再読み込みするか\n実行中のエージェントを再起動してください。\n\npath と print は、インストールせずに Terminal 同梱の読み取り専用スキルを\n示します。管理コマンドの出力は既定で人が読む形式です。安定した機械向けの\n出力には --json を指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：\n  terminal +agent skill path\n  terminal +agent skill print\n  terminal +agent skill status [--provider PROVIDER] [--json]\n  terminal +agent skill install [--provider PROVIDER] [--force] [--json]\n  terminal +agent skill uninstall [--provider PROVIDER] [--force] [--json]\n\nPROVIDER 可以是 all、universal、codex、claude、gemini、grok、cursor、\nopencode、amp 或 pi，默认为 all。Codex、Gemini、Cursor、Grok、OpenCode、\nAmp 和 Pi 共用 ~/.agents/skills；Claude 使用 ~/.claude/skills。没有 --force\n时，从不替换或删除已有的本地更改。安装使用指向 Terminal 应用包的符号链接，\n因此应用更新会同时更新技能，无需重新安装。首次安装或 Terminal 更新后，\n请重新加载技能或重启正在运行的代理。\n\npath 和 print 在不安装的情况下显示 Terminal 自带的只读技能。管理命令默认输出\n便于人阅读的内容；需要稳定的机器可读输出时请传入 --json。"
+          }
+        }
+      }
+    },
+    "Usage:\n  terminal +pane current\n  terminal +pane list\n  terminal +pane get [--pane ID | --current]\n  terminal +pane split [--pane ID] [--left|--right|--up|--down] [--cwd PATH] [--focus]\n  terminal +pane run [--pane ID] -- command [arguments...]\n  terminal +pane send [--pane ID] --text TEXT [--enter]\n  terminal +pane read [--pane ID] [--lines N] [--columns N]\n  terminal +pane wait-output [--pane ID] --contains TEXT [--timeout MS]\n  terminal +pane protocol\n\nTargets default to the invoking terminal. Splits default to the right\nand never steal focus unless --focus is explicit. `run` accepts argv\nand quotes each argument for the target shell. `send` is raw input.\nAll successful results are JSON; reads do not mark agent output seen." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使い方:\n  terminal +pane current\n  terminal +pane list\n  terminal +pane get [--pane ID | --current]\n  terminal +pane split [--pane ID] [--left|--right|--up|--down] [--cwd PATH] [--focus]\n  terminal +pane run [--pane ID] -- command [arguments...]\n  terminal +pane send [--pane ID] --text TEXT [--enter]\n  terminal +pane read [--pane ID] [--lines N] [--columns N]\n  terminal +pane wait-output [--pane ID] --contains TEXT [--timeout MS]\n  terminal +pane protocol\n\n対象は既定で呼び出し元のターミナルです。分割は既定で右側に行い、\n--focus を指定しない限りフォーカスを奪いません。`run` は argv を受け取り、\n各引数を対象のシェル向けにクオートします。`send` は生の入力です。\n成功した結果はすべて JSON です。読み取りではエージェントの出力は既読になりません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：\n  terminal +pane current\n  terminal +pane list\n  terminal +pane get [--pane ID | --current]\n  terminal +pane split [--pane ID] [--left|--right|--up|--down] [--cwd PATH] [--focus]\n  terminal +pane run [--pane ID] -- command [arguments...]\n  terminal +pane send [--pane ID] --text TEXT [--enter]\n  terminal +pane read [--pane ID] [--lines N] [--columns N]\n  terminal +pane wait-output [--pane ID] --contains TEXT [--timeout MS]\n  terminal +pane protocol\n\n目标默认为调用它的终端。拆分默认向右进行，除非明确指定 --focus，\n否则不会抢走焦点。`run` 接受 argv，并为目标 Shell 逐个引用参数。\n`send` 是原始输入。所有成功的结果都是 JSON；读取不会将代理输出标记为已读。"
           }
         }
       }
@@ -6782,18 +7870,18 @@
         }
       }
     },
-    "Usage:\n  terminal\n  terminal <command> [arguments...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +help\n\nWith no arguments, terminal creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Terminal's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme." : {
+    "Usage:\n  terminal\n  terminal <command> [arguments...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +pane <command> [options]\n  terminal +agent <command> [options]\n  terminal +help\n\nWith no arguments, terminal creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Terminal's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme.\n\n+pane provides project-scoped terminal layout, input, viewport reads,\nand output waits. +agent adds recognized-agent start, guarded prompts,\nlifecycle waits, result reads, and an installable, auto-updating\nskill for compatible coding agents. Run either command with --help for\nits complete contract." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使い方:\n  terminal\n  terminal <コマンド> [引数...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +help\n\n引数なしの場合、terminalは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でTerminalのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。"
+            "value" : "使い方:\n  terminal\n  terminal <コマンド> [引数...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +pane <コマンド> [オプション]\n  terminal +agent <コマンド> [オプション]\n  terminal +help\n\n引数なしの場合、terminalは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でTerminalのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。\n\n+paneはプロジェクト内でのターミナルのレイアウト、入力、表示中テキストの読み取り、\n出力の待機を提供します。+agentは認識されたエージェントの起動、保護されたプロンプト、\nライフサイクルの待機、結果の読み取り、対応するコーディングエージェント向けの\n自動更新されるスキルを追加します。完全な仕様はそれぞれ--helpで確認できます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用法：\n  terminal\n  terminal <命令> [参数...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +help\n\n不带参数时，terminal 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Terminal 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。"
+            "value" : "用法：\n  terminal\n  terminal <命令> [参数...]\n  terminal +themes [--dark | --light]\n  terminal +themes --list [--dark | --light]\n  terminal +pane <命令> [选项]\n  terminal +agent <命令> [选项]\n  terminal +help\n\n不带参数时，terminal 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Terminal 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。\n\n+pane 提供项目范围内的终端布局、输入、可见内容读取和输出等待。\n+agent 增加已识别代理的启动、受保护的提示、生命周期等待、结果读取，\n以及可为兼容的编程代理安装并自动更新的技能。\n为任一命令加上 --help 可查看完整约定。"
           }
         }
       }

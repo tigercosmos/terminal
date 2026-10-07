@@ -13,6 +13,11 @@ final class TerminalApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = self
 
+        // Here rather than in `terminalApp.init()`, which runs before `NSApp`
+        // exists: touching `AppSettings` that early would apply the saved
+        // appearance to nothing.
+        AppSettings.shared.reconcileAIEnabled()
+
         #if DEBUG
         // The CLI channel otherwise comes up with the first shell, since that
         // is the first thing to need the environment it hands out. An armed

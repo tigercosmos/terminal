@@ -75,6 +75,12 @@ background and its window is kept off screen, so nothing comes forward and
 nothing you type meanwhile lands in the shell under test; keep working while
 it runs.
 
+`TERMINAL_AUTOMATION` is not `TERMINAL_AGENT_AUTOMATION`. The first arms this
+debug-only test channel; the second is set in every shell of every build and
+announces the shipped `terminal +pane` / `terminal +agent` commands, which
+talk to the app over their own socket. The suite exercises those too, from
+inside the app's shell.
+
 The suite runs once per backend, selecting each in
 `~/.config/terminal-dev/config.toml` and restoring your own file afterwards.
 Both surfaces implement one protocol separately, so a run that only drove the

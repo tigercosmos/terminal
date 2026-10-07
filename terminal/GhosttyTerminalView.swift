@@ -118,6 +118,39 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
         return literal
     }
 
+    /// libghostty's text input is already its paste path: it adds the
+    /// bracketed-paste markers itself when the program asked for them.
+    func sendPaste(_ text: String) {
+        sendText(text)
+    }
+
+    func readVisibleText(maxLines: Int, maxColumns: Int) -> String? {
+        // Ghostty's public host API exposes styled screen export but not its
+        // viewport read primitive. Callers choose tight bounds so the agent
+        // monitor does not pay the larger diagnostic-read cost.
+        TerminalHistorySerializer.previewText(
+            from: self,
+            maxLines: min(max(maxLines, 1), 500),
+            maxColumns: min(max(maxColumns, 1), 2_000)
+        )
+    }
+
+    func sendApplicationScroll(lines: Int) -> Bool {
+        guard lines != 0,
+              let cgEvent = CGEvent(
+                scrollWheelEvent2Source: nil,
+                units: .line,
+                wheelCount: 1,
+                wheel1: Int32(clamping: lines),
+                wheel2: 0,
+                wheel3: 0
+              ),
+              let event = NSEvent(cgEvent: cgEvent)
+        else { return false }
+        super.scrollWheel(with: event)
+        return true
+    }
+
     func scroll(toFraction fraction: Double) {
         guard let lastScroll else { return }
         scrollToRow(UInt(clamping: lastScroll.row(atDragFraction: fraction)))

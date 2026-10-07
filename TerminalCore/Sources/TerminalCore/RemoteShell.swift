@@ -223,14 +223,6 @@ func parseSSHArguments(_ arguments: [String]) -> RemoteShellDestination? {
 
 // MARK: - Process metadata
 
-/// The executable a process is running, from kernel metadata.
-private func processExecutablePath(pid: pid_t) -> String? {
-    var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-    let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
-    guard length > 0 else { return nil }
-    return String(cString: buffer)
-}
-
 /// The local and foreign ports of every established TCP connection a process
 /// holds. Ports come back in network byte order, as they sit on the wire.
 private func establishedTCPPorts(pid: pid_t) -> [SSHConnectionPorts] {
@@ -277,40 +269,6 @@ private func processStartTime(pid: pid_t) -> Date? {
         timeIntervalSince1970: TimeInterval(started.tv_sec)
             + TimeInterval(started.tv_usec) / 1_000_000
     )
-}
-
-/// A process's argument vector, from kernel metadata.
-///
-/// `KERN_PROCARGS2` hands back a counted blob: the argument count, then the
-/// executable path, then NUL padding, then the arguments themselves. Only
-/// same-user processes are readable, which is every process Terminal spawns.
-private func processArguments(pid: pid_t) -> [String]? {
-    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-    var size = 0
-    guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else {
-        return nil
-    }
-    var buffer = [UInt8](repeating: 0, count: size)
-    guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else {
-        return nil
-    }
-
-    let count = Int(buffer.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
-    guard count > 0 else { return nil }
-    var index = MemoryLayout<Int32>.size
-    while index < size, buffer[index] != 0 { index += 1 }
-    while index < size, buffer[index] == 0 { index += 1 }
-
-    var arguments: [String] = []
-    var start = index
-    while index < size, arguments.count < count {
-        if buffer[index] == 0 {
-            arguments.append(String(decoding: buffer[start..<index], as: UTF8.self))
-            start = index + 1
-        }
-        index += 1
-    }
-    return arguments.count == count ? arguments : nil
 }
 
 extension RemoteShellDestination {

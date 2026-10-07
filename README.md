@@ -29,7 +29,10 @@ the full feature list, every keyboard shortcut, and the changelog.
   working tree, editable on your side, with blame and per-file revert.
 - **Run several at once** — each repository is a project with its own tabs and
   split panes, so parallel agent runs stay separated and come back on
-  relaunch.
+  relaunch. An agent can split a pane, start another agent in it, prompt it,
+  and wait for its answer with `terminal +pane` and `terminal +agent`, and a
+  badge on each pane, tab, and project shows which agents are working,
+  blocked, or done.
 - **Watch what they started** — the focused shell's working directory, the
   processes running under it, and the ports they are listening on; long
   commands and bells reach Notification Center when the pane is unfocused.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terminal Automation"
+  short_description: "Coordinate agents across Terminal panes"
+  default_prompt: "Use $terminal-automation to delegate this task or coordinate with another Terminal agent, then return the verified result."

@@ -16,6 +16,11 @@ import TerminalCore
 /// fast without opening a network listener. The secret never travels in a
 /// notification: requests are signed with it instead, so an observer cannot
 /// forge one. See ``TerminalCLIProtocol``.
+///
+/// Pane and agent automation (`terminal +pane`, `terminal +agent`) use a
+/// separate private Unix socket plus a capability issued to each terminal,
+/// because the launch secret was never designed to authorize reading a pane
+/// or typing into one. See ``KeroAutomationRouter``.
 @MainActor
 final class TerminalCLIService: NSObject {
     static let shared = TerminalCLIService()
@@ -51,6 +56,11 @@ final class TerminalCLIService: NSObject {
     private var previewMonitor: Timer?
     private var activePreview: ActivePreview?
     private var handledNonces = TerminalCLINonceWindow()
+    private let automationSocketPath: String
+    private var automationServer: KeroAutomationSocketServer?
+    /// Capability → the one terminal it was issued to. Revoked when that
+    /// terminal closes, so a token leaked from a dead shell resolves nothing.
+    private var terminalCapabilities: [String: UUID] = [:]
 
     private override init() {
         let fileManager = FileManager.default
@@ -60,6 +70,11 @@ final class TerminalCLIService: NSObject {
                 isDirectory: true
             )
         stateURL = directoryURL.appendingPathComponent("themes.json")
+        // Under /tmp rather than beside the catalog: a socket path must fit
+        // `sun_path`'s 104 bytes, and the per-user temporary directory alone
+        // uses half of that.
+        let socketNonce = UUID().uuidString.prefix(8)
+        automationSocketPath = "/tmp/terminal-\(getuid())-\(ProcessInfo.processInfo.processIdentifier)-\(socketNonce).sock"
 
         do {
             try fileManager.createDirectory(
@@ -78,6 +93,18 @@ final class TerminalCLIService: NSObject {
         #endif
 
         writeState()
+
+        do {
+            automationServer = try KeroAutomationSocketServer(
+                path: automationSocketPath
+            ) { request, reply in
+                Task { @MainActor in
+                    reply(await TerminalCLIService.shared.handleAgentAutomation(request))
+                }
+            }
+        } catch {
+            NSLog("terminal: failed to start automation socket: \(error)")
+        }
 
         // `.deliverImmediately` because the system otherwise holds distributed
         // notifications for an app that is not active and delivers them when it
@@ -109,7 +136,11 @@ final class TerminalCLIService: NSObject {
     /// Variables added to every Terminal shell. The app executable's directory is
     /// prepended to the inherited PATH, making `terminal` available without
     /// modifying a user's dotfiles or installing a global symlink.
-    var terminalEnvironment: [String: String] {
+    ///
+    /// Each call issues a fresh automation capability for `sessionID`.
+    func terminalEnvironment(for sessionID: UUID) -> [String: String] {
+        let capability = UUID().uuidString + UUID().uuidString
+        terminalCapabilities[capability] = sessionID
         var environment = [
             "TERMINAL_CLI_STATE": stateURL.path,
             "TERMINAL_CLI_TOKEN": secret,
@@ -117,7 +148,17 @@ final class TerminalCLIService: NSObject {
             // bridge issued by a different build rather than signing for an app
             // that is not listening; see `TerminalCLIProtocol`.
             "TERMINAL_CLI_BUNDLE": TerminalCLIProtocol.bundleIdentifier,
+            // Not `TERMINAL_AUTOMATION`: that name arms the debug-only e2e
+            // channel (``TerminalCLIAutomation``), a different thing.
+            "TERMINAL_AGENT_AUTOMATION": "1",
+            "TERMINAL_AGENT_AUTOMATION_HELP": "terminal +agent explain",
+            "TERMINAL_AGENT_AUTOMATION_SOCKET": automationSocketPath,
+            "TERMINAL_AGENT_AUTOMATION_TOKEN": capability,
+            "TERMINAL_SESSION_ID": sessionID.uuidString,
         ]
+        if let skillURL = try? KeroAutomationSkill.bundledSkillURL() {
+            environment["TERMINAL_AGENT_AUTOMATION_SKILL"] = skillURL.path
+        }
         if let executableURL = Bundle.main.executableURL {
             let bin = executableURL.deletingLastPathComponent().path
             let inherited = ProcessInfo.processInfo.environment["PATH"]
@@ -125,6 +166,35 @@ final class TerminalCLIService: NSObject {
             environment["PATH"] = "\(bin):\(inherited)"
         }
         return environment
+    }
+
+    func revokeTerminal(id: UUID) {
+        terminalCapabilities = terminalCapabilities.filter { $0.value != id }
+    }
+
+    private func handleAgentAutomation(
+        _ request: KeroAutomationRequest
+    ) async -> KeroAutomationResponse {
+        guard request.version == 1 else {
+            return .failure(
+                id: request.id,
+                code: "unsupported_version",
+                message: "Terminal supports automation protocol version 1."
+            )
+        }
+        guard let terminalID = UUID(uuidString: request.terminalID),
+              terminalCapabilities[request.token] == terminalID
+        else {
+            return .failure(
+                id: request.id,
+                code: "unauthorized",
+                message: "The terminal automation capability is invalid or expired."
+            )
+        }
+        return await KeroAutomationRouter.route(
+            request,
+            callerTerminalID: terminalID
+        )
     }
 
     @objc private func receive(_ notification: Notification) {
@@ -307,6 +377,8 @@ final class TerminalCLIService: NSObject {
 
     private func removeStateDirectory() {
         clearActivePreview()
+        automationServer = nil
+        terminalCapabilities = [:]
         try? FileManager.default.removeItem(at: directoryURL)
     }
 }

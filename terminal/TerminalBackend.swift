@@ -205,6 +205,26 @@ protocol TerminalBackendSurface: NSView, TerminalFindSurface {
     /// lands at the prompt and sits there unexecuted.
     func sendTypedText(_ text: String)
 
+    /// Delivers `text` exactly as the user pasting it would: inside
+    /// bracketed-paste markers when the program enabled mode 2004, so a line
+    /// editor or coding agent takes its newlines as content. Automation sends
+    /// a multi-line agent prompt this way.
+    ///
+    /// Not ``sendText(_:)``: the Alacritty surface writes that straight to the
+    /// PTY, where a newline submits.
+    func sendPaste(_ text: String)
+
+    /// Sends line-oriented wheel input to the foreground terminal application.
+    /// Returns false when the current terminal mode would consume scrolling as
+    /// host scrollback instead. Automation uses this only to page a settled
+    /// full-screen agent transcript, and restores the application to the bottom.
+    func sendApplicationScroll(lines: Int) -> Bool
+
+    /// Plain UTF-8 text for the current viewport. Implementations keep this
+    /// bounded and avoid walking full scrollback; use an in-memory snapshot
+    /// when the backend exposes one and a bounded screen export otherwise.
+    func readVisibleText(maxLines: Int, maxColumns: Int) -> String?
+
     /// Clears the screen and scrollback, then repaints the shell's prompt at
     /// the top.
     func clearScreen()

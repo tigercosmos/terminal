@@ -14,6 +14,22 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- Coding agents can coordinate through Terminal. From any shell, `terminal
+  +pane` splits a pane without taking focus, runs a command in it, and reads
+  or waits for its output; `terminal +agent` starts Claude Code, Codex,
+  Gemini, Grok Build, OpenCode, Cursor Agent, Aider, Amp, or Pi in a pane,
+  sends it a prompt, and waits for its result. Reach is limited to the
+  project the calling shell belongs to. Turn on **Let coding agents
+  coordinate panes** in Settings → Agents to link the skill that teaches
+  agents this into Claude Code, Codex, and the others, plus lifecycle hooks
+  for OpenCode, Pi, and Grok Build
+- Panes, tabs, and projects show a badge for each agent in them: starting,
+  working, needing attention, or finished. A finished or blocked agent in a
+  pane you are not looking at posts a notification, and Agents → Next Agent
+  Needing Attention (⇧⌘A) jumps to it
+
 ## [0.8.0]
 
 - Text being composed with an input method (Bopomofo, Pinyin, Japanese) shows

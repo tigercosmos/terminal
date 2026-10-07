@@ -243,6 +243,15 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Link Terminal's shared coordination skill into the user's coding agents,
+    /// plus the native lifecycle integrations whose provider APIs report turn
+    /// events. Other agents keep process recognition without inferred progress.
+    /// Off by default: turning it on writes links into the user's home
+    /// directory, so it changes only through ``setAIEnabled(_:)``.
+    @Published private(set) var aiEnabled: Bool {
+        didSet { save() }
+    }
+
     /// Keep Terminal itself out of the folders macOS guards behind a privacy
     /// prompt — Desktop, Documents, Downloads, the media folders, iCloud Drive
     /// and mounted volumes. Off by default: the panels are meant to follow the
@@ -307,6 +316,7 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
         compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
+        aiEnabled = toml["ai.enabled"]?.bool ?? false
         terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
         denyProtectedFolders = toml["privacy.deny-protected-folders"]?.bool ?? false
         // Pushed by hand because `didSet` doesn't run during initialization,
@@ -399,8 +409,52 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = false
         compareLineBlame = true
         restoreTerminalHistory = false
+        if aiEnabled {
+            do {
+                try setAIEnabled(false)
+            } catch {
+                NSLog("terminal: failed to disable AI support: \(error)")
+            }
+        }
         terminalBackend = .fallback
         denyProtectedFolders = false
+    }
+
+    /// Persists the setting only after every destination operation succeeds,
+    /// so a refused install never leaves the toggle claiming it is on.
+    func setAIEnabled(_ enabled: Bool) throws {
+        if enabled {
+            try KeroAgentIntegrations.preflightInstallAvailable()
+            _ = try KeroAutomationSkill.install(
+                destinations: KeroAutomationSkill.Destination.allCases,
+                force: false
+            )
+            try KeroAgentIntegrations.installAvailable()
+        } else {
+            try KeroAgentIntegrations.preflightUninstallManaged()
+            _ = try KeroAutomationSkill.uninstall(
+                destinations: KeroAutomationSkill.Destination.allCases,
+                force: false
+            )
+            try KeroAgentIntegrations.uninstallManaged()
+        }
+        aiEnabled = enabled
+    }
+
+    /// The links point into the app bundle, which an update normally leaves in
+    /// place. Reconciling at launch repairs them after the app is moved — and
+    /// only for a user who turned the setting on.
+    func reconcileAIEnabled() {
+        guard aiEnabled else { return }
+        do {
+            _ = try KeroAutomationSkill.install(
+                destinations: KeroAutomationSkill.Destination.allCases,
+                force: false
+            )
+            try KeroAgentIntegrations.installAvailable()
+        } catch {
+            NSLog("terminal: failed to refresh AI support: \(error)")
+        }
     }
 
     private func save() {
@@ -449,6 +503,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if restoreTerminalHistory {
             lines.append("terminal.restore-history = true")
+        }
+        if aiEnabled {
+            lines.append("ai.enabled = true")
         }
         if terminalBackend != .fallback {
             lines.append("terminal.backend = \(TOML.quote(terminalBackend.rawValue))")
