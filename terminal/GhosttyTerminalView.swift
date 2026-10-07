@@ -76,18 +76,46 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
     /// sends, which is the one path into this surface that bypasses the paste
     /// wrapper.
     func sendTypedText(_ text: String) {
-        // Split on `isNewline` rather than "\n" so CR and LF both submit, the
-        // way writing either straight to a PTY does. Swift reads CRLF as one
-        // Character, so a Windows line ending is one Return and not two.
-        let lines = text.split(
-            omittingEmptySubsequences: false, whereSeparator: \.isNewline
-        )
+        // CR and LF both submit, the way writing either straight to a PTY
+        // does. Swift reads CRLF as one Character, so a Windows line ending is
+        // one Return and not two. Not `isNewline`: that also matches U+2028
+        // and U+2029, which the Alacritty surface writes as text, and an agent
+        // prompt carrying one would be submitted in pieces here alone.
+        let lines = text.split(omittingEmptySubsequences: false) {
+            $0 == "\n" || $0 == "\r" || $0 == "\r\n"
+        }
         for (index, line) in lines.enumerated() {
-            if !line.isEmpty { sendText(String(line)) }
+            if line.unicodeScalars.contains(where: Self.isControl) {
+                // A control character inside a paste reaches the program as
+                // pasted text, not as the key: Ctrl-C would not interrupt.
+                // The binding action writes it as typed.
+                performBindingAction("text:" + Self.bindingLiteral(line))
+            } else if !line.isEmpty {
+                sendText(String(line))
+            }
             // A trailing newline leaves a final empty component, so this runs
             // the line rather than typing another one.
             if index < lines.count - 1 { performBindingAction("text:\\x0d") }
         }
+    }
+
+    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.value < 0x20 || scalar.value == 0x7F
+    }
+
+    /// `text:` takes a Zig string literal. Printable ASCII passes through and
+    /// every other byte is spelled `\xNN`, so UTF-8 survives byte for byte and
+    /// nothing in `text` can be read as more of the action.
+    private static func bindingLiteral(_ text: Substring) -> String {
+        var literal = ""
+        for byte in text.utf8 {
+            switch byte {
+            case UInt8(ascii: "\\"): literal += "\\\\"
+            case 0x20..<0x7F: literal.unicodeScalars.append(Unicode.Scalar(byte))
+            default: literal += String(format: "\\x%02x", byte)
+            }
+        }
+        return literal
     }
 
     func scroll(toFraction fraction: Double) {
