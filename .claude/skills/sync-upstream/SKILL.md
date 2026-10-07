@@ -95,7 +95,8 @@ skipped nor ported — it is re-decided against what this fork built:
 Merge only when the previous sync was itself a merge; otherwise it replays
 everything the last passes applied by hand. Check the newest SYNC.md entry,
 then follow "Doing a sync" and "What conflicts, and why" there for the
-mechanics — path mapping, the rename translation and its `[Kk]ero` grep, the
+mechanics — path mapping, the user-facing rename and its `[Kk]ero` grep
+(internal identifiers keep upstream's names), the
 version revert, the changelog fold, the quiet `Localizable.xcstrings` merge.
 On top of those:
 

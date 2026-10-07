@@ -40,9 +40,9 @@ left alone if it goes badly.
    git diff --cached HEAD | grep -n '^+.*[Kk]ero'
    ```
 
-   Anything this prints is a string, identifier or path that has to be renamed
-   the way [the rename commit](https://github.com/tigercosmos/terminal/commit/067b647)
-   renamed it.
+   Rename only what a user can see (see "The rename" below). A hit inside a
+   Swift type, function, variable, comment or source file name stays as
+   upstream spelled it.
 4. Build, run the app, and exercise what came in — the same bar as any other
    change ([CONTRIBUTING.md](CONTRIBUTING.md)). An upstream commit that builds
    here has not been shown to work here.
@@ -51,9 +51,21 @@ left alone if it goes badly.
 ## What conflicts, and why
 
 **The rename.** This fork renamed the product, the source directory and ~450
-identifiers. Rename detection handles the file moves, but any upstream hunk
-that touches a name — a bundle identifier, a user-facing string, a path in the
-Xcode project — lands with upstream's spelling and has to be translated by hand.
+identifiers in [the rename commit](https://github.com/tigercosmos/terminal/commit/067b647).
+Synced code does not continue that work. Upstream's internal names stay as
+they are, so a port stays close to its source and the next sync can still
+diff against it. Translate only the names a user can see or type:
+
+- Strings in the UI, in `Localizable.xcstrings`, and in notifications.
+- The app name, bundle identifier, and the `terminal` CLI binary and its
+  subcommands and help text.
+- Environment variables exported into a user's shell, and paths on disk such
+  as config directories and files installed into other tools.
+- Skill and agent-integration names and their contents, `CHANGELOG.md`,
+  `README.md`, the other docs, and the website.
+
+Upstream's new files go under `terminal/`, because the directory is a path in
+the Xcode project, but they keep their upstream file names.
 
 **The version.** Upstream's `[release] …` commits bump `MARKETING_VERSION` and
 `CURRENT_PROJECT_VERSION` and add a numbered `CHANGELOG.md` heading. This fork
