@@ -90,6 +90,90 @@ key; if it did not, [LOCALIZATION.md](LOCALIZATION.md) says what is owed.
 
 ## Log
 
+### 2026-10-06 — `kero/main` still at `50f7302`
+
+No new upstream commits; this pass takes the work earlier entries left
+outstanding. **Not a merge**, for the reason the entries below give. Applied
+by hand against upstream's final state of each file, `fd2fbbd` included.
+
+**Read the next sync's commit list against `50f7302`**, unchanged.
+
+Taken:
+
+| Commit | What it brought |
+| --- | --- |
+| `4433b6f`, `692a59e`, `a7f2990`, `38d197f`, `38a5e8d`, `fd2fbbd` | `terminal +pane` and `terminal +agent`: project-scoped pane control and coding-agent start, prompt, wait, and read; agent badges on panes, tabs, and projects; attention notifications and ⇧⌘A; the bundled skill and the OpenCode, Pi, and Grok Build lifecycle hooks behind a Settings toggle |
+
+Decided before porting, with the user:
+
+- **Naming.** The rename rule changed with this pass (see "The rename"
+  above): internal identifiers keep upstream's names — `KeroJSONValue`,
+  `KeroAutomationRouter` and the rest — and only what a user sees or types is
+  translated. The skill is `terminal-automation`, the hooks are
+  `terminal-agent-state.*` with a `TERMINAL_INTEGRATION_ID` marker, and the
+  CLI is `terminal +pane` / `terminal +agent`.
+- **The env var collision.** Upstream's variables become
+  `TERMINAL_AGENT_AUTOMATION`, `…_SOCKET`, `…_TOKEN`, `…_HELP`, `…_SKILL`,
+  and `KERO_TERMINAL_ID` becomes `TERMINAL_SESSION_ID`. `TERMINAL_AUTOMATION`
+  stays the DEBUG-only e2e channel, and the two surfaces stay separate: one
+  is a shipped, capability-scoped socket for agents, the other drives the app
+  for tests.
+
+Adapted rather than translated:
+
+- The protocol, socket server, agent recognition, and the skill and hook
+  installers moved into `TerminalCore`, marked `nonisolated` because the
+  socket decodes on worker queues. Upstream ships none of it tested; here it
+  has `KeroAutomationProtocolTests`, `KeroAgentKindTests`, and
+  `KeroAutomationInstallTests`, the last against a fake bundle and home in
+  the temporary directory. Upstream's `processExecutablePath` and
+  `processArguments` duplicated private helpers `RemoteShell` already had;
+  those became public instead.
+- **The launch-time reconcile moved.** Upstream calls it from `App.init()`.
+  That touches `AppSettings` before `NSApp` exists — the condition the
+  2026-09-07 entry established this fork never meets, and the reason
+  `0f68de9` was not needed. It runs from `applicationDidFinishLaunching`.
+- **Multi-line prompts.** Upstream types bracketed-paste markers by hand
+  through the typed path. On the Ghostty surface that path turns each newline
+  into a Return, so the prompt would be submitted a line at a time.
+  `TerminalBackendSurface.sendPaste` was added — libghostty's own paste path
+  on one side, `AlacrittyKeyMap.paste` on the other.
+- **Control characters on Ghostty.** `+pane send --text $'\x03'` did not
+  interrupt a program that had enabled bracketed paste: the typed path
+  delivered it inside a paste. A typed line holding a control character now
+  goes through the `text:` binding action. The e2e check for an agent exiting
+  failed on Ghostty before this and passes after it.
+- **Fixed on the way in, after a Codex review of the port** — each one is
+  upstream's behavior too:
+  - `pane.run`, `pane.send` and `agent.start` wait up to three seconds for a
+    just-split pane's shell instead of refusing it as busy; the Ghostty
+    surface only spawns its shell once attached. The e2e check that splits
+    and runs in one command line fails with `shell_busy` without the wait.
+  - An alias that two agents share is refused (`ambiguous_alias`) rather
+    than resolved to the first pane: hand-started agents take their kind as
+    their alias, so two Codex sessions were both `codex`.
+  - Pane reads are capped at half the socket's 1 MiB message limit, newest
+    lines kept, with `truncated` in the reply. 500 × 2,000 cells overflowed
+    it even in ASCII.
+  - The skill and hook installers move an item aside and judge *that*
+    before replacing or deleting it, instead of acting on a verdict reached
+    earlier. Testing it turned up a worse upstream bug: a skill folder
+    missing one expected file made the state check throw rather than answer
+    "modified", which here would have left the user's folder stranded under
+    a hidden name.
+  - The `+pane` / `+agent` help, status lines and errors are localized;
+    protocol codes stay literal.
+- Settings is a SwiftUI toggle in the form's own idiom rather than upstream's
+  AppKit row, as with `c49fe51`. Splits refuse a Compare pane as well as a
+  diff, since this fork has both.
+- `scripts/e2e.sh` drives the commands from inside the app's shell on both
+  backends, with a stand-in `claude` that records the bytes it receives.
+
+Not taken:
+
+- `fd2fbbd`'s six `web/content/docs/` pages — upstream's docs site, which this
+  fork does not have. The feature is on the home page and in the README.
+
 ### 2026-09-07 — `kero/main` at `50f7302`
 
 Eleven upstream commits after `7268a31`, spanning 0.1.46–0.1.48. **Not a

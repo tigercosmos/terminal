@@ -82,10 +82,11 @@ skipped nor ported — it is re-decided against what this fork built:
 - **The backend.** Alacritty's core with Terminal's own Metal renderer is the
   default; upstream's `Vendor/libghostty-spm` bumps and renderer fixes reach
   only the alternative backend.
-- **Automation.** Upstream's `KERO_AUTOMATION` renames onto
-  `TERMINAL_AUTOMATION`, already spent on the DEBUG-only e2e channel. Settle
-  the collision with the user before porting any of that work; SYNC.md has the
-  standing note.
+- **Automation.** Upstream's `KERO_AUTOMATION` family is
+  `TERMINAL_AGENT_AUTOMATION*` here (`KERO_TERMINAL_ID` is
+  `TERMINAL_SESSION_ID`), because `TERMINAL_AUTOMATION` arms the DEBUG-only e2e
+  channel. Its pure logic lives in `TerminalCore` so it can be tested; a
+  follow-up to it lands there, not in `terminal/`.
 - **Panels over ssh.** Files, Git and Compare describe the connected host — an
   upstream panel change assuming the local filesystem needs that path thought
   through, not just compiled.
