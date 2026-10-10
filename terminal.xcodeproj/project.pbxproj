@@ -336,7 +336,7 @@
 				CODE_SIGN_ENTITLEMENTS = terminal/terminal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -356,7 +356,7 @@
 					"$(BUILT_PRODUCTS_DIR)/alacritty-bridge",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.8.0;
+				MARKETING_VERSION = 0.9.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lterminal_alacritty",
@@ -383,7 +383,7 @@
 				CODE_SIGN_ENTITLEMENTS = terminal/terminal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -403,7 +403,7 @@
 					"$(BUILT_PRODUCTS_DIR)/alacritty-bridge",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.8.0;
+				MARKETING_VERSION = 0.9.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lterminal_alacritty",
