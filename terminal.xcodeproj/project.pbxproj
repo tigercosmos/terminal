@@ -175,6 +175,9 @@
 /* Begin PBXShellScriptBuildPhase section */
 		AA40000000000000000000A0 /* Build Alacritty bridge */ = {
 			isa = PBXShellScriptBuildPhase;
+			inputFileListPaths = (
+				"$(SRCROOT)/Vendor/alacritty-bridge/vendor.xcfilelist",
+			);
 			inputPaths = (
 				"$(SRCROOT)/Vendor/alacritty-bridge/Cargo.lock",
 				"$(SRCROOT)/Vendor/alacritty-bridge/Cargo.toml",
@@ -182,6 +185,7 @@
 				"$(SRCROOT)/Vendor/alacritty-bridge/src/kitty_graphics.rs",
 				"$(SRCROOT)/Vendor/alacritty-bridge/src/kitty_graphics_tracking.rs",
 				"$(SRCROOT)/Vendor/alacritty-bridge/src/lib.rs",
+				"$(SRCROOT)/Vendor/alacritty-bridge/vendor",
 				"$(SRCROOT)/scripts/build-alacritty-bridge.sh",
 			);
 			name = "Build Alacritty bridge";

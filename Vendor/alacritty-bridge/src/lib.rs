@@ -1132,6 +1132,28 @@ fn resolve(color: Color, colors: &Colors, theme: &AlacrittyPalette) -> u32 {
     }
 }
 
+/// Pulls a viewport that has drifted past the oldest scrollback row back
+/// onto it.
+///
+/// Alacritty's grid bumps the display offset on every scroll-up so a reader in
+/// the scrollback stays on the same rows while output arrives. It does so
+/// before checking whether the scroll region starts at the top, and only a
+/// region that does pushes rows into history. A TUI scrolling a region lower
+/// down — a transcript redrawn beneath fixed rows, as coding agents do —
+/// therefore walks the offset past `history_size` while the user is scrolled
+/// back, and the ring buffer wraps: the viewport fills with rows from the
+/// live screen, repeated. The vendored crate no longer moves the offset for
+/// such a region (see vendor/alacritty_terminal/PATCHES.md); this stays as
+/// the safety net for every other way the offset can outrun the history,
+/// since a wrapped index is a panic in debug builds and repeated rows in
+/// release ones. `scroll_display` clamps to the history on its own and marks
+/// the grid fully damaged when it moves.
+fn clamp_display_offset<T: EventListener>(term: &mut Term<T>) {
+    if term.grid().display_offset() > term.grid().history_size() {
+        term.scroll_display(Scroll::Delta(0));
+    }
+}
+
 /// The line one row past the bottom of the viewport, or `None` when the
 /// viewport already ends on the newest row.
 ///
@@ -1574,7 +1596,9 @@ pub unsafe extern "C" fn terminal_alacritty_display_offset(handle: *mut Terminal
     if handle.is_null() {
         return 0;
     }
-    (*handle).term.lock().grid().display_offset()
+    let mut term = (*handle).term.lock();
+    clamp_display_offset(&mut term);
+    term.grid().display_offset()
 }
 
 /// # Safety
@@ -1616,7 +1640,8 @@ pub unsafe extern "C" fn terminal_alacritty_set_cursor_style(
 /// The grid point under a viewport row, at the current scroll position. A
 /// selection is kept in grid coordinates, which is what lets a shift-click
 /// extend one after the view has scrolled away from where it started.
-fn viewport_point<T>(term: &Term<T>, line: i32, column: usize) -> Point {
+fn viewport_point<T: EventListener>(term: &mut Term<T>, line: i32, column: usize) -> Point {
+    clamp_display_offset(term);
     let offset = term.grid().display_offset() as i32;
     Point::new(Line(line - offset), Column(column))
 }
@@ -1639,7 +1664,7 @@ pub unsafe extern "C" fn terminal_alacritty_selection_start(
     }
     let terminal = &mut *handle;
     let mut term = terminal.term.lock();
-    let point = viewport_point(&term, line, column);
+    let point = viewport_point(&mut term, line, column);
     let side = if right_half { Side::Right } else { Side::Left };
     let selection_type = match kind {
         1 => SelectionType::Semantic,
@@ -1663,7 +1688,7 @@ pub unsafe extern "C" fn terminal_alacritty_selection_update(
     }
     let terminal = &mut *handle;
     let mut term = terminal.term.lock();
-    let point = viewport_point(&term, line, column);
+    let point = viewport_point(&mut term, line, column);
     let side = if right_half { Side::Right } else { Side::Left };
     if let Some(selection) = term.selection.as_mut() {
         selection.update(point, side);
@@ -1693,7 +1718,7 @@ pub unsafe extern "C" fn terminal_alacritty_selection_extend(
     }
     let terminal = &mut *handle;
     let mut term = terminal.term.lock();
-    let point = viewport_point(&term, line, column);
+    let point = viewport_point(&mut term, line, column);
     let side = if right_half { Side::Right } else { Side::Left };
     let Some(selection) = term.selection.as_mut() else {
         return false;
@@ -2215,10 +2240,11 @@ pub unsafe extern "C" fn terminal_alacritty_url_at(
         return 0;
     }
     let terminal = &mut *handle;
-    let term = terminal.term.lock();
+    let mut term = terminal.term.lock();
     if line < 0 || line as usize >= term.screen_lines() || column >= term.columns() {
         return 0;
     }
+    clamp_display_offset(&mut term);
     let offset = term.grid().display_offset();
     let point = Point::new(Line(line - offset as i32), Column(column));
     let Some((url, bounds)) = hyperlink_url_at(&term, point)
@@ -2327,6 +2353,7 @@ pub unsafe extern "C" fn terminal_alacritty_take_damage(
     terminal.dirty_rows.clear();
 
     let mut term = terminal.term.lock();
+    clamp_display_offset(&mut term);
     let mut kind = match term.damage() {
         TermDamage::Full => TERMINAL_DAMAGE_FULL,
         TermDamage::Partial(iter) => {
@@ -2373,7 +2400,8 @@ pub unsafe extern "C" fn terminal_alacritty_snapshot(
     }
     let terminal = &mut *handle;
     let theme = terminal.shared.lock().theme;
-    let term = terminal.term.lock();
+    let mut term = terminal.term.lock();
+    clamp_display_offset(&mut term);
 
     let columns = term.columns();
     let screen_lines = term.screen_lines();
@@ -2466,7 +2494,8 @@ pub unsafe extern "C" fn terminal_alacritty_overscan_row(
     }
     let terminal = &mut *handle;
     let theme = terminal.shared.lock().theme;
-    let term = terminal.term.lock();
+    let mut term = terminal.term.lock();
+    clamp_display_offset(&mut term);
 
     let Some(line) = overscan_line(&term) else {
         return false;
@@ -2654,6 +2683,62 @@ mod tests {
     fn intercept(interceptor: &mut OscInterceptor, input: &[u8]) -> (Vec<u8>, Vec<OscEvent>) {
         let (output, events) = interceptor.process(input);
         (output.into_owned(), events)
+    }
+
+    /// A scroll region that does not start at the top pushes nothing into the
+    /// scrollback, so a scrolled-back viewport must not move for it. Upstream
+    /// moved it a row per scroll and eventually past the history, where the
+    /// ring buffer wraps and the viewport repeats rows of the live screen;
+    /// the vendored grid fix keeps it where the user left it.
+    #[test]
+    fn a_region_scroll_leaves_a_scrolled_back_viewport_where_it_was() {
+        let size = TermSize {
+            columns: 20,
+            screen_lines: 10,
+        };
+        let config = Config {
+            scrolling_history: 1000,
+            ..Config::default()
+        };
+        let mut term = Term::new(config, &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        // Fourteen lines on a ten-row screen leave five in the scrollback.
+        for index in 0..14 {
+            processor.advance(&mut term, format!("line{index}\r\n").as_bytes());
+        }
+        assert_eq!(term.grid().history_size(), 5);
+        term.scroll_display(Scroll::Delta(3));
+
+        // Rows five to ten scroll six times with the cursor on the region's
+        // last row. Nothing reaches the scrollback.
+        processor.advance(&mut term, b"\x1b[5;10r\x1b[10;1H");
+        for index in 0..6 {
+            processor.advance(&mut term, format!("region{index}\r\n").as_bytes());
+        }
+        assert_eq!(term.grid().history_size(), 5);
+        assert_eq!(term.grid().display_offset(), 3);
+        // The safety net has nothing to do for a viewport inside the history.
+        clamp_display_offset(&mut term);
+        assert_eq!(term.grid().display_offset(), 3);
+
+        let content = term.renderable_content();
+        let mut rows = vec![String::new(); 10];
+        for item in content.display_iter {
+            let line = item.point.line.0 + content.display_offset as i32;
+            if (0..10).contains(&line) {
+                rows[line as usize].push(item.cell.c);
+            }
+        }
+        let rows: Vec<&str> = rows.iter().map(|row| row.trim_end()).collect();
+        // Three rows of scrollback, the fixed rows above the region, then the
+        // region's newest rows, with nothing shown twice.
+        assert_eq!(
+            rows,
+            [
+                "line2", "line3", "line4", "line5", "line6", "line7", "line8", "region1",
+                "region2", "region3"
+            ]
+        );
     }
 
     #[test]
@@ -3293,12 +3378,12 @@ mod tests {
 
         // Scrolled to the top, the first viewport row is "one".
         term.scroll_display(Scroll::Top);
-        let anchor = viewport_point(&term, 0, 0);
+        let anchor = viewport_point(&mut term, 0, 0);
         term.selection = Some(Selection::new(SelectionType::Simple, anchor, Side::Left));
 
         // Back at the live bottom, the last viewport row is "six".
         term.scroll_display(Scroll::Bottom);
-        let end = viewport_point(&term, 2, 2);
+        let end = viewport_point(&mut term, 2, 2);
         term.selection.as_mut().unwrap().update(end, Side::Right);
 
         assert_eq!(
@@ -3314,14 +3399,14 @@ mod tests {
     fn an_anchor_that_copies_nothing_can_still_be_extended() {
         let mut term = parse_sized(10, 3, b"one\r\ntwo\r\nthree");
 
-        let anchor = viewport_point(&term, 0, 0);
+        let anchor = viewport_point(&mut term, 0, 0);
         term.selection = Some(Selection::new(SelectionType::Simple, anchor, Side::Left));
 
         // What `terminal_alacritty_has_selection` answers: nothing to copy yet.
         assert_eq!(term.selection_to_string().unwrap_or_default(), "");
 
         // What the extend asks instead: there is an anchor to move.
-        let end = viewport_point(&term, 1, 2);
+        let end = viewport_point(&mut term, 1, 2);
         term.selection.as_mut().unwrap().update(end, Side::Right);
         assert_eq!(term.selection_to_string().unwrap_or_default(), "one\ntwo");
     }

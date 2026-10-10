@@ -29,6 +29,10 @@ the original feature bullet instead of adding separate entries for them.
   working, needing attention, or finished. A finished or blocked agent in a
   pane you are not looking at posts a notification, and Agents → Next Agent
   Needing Attention (⇧⌘A) jumps to it
+- Fixed Alacritty panes showing the same rows twice, and sometimes jumping,
+  after scrolling back while a program such as Claude Code or Codex kept
+  redrawing below the transcript. The viewport was being moved by rows that
+  never entered the scrollback, so it walked past the oldest line
 
 ## [0.8.0]
 

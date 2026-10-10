@@ -40,8 +40,11 @@ mkdir -p "${BUILD_DIR}" "${OUTPUT_DIR}"
 # Copy rather than symlink: cargo resolves the manifest's real path, and a
 # symlinked manifest lands back in the read-only source tree.
 cp "${CRATE_DIR}/Cargo.toml" "${CRATE_DIR}/Cargo.lock" "${BUILD_DIR}/"
-rm -rf "${BUILD_DIR}/src"
+rm -rf "${BUILD_DIR}/src" "${BUILD_DIR}/vendor"
 cp -R "${CRATE_DIR}/src" "${BUILD_DIR}/src"
+# The manifest patches alacritty_terminal to a path beside it; see
+# vendor/alacritty_terminal/PATCHES.md.
+cp -R "${CRATE_DIR}/vendor" "${BUILD_DIR}/vendor"
 
 slices=()
 for arch in ${=ARCHS}; do
