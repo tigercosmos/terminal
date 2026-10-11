@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write # create the release and upload the .dmg to it
+  actions: write # start the Pages deploy once the release exists
 
 jobs:
   dmg:
@@ -100,3 +101,13 @@ jobs:
               --title "terminal $VERSION" \
               --notes-file build/notes.md
           fi
+
+      - name: Redeploy the website
+        # The Pages build prerenders the landing page, so its download button
+        # names whichever release was newest when the site was last built. The
+        # push that bumps the version deploys the site before this tag exists,
+        # which leaves it offering the previous .dmg until something touches
+        # `web/`. Rebuild it now that the release it should point at is live.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main

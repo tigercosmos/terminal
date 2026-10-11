@@ -30,8 +30,12 @@ There are two release paths, and they are independent:
    `/Applications` symlink — `create-dmg`'s arranged window needs Finder
    scripting, which is unreliable on a headless runner);
 4. creates the release if the tag doesn't have one yet, using this version's
-   [`CHANGELOG.md`](CHANGELOG.md) section as the notes, and uploads the `.dmg`.
-   If you created the release yourself when tagging, it only uploads.
+   [`CHANGELOG.md`](CHANGELOG.md) section as the notes, and uploads the `.dmg`;
+   if you created the release yourself when tagging, it only uploads;
+5. starts the Pages workflow again, because the site's download button is
+   prerendered from the newest release and the push that bumped the version
+   built it before this one existed. If the site still shows the old version
+   after the release run is green, `gh workflow run pages.yml` does the same.
 
 Cutting one:
 

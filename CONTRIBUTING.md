@@ -95,7 +95,8 @@ driving the app by hand does not.
 ## Website
 
 The site at [tigercosmos.github.io/terminal](https://tigercosmos.github.io/terminal/)
-is built from `web/` and deploys on every push to `main` that touches it. It is
+is built from `web/` and deploys on every push to `main` that touches it, and
+again after each release so its download button names the new `.dmg`. It is
 hand-written, not generated, so it goes stale unless a change updates it.
 
 When a change adds, removes, or renames something a user can see, update

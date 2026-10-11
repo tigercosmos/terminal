@@ -52,7 +52,10 @@ the `asset()` helper in [`src/lib/utils.ts`](src/lib/utils.ts) — use it rather
 than a root-absolute `/foo.png`, which resolves off the base and 404s. Pages has
 no server, so `/` is prerendered when `SITE_BASE` is set; the Worker still
 renders it per request, which is what lets the download button follow the
-appcast.
+appcast. Because the prerender bakes in whichever release was newest at build
+time, the release workflow dispatches this one again after it publishes a
+`.dmg`; a site that still names the previous version after a release means that
+step did not run.
 
 To preview the subpath locally, serve the build from a directory named
 `terminal`:
@@ -69,8 +72,11 @@ cd /tmp/pages && python3 -m http.server 8765   # http://localhost:8765/terminal/
   palette that mirrors the macOS app (`terminal/Theme.swift`).
 - Add more components with `bunx shadcn@latest add <name>` — the project is
   already configured for Base UI (`components.json` → `"style": "base-nova"`).
-- The download URL and version live in the `LATEST` constant at the top of
-  [`src/routes/index.tsx`](src/routes/index.tsx). Bump it on each release.
+- The download button reads the newest GitHub Release at build time (Pages) or
+  per request (Worker). `FALLBACK` at the top of
+  [`src/routes/index.tsx`](src/routes/index.tsx) is what it shows when that
+  lookup fails; bump it on each release so the fallback is never older than
+  the release being cut.
 - The hero product shot is [`public/terminal-screenshot.png`](public/terminal-screenshot.png)
   (a real app screenshot with transparent padding + shadow) — swap the file to
   update it.
