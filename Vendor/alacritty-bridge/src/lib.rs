@@ -3411,6 +3411,30 @@ mod tests {
         assert_eq!(term.selection_to_string().unwrap_or_default(), "one\ntwo");
     }
 
+    /// A TUI such as Claude Code redraws its frame on every spinner tick by
+    /// erasing the rows and writing them again. The selection is a range of
+    /// cells, not the text that was in them, so it has to outlive the erase
+    /// or ⌘C a moment later finds nothing to copy.
+    #[test]
+    fn a_selection_survives_the_rows_under_it_being_erased_and_redrawn() {
+        let mut term = parse_sized(20, 3, b"status line\r\nhello world\r\n");
+        let from = viewport_point(&mut term, 1, 0);
+        let to = viewport_point(&mut term, 1, 4);
+        assert_eq!(
+            select_text(&mut term, SelectionType::Simple, from, to),
+            "hello"
+        );
+
+        // Ink's redraw: erase the frame upward line by line, then redraw it
+        // and clear whatever is left below the new frame.
+        let mut processor: Processor = Processor::new();
+        processor.advance(
+            &mut term,
+            b"\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\rstatus line\r\nhello world\r\n\x1b[J",
+        );
+        assert_eq!(term.selection_to_string().unwrap_or_default(), "hello");
+    }
+
     /// A selection that runs off the end of a row picks up the newline the row
     /// stands for — copying two lines has to paste as two lines.
     #[test]

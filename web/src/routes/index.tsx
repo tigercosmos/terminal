@@ -257,7 +257,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Selection that holds its place',
         detail:
-          'drag to select, then Shift+click anywhere — even after scrolling the scrollback away from where you started — and the selection stretches to meet you instead of starting over',
+          'drag to select, then Shift+click anywhere — even after scrolling the scrollback away from where you started — and the selection stretches to meet you instead of starting over. It stays put while Claude Code or another TUI redraws beneath it, so ⌘C still has something to copy',
       },
       {
         name: 'Scrollback that glides',

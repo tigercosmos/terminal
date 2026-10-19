@@ -1653,8 +1653,12 @@ impl<T: EventListener> Handler for Term<T> {
             *cell = bg.into();
         }
 
-        let range = self.grid.cursor.point.line..=self.grid.cursor.point.line;
-        self.selection = self.selection.take().filter(|s| !s.intersects_range(range));
+        // Terminal patch: the selection stays. Upstream drops a selection that
+        // touches the erased line, but a TUI redraws its frame by erasing and
+        // rewriting the same rows many times a second, which left nothing to
+        // copy by the time the user reached ⌘C. The selection is a range of
+        // cells and simply covers whatever is drawn there next, the way
+        // Terminal.app and Ghostty behave.
     }
 
     /// Set the indexed color value.
@@ -1769,8 +1773,8 @@ impl<T: EventListener> Handler for Term<T> {
                     *cell = bg.into();
                 }
 
-                let range = Line(0)..=cursor.line;
-                self.selection = self.selection.take().filter(|s| !s.intersects_range(range));
+                // Terminal patch: the selection survives a partial erase; see
+                // `clear_line`.
             },
             ansi::ClearMode::Below => {
                 let cursor = self.grid.cursor.point;
@@ -1782,8 +1786,8 @@ impl<T: EventListener> Handler for Term<T> {
                     self.grid.reset_region((cursor.line + 1)..);
                 }
 
-                let range = cursor.line..Line(screen_lines as i32);
-                self.selection = self.selection.take().filter(|s| !s.intersects_range(range));
+                // Terminal patch: the selection survives a partial erase; see
+                // `clear_line`.
             },
             ansi::ClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {

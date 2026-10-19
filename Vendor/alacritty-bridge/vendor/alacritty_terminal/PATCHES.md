@@ -12,3 +12,14 @@ and Claude Code redraw their transcript this way) therefore moved a
 scrolled-back viewport one row per redraw and eventually past `history_size`,
 where the ring buffer wraps and repeats rows of the live screen. The offset
 update now lives inside the `region.start == 0` branch.
+
+## `Term::clear_line` and partial `Term::clear_screen` keep the selection
+
+`src/term/mod.rs`. Upstream drops a selection that intersects a line erased
+with EL (`CSI K`) or a region erased with ED above or below the cursor. A TUI
+such as Claude Code redraws its frame on every spinner tick by erasing its rows
+and writing them again, so a selection anywhere in the frame vanished within a
+fraction of a second and ⌘C copied nothing. The selection now stays, as a
+range of cells that covers whatever is drawn there next, matching Terminal.app
+and Ghostty. A full-screen erase (`ED 2`) and a scrollback erase (`ED 3`) still
+clear it as upstream does.
