@@ -14,6 +14,13 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [0.9.1]
+
+- Selected text in an Alacritty pane stays selected, and copies with ⌘C,
+  while a program such as Claude Code keeps redrawing the rows under it.
+  The selection used to vanish on the next spinner tick, so there was
+  nothing to copy
+
 ## [0.9.0]
 
 - Coding agents can coordinate through Terminal. From any shell, `terminal
