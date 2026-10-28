@@ -253,9 +253,21 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
 
         let mut new_raw = Vec::with_capacity(self.raw.len());
         let mut buffered: Option<Vec<T>> = None;
+        // Rows the reflow adds to what was on screen, each of which would push
+        // the screen's top row into history.
+        let mut visible_rows_added = 0;
+        // Where the saved cursor's row lands in `new_raw`, to place it on that
+        // row once the reflow is done.
+        let saved_buffer_line =
+            (self.lines - 1).saturating_sub(self.saved_cursor.point.line.0 as usize);
+        let mut saved_raw_index = None;
 
         let mut rows = self.raw.take_all();
         for (i, mut row) in rows.drain(..).enumerate().rev() {
+            if i == saved_buffer_line {
+                saved_raw_index = Some(new_raw.len());
+            }
+
             // Append lines left over from the previous row.
             if let Some(buffered) = buffered.take() {
                 // Add a column for every cell added before the cursor, if it goes beyond the new
@@ -355,12 +367,40 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
                     }
                     row = Row::from_vec(wrapped, occ);
 
+                    if i < self.lines {
+                        visible_rows_added += 1;
+                    }
+
                     if i < self.display_offset {
                         // Since we added a new line, rotate up the viewport.
                         self.display_offset += 1;
                     }
                 }
             }
+        }
+
+        // Let the wrapped rows take up blank rows below the cursor before they
+        // push the top of the screen into history, so content stays where it
+        // was on screen and grows downward, as it does in Terminal.app, iTerm2,
+        // Ghostty and kitty. A program that redraws in place after a resize
+        // (Claude Code erases from the top of the screen and repaints) would
+        // otherwise leave a copy of every row pushed out in the scrollback.
+        // `new_raw` runs oldest first, so the screen's bottom row is its last.
+        let mut removable = (self.lines - 1).saturating_sub(self.cursor.point.line.0 as usize);
+        while visible_rows_added > 0 && removable > 0 && new_raw.last().is_some_and(Row::is_clear) {
+            new_raw.pop();
+            visible_rows_added -= 1;
+            removable -= 1;
+            self.cursor.point.line += 1;
+            self.display_offset = self.display_offset.saturating_sub(1);
+        }
+
+        // Keep the saved cursor on the row it was saved on, so restoring it
+        // (DECRC) writes there and not over whatever the reflow moved into its
+        // old line. A row pushed into history leaves it on the top line.
+        if let Some(index) = saved_raw_index {
+            let line = index as i32 + self.lines as i32 - new_raw.len() as i32;
+            self.saved_cursor.point.line = Line(line.clamp(0, self.lines as i32 - 1));
         }
 
         // Reverse iterator and use it as the new grid storage.

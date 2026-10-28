@@ -23,3 +23,17 @@ fraction of a second and ⌘C copied nothing. The selection now stays, as a
 range of cells that covers whatever is drawn there next, matching Terminal.app
 and Ghostty. A full-screen erase (`ED 2`) and a scrollback erase (`ED 3`) still
 clear it as upstream does.
+
+## `Grid::shrink_columns` grows the screen into blank rows below the cursor
+
+`src/grid/resize.rs`. Upstream keeps the bottom of the screen fixed when a
+narrowing reflows rows onto more lines, so every added row pushes the top of
+the screen into history even when blank rows sit below the cursor. Claude Code
+answers a resize by erasing the screen from its top row and painting its frame
+again, so each narrowing left a copy of the frame's top in the scrollback, one
+per step of a dragged divider. The rows the reflow adds to what was on screen
+now take up trailing blank rows below the cursor first, keeping what was on
+screen in place, as Terminal.app, iTerm2, Ghostty and kitty do. A screen with
+no blank rows left still pushes its top into history. The saved cursor now
+follows the row it was saved on through the reflow; upstream left its line
+alone, so a DECRC after a narrowing wrote over whatever had moved into it.

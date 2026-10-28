@@ -417,6 +417,52 @@ for pane in $worker $second; do
 done
 [[ ! -s $work/hand1.log && ! -s $work/hand2.log ]] \
     || fail "a refused prompt still reached an agent"
+
+# --- a TUI repainting after a resize --------------------------------------------
+
+# A stand-in for Claude Code's resize handling: cursor home, erase every row on
+# screen, then paint the frame again from the top at the new width. Its rules
+# span the pane, so narrowing wraps each onto more rows. A grid that makes room
+# for them by pushing the top of the screen into the scrollback, rather than
+# taking the blank rows below the frame, leaves a copy of the header there on
+# every step of a dragged divider.
+cat > "$work/frame" <<'FRAME'
+#!/bin/zsh
+paint() {
+    local size=(${=$(stty size)}) rule
+    printf -v rule '%*s' $size[2] ''
+    rule=${rule// /=}
+    printf '\033[H'
+    repeat $size[1] printf '\033[2K\033[1B'
+    printf '\033[HFRAME-HEADER\r\n%s\r\n> prompt\r\n%s\r\nstatus' "$rule" "$rule"
+}
+stty -echo
+trap paint WINCH
+paint
+while :; do sleep 0.1; done
+FRAME
+chmod +x "$work/frame"
+# A tab of its own, so the pane starts at the window's full width.
+automate runCommand new-session
+sleep 1.5
+automate sendText "clear && '$work/frame'
+"
+sleep 1.5
+automate runCommand split-right
+sleep 0.5
+automate runCommand focus-pane-left
+for _ in 1 2; do
+    automate runCommand resize-pane-left
+    sleep 0.1
+done
+sleep 1.5
+check "a TUI repainted after narrowing is on screen" \
+      "FRAME-HEADER" "$(automate readScreen)"
+check "its repaint leaves no copy of its frame in the scrollback" "copies=0" \
+      "copies=$(automate readScrollback | grep -c FRAME-HEADER)"
+automate sendText $'\x03'
+sleep 0.5
+automate runCommand close-tab
 rm -rf "$work"
 
 # An action the app does not offer is refused rather than run.

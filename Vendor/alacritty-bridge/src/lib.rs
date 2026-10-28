@@ -3314,6 +3314,146 @@ mod tests {
         assert_eq!(rows[0], "abcdefgh");
     }
 
+    /// The rows a narrowing adds take up the blank rows below the cursor, so
+    /// what was on screen stays where it was and grows downward. Upstream
+    /// pushed the top of the screen into the scrollback instead; see
+    /// vendor/alacritty_terminal/PATCHES.md.
+    #[test]
+    fn narrowing_grows_into_blank_rows_before_the_scrollback() {
+        let mut term = parse_sized(12, 6, b"top\r\nabcdefghijklmnopqrst\r\n> ");
+        assert_eq!(
+            screen_rows(&term),
+            vec!["top", "abcdefghijkl", "mnopqrst", ">", "", ""]
+        );
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 6,
+        });
+        assert_eq!(
+            screen_rows(&term),
+            vec!["top", "abcdef", "ghijkl", "mnopqr", "st", ">"]
+        );
+        assert_eq!(term.grid().history_size(), 0);
+        assert_eq!(term.grid().cursor.point, Point::new(Line(5), Column(2)));
+    }
+
+    /// A cursor saved before a narrowing moves down with the content, so
+    /// restoring it writes on the row it was saved on.
+    #[test]
+    fn a_saved_cursor_follows_the_content_when_narrowing() {
+        let mut term = parse_sized(12, 6, b"top\r\nabcdefghijklmnopqrst\r\n> \x1b7");
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 6,
+        });
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b[H\x1b8x");
+        assert_eq!(
+            screen_rows(&term),
+            vec!["top", "abcdef", "ghijkl", "mnopqr", "st", "> x"]
+        );
+    }
+
+    /// A cursor saved above the rows a narrowing wraps stays where it was.
+    #[test]
+    fn a_saved_cursor_above_the_wrapped_rows_stays_put_when_narrowing() {
+        let mut term = parse_sized(12, 6, b"top\x1b7\r\nabcdefghijklmnopqrst\r\n> ");
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 6,
+        });
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b8x");
+        assert_eq!(
+            screen_rows(&term),
+            vec!["topx", "abcdef", "ghijkl", "mnopqr", "st", ">"]
+        );
+    }
+
+    /// On a full screen, a row wrapped below the saved cursor pushes its row
+    /// up a line, and the saved cursor goes up with it.
+    #[test]
+    fn a_saved_cursor_follows_a_full_screen_narrowing() {
+        let mut term = parse_sized(12, 5, b"x\r\nb\x1b7\r\nabcdefghijklm\r\nd");
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 5,
+        });
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b8x");
+        assert_eq!(screen_rows(&term), vec!["bx", "abcdef", "ghijkl", "m", "d"]);
+    }
+
+    /// Leaving the alternate screen after a narrowing returns to the prompt
+    /// the program was started from, as quitting vim or Codex does. The
+    /// primary screen's own cursor carries this, not the saved one.
+    #[test]
+    fn leaving_the_alternate_screen_after_narrowing_returns_to_the_prompt() {
+        let mut term = parse_sized(12, 6, b"top\r\nabcdefghijklmnopqrst\r\n> \x1b[?1049h");
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 6,
+        });
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, b"\x1b[?1049lx");
+        assert_eq!(
+            screen_rows(&term),
+            vec!["top", "abcdef", "ghijkl", "mnopqr", "st", "> x"]
+        );
+    }
+
+    /// With no blank rows left below the cursor, a narrowing still pushes the
+    /// top of the screen into the scrollback rather than losing it.
+    #[test]
+    fn narrowing_a_full_screen_pushes_its_top_into_the_scrollback() {
+        let mut term = parse_sized(12, 3, b"abcdefghijklmnopqrst\r\n> ");
+
+        term.resize(TermSize {
+            columns: 6,
+            screen_lines: 3,
+        });
+        assert_eq!(screen_rows(&term), vec!["mnopqr", "st", ">"]);
+        assert_eq!(term.grid().history_size(), 2);
+        assert_eq!(term.grid().cursor.point, Point::new(Line(2), Column(2)));
+    }
+
+    /// Claude Code answers a resize by erasing every row from the top of the
+    /// screen and painting its frame again. Its frame fit on screen, so none
+    /// of it may be left in the scrollback once the repaint is done; with the
+    /// top of the screen pushed out by the narrowing, every drag of a divider
+    /// left another copy of its header there.
+    #[test]
+    fn an_in_place_repaint_after_narrowing_leaves_no_copy_in_the_scrollback() {
+        let frame = |width: usize| {
+            let rule = "\u{2500}".repeat(width);
+            format!("header\r\n{rule}\r\n> prompt\r\n{rule}\r\nstatus")
+        };
+        let mut term = parse_sized(20, 8, frame(20).as_bytes());
+
+        term.resize(TermSize {
+            columns: 14,
+            screen_lines: 8,
+        });
+        let mut processor: Processor = Processor::new();
+        let erase = "\x1b[2K\x1b[1B".repeat(8);
+        processor.advance(
+            &mut term,
+            format!("\x1b[H{erase}\x1b[H{}", frame(14)).as_bytes(),
+        );
+
+        let rule = "\u{2500}".repeat(14);
+        assert_eq!(
+            screen_rows(&term),
+            vec!["header", &rule, "> prompt", &rule, "status", "", "", ""]
+        );
+        assert_eq!(term.grid().history_size(), 0);
+    }
+
     /// Widening puts a line that had been broken back onto one row.
     #[test]
     fn widening_rejoins_a_line_that_had_been_broken() {
