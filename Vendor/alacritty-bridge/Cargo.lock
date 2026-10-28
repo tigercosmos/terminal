@@ -21,6 +21,7 @@ dependencies = [
 name = "alacritty_terminal"
 version = "0.26.0"
 dependencies = [
+ "arrayvec",
  "base64",
  "bitflags",
  "home",

@@ -2741,6 +2741,45 @@ mod tests {
         );
     }
 
+    /// A program can stack combining marks onto one cell without end. The
+    /// vendored cell keeps the first nine and drops the rest, so a stream of
+    /// them cannot grow the grid's memory without bound.
+    #[test]
+    fn a_cell_keeps_at_most_nine_combining_marks() {
+        let size = TermSize {
+            columns: 20,
+            screen_lines: 3,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, format!("e{}", "\u{301}".repeat(100)).as_bytes());
+
+        let cell = &term.grid()[Point::new(Line(0), Column(0))];
+        assert_eq!(cell.c, 'e');
+        assert_eq!(cell.zerowidth(), Some(&['\u{301}'; 9][..]));
+    }
+
+    /// Upstream dropped the bottom of the title stack, not the keyboard mode
+    /// stack, once a program pushed past the keyboard stack's depth, and
+    /// panicked when the title stack was empty. Terminal leaves the kitty
+    /// keyboard protocol off, so this guards the day it is turned on.
+    #[test]
+    fn overflowing_the_keyboard_mode_stack_drops_its_oldest_mode() {
+        let size = TermSize {
+            columns: 20,
+            screen_lines: 3,
+        };
+        let config = Config {
+            kitty_keyboard: true,
+            ..Config::default()
+        };
+        let mut term = Term::new(config, &size, VoidListener);
+        let mut processor: Processor = Processor::new();
+        processor.advance(&mut term, "\x1b[>1u".repeat(5000).as_bytes());
+
+        assert!(term.mode().contains(TermMode::DISAMBIGUATE_ESC_CODES));
+    }
+
     #[test]
     fn configured_cursor_style_maps_shape_and_blinking() {
         let block = configured_cursor_style(0, true);

@@ -37,3 +37,28 @@ screen in place, as Terminal.app, iTerm2, Ghostty and kitty do. A screen with
 no blank rows left still pushes its top into history. The saved cursor now
 follows the row it was saved on through the reflow; upstream left its line
 alone, so a DECRC after a narrowing wrote over whatever had moved into it.
+
+## Fixes backported from upstream master
+
+Upstream fixed these after 0.26.0 but has not released them yet. Each change
+matches the upstream commit, so drop it from this list when a release that
+includes it replaces the vendored copy.
+
+- `src/term/mod.rs`, alacritty/alacritty@542147067. `push_keyboard_mode`
+  removed the oldest entry of the title stack, not the keyboard mode stack,
+  once the keyboard stack was full. If the title stack was empty, this
+  panicked, and the bridge's `panic = "abort"` closed the whole app. Terminal
+  leaves `kitty_keyboard` off, so only a build that turns it on can reach this.
+- `src/term/cell.rs` and `Cargo.toml`, alacritty/alacritty@ede2ac144. A cell
+  keeps at most nine zerowidth characters (`MAX_ZEROWIDTH_CHARS`, stored in an
+  `ArrayVec`) and drops the rest. Before this, a program could stack combining
+  marks onto one cell until memory ran out. Here `arrayvec/serde` is
+  enabled only with the crate's `serde` feature, because the bridge builds
+  without serde.
+- `src/tty/unix.rs`, alacritty/alacritty@985394dd4. If the PTY cannot be put in
+  non-blocking mode, `tty::new` now returns an error. It no longer panics on
+  an `assert_eq!`. This copy differs from upstream in one way: the `Pty` is
+  built before that call. Upstream returns the error before the `Pty` exists,
+  so the spawned shell is never hung up or reaped and the SIGCHLD pipe stays
+  registered. Here, dropping the `Pty` cleans up all three. Keep this
+  ordering if a later release still has upstream's version.
