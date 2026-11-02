@@ -241,6 +241,14 @@ struct SettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                 }
+
+                Toggle(
+                    "Resume agent sessions after relaunch",
+                    isOn: $settings.resumeAgentsOnRestore
+                )
+                Text("Claude Code and Codex conversations that were open in a pane come back when Terminal reopens: the pane runs the agent’s own resume command once its shell is ready.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Privacy") {
@@ -286,6 +294,7 @@ struct SettingsView: View {
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
                         && !settings.aiEnabled
+                        && settings.resumeAgentsOnRestore
                         && !settings.denyProtectedFolders
                         && settings.terminalBackend == .fallback)
                 }

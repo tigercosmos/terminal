@@ -25,6 +25,7 @@ enum KeroAgentPhase: String, Codable, CaseIterable, Sendable {
         case .idle: return 1
         }
     }
+
     /// Short agent state shown beside its name in the sidebar roster.
     /// `created` reads as "starting", the word the pane and tab badges already
     /// use for it: the raw case name says nothing to someone who never ran
@@ -94,19 +95,41 @@ final class KeroAgentObservationState {
     /// briefly so the monitor cannot mistake the still-foreground shell for
     /// an agent that already exited before it has consumed the command.
     var commandGraceDeadline: Date?
+    /// Monitor ticks since the agent's session reference was last read; see
+    /// `refreshAgentSessionReference(kind:processID:)`. Reset when the
+    /// foreground process changes, so a new agent is read on its first tick.
+    var sessionReferenceTick = 0
+    /// Whether the session reference has been seen live — among the agent's
+    /// own files or Codex's live threads — rather than only seeded by a
+    /// restore. Only a confirmed Codex reference is dropped when its thread
+    /// is no longer live; a seeded one is kept until its resumed thread comes
+    /// up or a thread this process has since used replaces it.
+    var sessionReferenceConfirmed = false
 }
 
 @MainActor
 final class AgentAutomationMonitor {
     static let shared = AgentAutomationMonitor()
 
-    private let sessions = NSHashTable<TerminalSession>.weakObjects()
+    /// Weak references in registration order, so panes refresh in the same
+    /// order every tick; a weak hash table's order is arbitrary.
+    private var sessions: [WeakSession] = []
     private var timer: Timer?
+    /// Every live Codex thread on this machine, shared by all panes and read
+    /// at most once per `codexThreadsLifetime`, only while some Codex pane
+    /// asks: listing the locks and parsing each thread's rollout header is
+    /// file I/O that would otherwise repeat once per Codex pane per tick.
+    private var codexThreads: (threads: [KeroCodexThread], readAt: ContinuousClock.Instant)?
+    private static let codexThreadsLifetime: Duration = .seconds(3)
+
+    private struct WeakSession {
+        weak var session: TerminalSession?
+    }
 
     private init() {}
 
     func register(_ session: TerminalSession) {
-        sessions.add(session)
+        sessions.append(WeakSession(session: session))
         guard timer == nil else { return }
         let timer = Timer(timeInterval: 0.75, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
@@ -116,7 +139,8 @@ final class AgentAutomationMonitor {
     }
 
     private func refresh() {
-        let liveSessions = sessions.allObjects.filter { !$0.hasExited }
+        sessions.removeAll { $0.session == nil }
+        let liveSessions = sessions.compactMap(\.session).filter { !$0.hasExited }
         for session in liveSessions {
             session.refreshAutomationAgentState(
                 isFocused: TerminalManager.automationIsSessionFocused(session.id)
@@ -127,6 +151,60 @@ final class AgentAutomationMonitor {
             timer = nil
         }
     }
+
+    func liveCodexThreads() -> [KeroCodexThread] {
+        let now = ContinuousClock.now
+        if let codexThreads, now - codexThreads.readAt < Self.codexThreadsLifetime {
+            return codexThreads.threads
+        }
+        let files = FileManager.default
+        let home = KeroAgentResume.codexHomeURL(
+            homeURL: files.homeDirectoryForCurrentUser,
+            environment: ProcessInfo.processInfo.environment
+        )
+        let threads = KeroAgentResume.codexLiveThreads(codexHome: home, fileManager: files)
+        codexThreads = (threads, now)
+        return threads
+    }
+
+    /// Whether another live pane runs a Codex agent in `cwd` that holds no
+    /// session reference yet. Panes with a reference do not count: they no
+    /// longer compete for a thread.
+    func hasOtherUnreferencedCodexAgent(cwd: String, excluding session: TerminalSession) -> Bool {
+        let directory = URL(fileURLWithPath: cwd).standardizedFileURL.path
+        return sessions.contains { entry in
+            guard let other = entry.session, other !== session, !other.hasExited,
+                  other.agentSessionReference == nil,
+                  let status = other.agentStatus, status.kind == .codex,
+                  let processID = status.processID,
+                  let otherDirectory = processWorkingDirectory(pid: processID)
+            else { return false }
+            return URL(fileURLWithPath: otherDirectory).standardizedFileURL.path == directory
+        }
+    }
+
+    /// Session ids every other live pane already holds, so one conversation is
+    /// never attributed to two panes.
+    func claimedAgentSessionIDs(excluding session: TerminalSession) -> Set<String> {
+        Set(sessions.compactMap { entry -> String? in
+            guard let other = entry.session, other !== session, !other.hasExited else { return nil }
+            return other.agentSessionReference?.sessionID
+        })
+    }
+}
+
+/// Direct children of `pid`, at most 64, from libproc. Codex's npm launcher
+/// is a node process running the native binary as its child, and Terminal
+/// recognizes the launcher; the files naming a thread may be held by either.
+nonisolated func processChildPIDs(pid: pid_t) -> [pid_t] {
+    guard pid > 0 else { return [] }
+    var children = [pid_t](repeating: 0, count: 64)
+    // Returns a count of pids, not bytes, and never more than fit.
+    let count = children.withUnsafeMutableBytes { buffer in
+        proc_listchildpids(pid, buffer.baseAddress, Int32(buffer.count))
+    }
+    guard count > 0 else { return [] }
+    return children.prefix(min(Int(count), children.count)).filter { $0 > 0 }
 }
 
 extension TerminalSession {
@@ -315,18 +393,25 @@ extension TerminalSession {
         return Array(olderContent.dropLast(overlap)) + collected
     }
 
-    func declareAutomationAgent(alias: String, kind: KeroAgentKind) {
+    /// `grace` is how long the shell may take to turn the typed command into
+    /// the agent process before the declaration lapses. The default covers a
+    /// shell sitting at its prompt; a restore types into shells that are still
+    /// sourcing their rc files, a dozen at once, and needs longer.
+    func declareAutomationAgent(alias: String, kind: KeroAgentKind, grace: TimeInterval = 5) {
         // A declaration is a fresh launch. The previous agent's status may
         // not have been cleared yet if the monitor has not ticked since it
-        // exited, so drop its roster label here rather than relabel this one.
+        // exited, so drop its roster label and conversation here rather than
+        // carry them over to this one.
         agentCustomLabel = nil
+        agentSessionReference = nil
+        agentObservation.sessionReferenceConfirmed = false
         agentObservation.alias = alias
         agentObservation.declaredKind = kind
         agentObservation.integrationPhase = nil
         agentObservation.integrationReason = nil
         agentObservation.integrationTurnActive = false
         agentObservation.awaitingInitialPrompt = true
-        agentObservation.commandGraceDeadline = Date().addingTimeInterval(5)
+        agentObservation.commandGraceDeadline = Date().addingTimeInterval(grace)
         updateAutomationAgentStatus(
             alias: alias,
             kind: kind,
@@ -461,12 +546,16 @@ extension TerminalSession {
 
         if foreground != agentObservation.lastForegroundPID {
             agentObservation.lastForegroundPID = foreground
+            agentObservation.sessionReferenceTick = 0
             // A different agent process in the same pane between two ticks
             // is a relaunch the status never cleared for. The roster label
-            // named the old one, so it must not carry over.
+            // and the conversation belonged to the old one, so neither may
+            // carry over.
             if processIsAgent, let previous = agentStatus?.processID,
                let foreground, previous != foreground {
                 agentCustomLabel = nil
+                agentSessionReference = nil
+                agentObservation.sessionReferenceConfirmed = false
             }
             if !processIsAgent {
                 agentObservation.integrationPhase = nil
@@ -486,6 +575,10 @@ extension TerminalSession {
                 clearAutomationAgentStatus()
             }
             return
+        }
+
+        if let foreground {
+            refreshAgentSessionReference(kind: kind, processID: foreground)
         }
 
         let alias = agentObservation.alias ?? agentStatus?.alias ?? kind.rawValue
@@ -587,9 +680,124 @@ extension TerminalSession {
         )
     }
 
+    /// Keeps `agentSessionReference` naming the conversation the agent here
+    /// is in. Re-read every fourth tick (about 3 s) even once found, because
+    /// `/clear` in Claude Code and `/new` in Codex start a new session in the
+    /// same process, and the pane should resume the one on screen. A file read,
+    /// a few descriptor listings, and two process lookups per agent at that
+    /// rate are cheap; the machine-wide Codex thread list is shared through
+    /// the monitor; and panes without a recognized agent never get here.
+    private func refreshAgentSessionReference(kind: KeroAgentKind, processID: pid_t) {
+        guard KeroAgentResume.supportedKinds.contains(kind) else { return }
+        let tick = agentObservation.sessionReferenceTick
+        agentObservation.sessionReferenceTick += 1
+        guard tick % 4 == 0 else { return }
+
+        switch kind {
+        case .claude:
+            let registry = KeroAgentResume.claudeRegistryURL(
+                pid: processID,
+                homeURL: FileManager.default.homeDirectoryForCurrentUser,
+                environment: ProcessInfo.processInfo.environment
+            )
+            // Missing until Claude Code registers its session, and in versions
+            // without a registry; either way there is nothing to record yet.
+            // A read that finds nothing keeps the last answer: the file can
+            // be mid-rewrite, and the conversation last seen is still the
+            // best one to resume. Read only as a bounded regular file: the
+            // directory is writable by anything running as the user, and a
+            // FIFO or device planted there would block the main thread.
+            if let found = readRegularFilePrefix(at: registry, maxBytes: 64 * 1024).flatMap({
+                KeroAgentResume.claudeReference(registryJSON: $0, pid: processID)
+            }) {
+                adoptAgentSessionReference(found)
+            }
+        case .codex:
+            refreshCodexSessionReference(processID: processID)
+        default:
+            return
+        }
+    }
+
+    private func refreshCodexSessionReference(processID: pid_t) {
+        // `codex exec` and older TUIs hold their thread's lock and rollout
+        // themselves, in the recognized process or the native binary under
+        // its node launcher. That names the thread exactly, so it wins.
+        let candidates = [processID] + processChildPIDs(pid: processID)
+        if let found = candidates.lazy.compactMap({
+            KeroAgentResume.codexReference(openFilePaths: processOpenFilePaths(pid: $0))
+        }).first {
+            adoptAgentSessionReference(found)
+            return
+        }
+
+        // Current TUIs leave both files to a shared `codex app-server` that
+        // holds every live thread's, so the thread is matched to this pane by
+        // the agent's directory and start time instead.
+        let monitor = AgentAutomationMonitor.shared
+        let threads = monitor.liveCodexThreads()
+        if let current = agentSessionReference {
+            // A live reference is kept as is. Matching goes by when threads
+            // were used, so re-running it could move the pane onto another
+            // thread in the same directory that happened to be used later.
+            if threads.contains(where: { $0.id == current.sessionID }) {
+                agentObservation.sessionReferenceConfirmed = true
+                return
+            }
+            if agentObservation.sessionReferenceConfirmed {
+                // The thread ended or `/new` replaced it; match whatever runs now.
+                agentSessionReference = nil
+                agentObservation.sessionReferenceConfirmed = false
+            }
+            // A reference seeded by a restore is kept while its resumed thread
+            // is not live yet: dropped, a quit before the next prompt would
+            // save the pane without its conversation. Matching still runs: it only finds a thread this process
+            // has used since it started, so a match means the user moved on
+            // from the seeded conversation.
+        }
+        // The agent's own directory and start, not the shell's: the thread
+        // records where Codex ran, and only threads used since it started
+        // can be its own.
+        guard let cwd = processWorkingDirectory(pid: processID),
+              let startedAt = processStartDate(pid: processID)
+        else { return }
+        // Two unmatched Codex agents in one directory cannot be told apart:
+        // nothing Terminal sees says which pane prompted first, and a guess
+        // can hand each pane the other's conversation. Wait instead; once one
+        // exits its thread lock goes with it and the survivor's thread is the
+        // only candidate left.
+        guard !monitor.hasOtherUnreferencedCodexAgent(cwd: cwd, excluding: self),
+              let thread = KeroAgentResume.attributeCodexThread(
+                  // Threads other front ends start in the same directory — a
+                  // Codex run driven by a Claude Code plugin reports its own
+                  // originator — are not this pane's conversation.
+                  threads: threads.filter { $0.originator == nil || $0.originator == "codex-tui" },
+                  cwd: cwd, startedAt: startedAt,
+                  claimed: monitor.claimedAgentSessionIDs(excluding: self)
+              )
+        else { return }
+        agentSessionReference = KeroAgentResume.reference(for: thread)
+        agentObservation.sessionReferenceConfirmed = true
+    }
+
+    private func adoptAgentSessionReference(_ found: KeroAgentSessionReference) {
+        agentObservation.sessionReferenceConfirmed = true
+        guard found != agentSessionReference else { return }
+        // A Codex lock seen without its rollout names the same conversation
+        // with nothing for a restore to check; keep the fuller reference.
+        if let current = agentSessionReference,
+           current.sessionID == found.sessionID,
+           current.transcriptPath != nil, found.transcriptPath == nil {
+            return
+        }
+        agentSessionReference = found
+    }
+
     private func clearAutomationAgentStatus() {
         agentStatus = nil
         agentCustomLabel = nil
+        agentSessionReference = nil
+        agentObservation.sessionReferenceConfirmed = false
         agentObservation.alias = nil
         agentObservation.declaredKind = nil
         agentObservation.integrationPhase = nil
@@ -669,6 +877,7 @@ extension TerminalSession {
     var agentRollup: KeroAgentRollup? {
         PaneTab.rollup(agentStatus.map { [$0] } ?? [])
     }
+
     /// The name the sidebar roster shows for this pane's agent. Meaningful
     /// only while `agentStatus` is set; without one it falls back to the
     /// label or an empty kind name.
@@ -680,6 +889,102 @@ extension TerminalSession {
         )
     }
 
+    /// What a saved pane needs to bring this agent's conversation back on
+    /// relaunch; nil unless a resumable agent is running here.
+    var agentResumeSnapshot: SessionSnapshot.ProjectSnapshot.AgentSnapshot? {
+        guard let status = agentStatus, let reference = agentSessionReference else { return nil }
+        return SessionSnapshot.ProjectSnapshot.AgentSnapshot(
+            reference: reference, alias: status.alias, customLabel: agentCustomLabel
+        )
+    }
+
+    /// Session ids already resumed in the current restore pass. Static because
+    /// one pass spans every window restored from the same saved state, and
+    /// the panes holding a conversation twice may sit in different windows.
+    private static var resumedAgentSessionIDs: Set<String> = []
+    /// Resumes scheduled so far in the current pass, which sets each one's
+    /// start delay.
+    private static var scheduledAgentResumeCount = 0
+
+    /// Starts a new restore pass, forgetting which conversations the last one
+    /// resumed. A process starts with a fresh pass; this is for saved state
+    /// re-queued while the app keeps running.
+    static func beginAgentResumePass() {
+        resumedAgentSessionIDs = []
+        scheduledAgentResumeCount = 0
+    }
+
+    /// Brings back the agent conversation a restored pane held, by typing the
+    /// agent's own resume command into this freshly launched shell once it is
+    /// ready. Any check that fails leaves the pane a plain shell.
+    func resumeAgentAfterRestore(_ snapshot: SessionSnapshot.ProjectSnapshot.AgentSnapshot) {
+        // The setting gates only this step. The reference was saved either
+        // way, so turning the setting on later still has one to resume.
+        guard AppSettings.shared.resumeAgentsOnRestore else { return }
+        // The task below captures only these Sendable parts of the snapshot.
+        let (reference, alias, customLabel) = (
+            snapshot.reference, snapshot.alias, snapshot.customLabel
+        )
+        // A conversation whose transcript is gone, or that never got as far
+        // as writing one, would leave the agent printing an error where the
+        // user expected their conversation.
+        guard Self.agentTranscriptExists(reference) else { return }
+        // Two panes resuming one conversation would both append to the same
+        // transcript and drift apart; the first pane restored keeps it.
+        guard Self.resumedAgentSessionIDs.insert(reference.sessionID).inserted else { return }
+        // Staggered so a workspace full of agents does not start them all in
+        // the same instant, each loading its whole transcript at once.
+        let delay = 150 * Self.scheduledAgentResumeCount
+        Self.scheduledAgentResumeCount += 1
+
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(delay))
+            guard let self else { return }
+            await waitForAutomationShellLaunch()
+            // Typed into a shell that never came up, or into a job already
+            // running, the command would reach the wrong program — the same
+            // rule `terminal +agent start` follows.
+            guard isShellAvailableForAutomation, agentStatus == nil else { return }
+            // Every restored shell starts at once, so the one this command
+            // lands in may take well over the usual grace to reach the agent;
+            // lapsing early would re-detect it as hand-launched and lose the
+            // alias and the conversation reference seeded below.
+            declareAutomationAgent(alias: alias, kind: reference.kind, grace: 60)
+            agentCustomLabel = customLabel
+            // Seeded so a save before the monitor first reads the agent's own
+            // files still carries the conversation; that read replaces it.
+            agentSessionReference = reference
+            sendCommand(KeroAgentResume.resumeShellLine(reference) + "\r")
+        }
+    }
+
+    private static func agentTranscriptExists(_ reference: KeroAgentSessionReference) -> Bool {
+        let files = FileManager.default
+        switch reference.kind {
+        case .claude:
+            let projects = KeroAgentResume.claudeProjectsURL(
+                homeURL: files.homeDirectoryForCurrentUser,
+                environment: ProcessInfo.processInfo.environment
+            )
+            // Claude Code files each transcript under a directory named for
+            // where the session started. Looking one level down for the id
+            // avoids reproducing that naming, which the agent owns.
+            let name = reference.sessionID + ".jsonl"
+            let directories = (try? files.contentsOfDirectory(
+                at: projects, includingPropertiesForKeys: nil
+            )) ?? []
+            return directories.contains {
+                files.fileExists(atPath: $0.appendingPathComponent(name).path)
+            }
+        case .codex:
+            // The rollout path comes from the files Codex held open. Without
+            // one there is no telling the conversation was ever written.
+            guard let path = reference.transcriptPath else { return false }
+            return files.fileExists(atPath: path)
+        default:
+            return false
+        }
+    }
 }
 
 extension Project {

@@ -47,7 +47,10 @@ public struct SessionSnapshot: Codable {
         /// comparison it holds. The original case shapes stay unchanged, so old
         /// saved tabs still decode; see `TabSnapshot`.
         public enum PaneContentSnapshot: Codable {
-            case session(workingDirectory: String)
+            /// `agent` is set when a supported coding agent was running in the
+            /// pane, so the restored shell can resume that conversation.
+            /// Optional so snapshots written before this feature still decode.
+            case session(workingDirectory: String, agent: AgentSnapshot? = nil)
             /// `remoteHost` is set when the path was on a host a terminal had
             /// connected to. Without it a restored tab would open whatever
             /// sits at that path on this machine and look like the same file.
@@ -97,6 +100,59 @@ public struct SessionSnapshot: Codable {
                 self.content = content
                 self.weight = weight
                 self.historyKey = historyKey
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case content, weight, historyKey
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                do {
+                    content = try container.decode(PaneContentSnapshot.self, forKey: .content)
+                } catch {
+                    // An agent reference that no longer decodes — a session id
+                    // that is not a UUID, or a kind a newer build added — would
+                    // otherwise fail the pane, its tab, and its whole window.
+                    // The shell is still worth restoring without the agent.
+                    guard let session = try? container.decode(
+                        SessionWithoutAgent.self, forKey: .content
+                    ) else { throw error }
+                    content = .session(workingDirectory: session.session.workingDirectory)
+                }
+                weight = try container.decode(Double.self, forKey: .weight)
+                historyKey = try container.decodeIfPresent(String.self, forKey: .historyKey)
+            }
+
+            /// The `session` case's encoded shape with only the field every
+            /// version has written.
+            private struct SessionWithoutAgent: Decodable {
+                struct Fields: Decodable {
+                    let workingDirectory: String
+                }
+
+                let session: Fields
+            }
+        }
+
+        /// The agent conversation a session pane was running, and how the
+        /// pane was labelled while it ran, so the restored pane reads the
+        /// same in the sidebar before the agent reports in again.
+        public struct AgentSnapshot: Codable, Equatable {
+            public var reference: KeroAgentSessionReference
+            /// The agent's automation alias, kept so scripts that address the
+            /// agent by name still reach it after a relaunch.
+            public var alias: String
+            /// User-assigned label; nil when the label is automatic.
+            public var customLabel: String?
+
+            public init(
+                reference: KeroAgentSessionReference, alias: String,
+                customLabel: String? = nil
+            ) {
+                self.reference = reference
+                self.alias = alias
+                self.customLabel = customLabel
             }
         }
 

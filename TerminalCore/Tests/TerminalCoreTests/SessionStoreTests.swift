@@ -125,6 +125,85 @@ struct SessionSnapshotDecodingTests {
         #expect(diffHost == nil)
     }
 
+    // MARK: - Agent sessions
+
+    @Test func aPaneRunningAnAgentKeepsItsConversation() throws {
+        let reference = try #require(KeroAgentSessionReference(
+            kind: .codex,
+            sessionID: "019A2B3C-4D5E-7F60-8172-93A4B5C6D7E8",
+            transcriptPath: "/Users/me/.codex/sessions/2026/11/02/rollout.jsonl"
+        ))
+        let agent = ProjectSnapshot.AgentSnapshot(
+            reference: reference, alias: "codex-2", customLabel: "Reviewer"
+        )
+        let pane = PaneSnapshot(
+            content: .session(workingDirectory: "/repo", agent: agent), weight: 1
+        )
+        let decoded = try roundTrip(pane)
+        guard case .session(let directory, let decodedAgent) = decoded.content else {
+            Issue.record("expected a session case")
+            return
+        }
+        #expect(directory == "/repo")
+        #expect(decodedAgent == agent)
+        #expect(decodedAgent?.reference.sessionID == "019a2b3c-4d5e-7f60-8172-93a4b5c6d7e8")
+    }
+
+    /// Every session pane saved before agents were resumed has no `agent`
+    /// field, and a pane with no agent still encodes without one.
+    @Test func aSessionWrittenBeforeAgentResumeStillDecodes() throws {
+        let content = try JSONDecoder().decode(
+            ContentSnapshot.self,
+            from: Data(#"{"session":{"workingDirectory":"/x"}}"#.utf8)
+        )
+        guard case .session(let directory, let agent) = content else {
+            Issue.record("expected a session case")
+            return
+        }
+        #expect(directory == "/x")
+        #expect(agent == nil)
+
+        let encoded = String(
+            decoding: try JSONEncoder().encode(
+                ContentSnapshot.session(workingDirectory: "/x")
+            ),
+            as: UTF8.self
+        )
+        #expect(!encoded.contains("agent"))
+    }
+
+    /// A reference that fails validation — a session id that is not a UUID,
+    /// or a kind this build does not know — costs the pane its agent, not
+    /// the window its layout.
+    @Test func anUnreadableAgentRestoresAPlainShell() throws {
+        for agent in [
+            #"{"reference":{"kind":"claude","sessionID":"; rm -rf ~"},"alias":"a"}"#,
+            #"{"reference":{"kind":"future-agent","#
+                + #""sessionID":"98f3d1f5-75fa-4557-9392-774c59005cbc"},"alias":"a"}"#,
+        ] {
+            let json = #"{"content":{"session":{"workingDirectory":"/x","agent":"#
+                + agent + #"}},"weight":2,"historyKey":"h"}"#
+            let pane = try JSONDecoder().decode(PaneSnapshot.self, from: Data(json.utf8))
+            guard case .session(let directory, let decodedAgent) = pane.content else {
+                Issue.record("expected a session case")
+                continue
+            }
+            #expect(directory == "/x")
+            #expect(decodedAgent == nil)
+            #expect(pane.weight == 2)
+            #expect(pane.historyKey == "h")
+        }
+    }
+
+    /// The fallback is for a broken agent only; a pane that is broken in
+    /// some other way still fails rather than turning into a shell.
+    @Test func anUnreadableNonSessionPaneStillFails() {
+        let json = #"{"content":{"file":{"editorState":null}},"weight":1}"#
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(PaneSnapshot.self, from: Data(json.utf8))
+        }
+    }
+
     /// The editor's caret and scroll are all optional for the same reason —
     /// an older snapshot simply reopens the file at the top.
     @Test func anEditorStateWithNothingSetStillDecodes() throws {
@@ -220,7 +299,7 @@ struct SessionSnapshotDecodingTests {
     private func describe(_ layout: LayoutSnapshot) -> String {
         switch layout {
         case .pane(let pane):
-            if case .session(let directory) = pane.content { return "pane(\(directory))" }
+            if case .session(let directory, _) = pane.content { return "pane(\(directory))" }
             if case .file(let path, _, _) = pane.content { return "pane(\(path))" }
             return "pane(?)"
         case .split(let axis, let fraction, let first, let second):

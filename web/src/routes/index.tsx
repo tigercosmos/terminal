@@ -183,7 +183,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Restored on relaunch',
         detail:
-          'quit and reopen: projects, tabs, and pane layout come back, each shell fresh beneath its previous scrollback',
+          'quit and reopen: projects, tabs, and pane layout come back, each shell fresh beneath its previous scrollback, and a pane that was running Claude Code or Codex picks its conversation back up where it left off',
       },
       {
         name: 'Command palette',
@@ -394,7 +394,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'What happens to my sessions when I quit?',
-    a: 'Projects, tabs, and pane layout come back on relaunch. Each terminal reopens as a fresh shell in its old directory, with the previous scrollback restored above a "Session Contents Restored" divider.',
+    a: 'Projects, tabs, and pane layout come back on relaunch. Each terminal reopens as a fresh shell in its old directory, with the previous scrollback restored above a "Session Contents Restored" divider. A pane that was running Claude Code or Codex resumes that conversation in the same directory; turn this off in Settings → Agents.',
   },
   {
     q: 'Is this an IDE?',

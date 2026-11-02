@@ -46,6 +46,13 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// never break a script addressing the agent. Cleared with the agent
     /// status so a label does not carry over to the next agent in this pane.
     @Published var agentCustomLabel: String?
+    /// The conversation the Claude Code or Codex process here is in, read by
+    /// the monitor from the agent's own files. Saved with the pane so a
+    /// relaunch can type the agent's resume command. Recorded whatever the
+    /// resume setting says, so turning it on later still has one to use.
+    /// Published so the debounced autosave writes a newly found id down
+    /// rather than waiting for the next unrelated change.
+    @Published var agentSessionReference: KeroAgentSessionReference?
 
     /// The emulator driving this session. Fixed for the session's lifetime —
     /// changing the setting only affects terminals opened afterwards.

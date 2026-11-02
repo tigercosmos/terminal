@@ -928,8 +928,10 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         restoredHistory: String? = nil
     ) -> PaneContent {
         switch snap {
-        case .session(let workingDirectory):
-            return .session(makeSession(directory: workingDirectory, restoredHistory: restoredHistory))
+        case .session(let workingDirectory, let agent):
+            let session = makeSession(directory: workingDirectory, restoredHistory: restoredHistory)
+            if let agent { session.resumeAgentAfterRestore(agent) }
+            return .session(session)
         case .file(let path, let editorState, let remoteHost):
             let file = remoteHost.map { FileTab(path: path, disconnectedFrom: $0) }
                 ?? FileTab(path: path)

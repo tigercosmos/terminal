@@ -22,6 +22,12 @@ the original feature bullet instead of adding separate entries for them.
   in. Click a row to jump to that agent's pane, or right-click → **Rename
   Agent…** to give it a label of your own, such as "reviewer". The section
   hides itself when no agent is running
+- Claude Code and Codex conversations survive a relaunch. A pane that was
+  running one comes back with the agent reopened on the same conversation,
+  in the same directory, whether you started it yourself or with `terminal
+  +agent`. Nothing is added to the agent's own config. A conversation that
+  no longer exists comes back as a plain shell. Turn it off with **Resume
+  agent sessions after relaunch** in Settings → Agents
 
 ## [0.9.1]
 

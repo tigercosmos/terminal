@@ -947,6 +947,9 @@ final class TerminalManager: nonisolated ObservableObject {
             TerminalHistoryStore.save(window.histories)
             Self.pendingRestores = [window.snapshot]
             Self.pendingHistories = window.histories
+            // Reopening restores these agents again, so a conversation resumed
+            // at launch must not count as already taken.
+            TerminalSession.beginAgentResumePass()
         } else {
             Self.saveAll(captureTerminalHistory: false)
         }
@@ -1058,7 +1061,10 @@ final class TerminalManager: nonisolated ObservableObject {
     ) -> SessionSnapshot.ProjectSnapshot.PaneContentSnapshot {
         switch content {
         case .session(let session):
-            return .session(workingDirectory: session.currentDirectoryPath)
+            return .session(
+                workingDirectory: session.currentDirectoryPath,
+                agent: session.agentResumeSnapshot
+            )
         case .file(let file):
             return .file(
                 path: file.path, editorState: file.editorState, remoteHost: file.remoteHost

@@ -252,6 +252,16 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Bring back the Claude Code or Codex conversation a pane held when the
+    /// app relaunches, by typing the agent's own resume command into the
+    /// restored shell. On by default: the agent keeps the conversation on
+    /// disk regardless, and without this the pane comes back a bare shell.
+    /// Gates only the restore step — the reference is saved either way, so
+    /// turning this on later still finds something to resume.
+    @Published var resumeAgentsOnRestore: Bool {
+        didSet { save() }
+    }
+
     /// Keep Terminal itself out of the folders macOS guards behind a privacy
     /// prompt — Desktop, Documents, Downloads, the media folders, iCloud Drive
     /// and mounted volumes. Off by default: the panels are meant to follow the
@@ -317,6 +327,7 @@ final class AppSettings: nonisolated ObservableObject {
         compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         aiEnabled = toml["ai.enabled"]?.bool ?? false
+        resumeAgentsOnRestore = toml["agents.resume-on-restore"]?.bool ?? true
         terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
         denyProtectedFolders = toml["privacy.deny-protected-folders"]?.bool ?? false
         // Pushed by hand because `didSet` doesn't run during initialization,
@@ -416,6 +427,7 @@ final class AppSettings: nonisolated ObservableObject {
                 NSLog("terminal: failed to disable AI support: \(error)")
             }
         }
+        resumeAgentsOnRestore = true
         terminalBackend = .fallback
         denyProtectedFolders = false
     }
@@ -506,6 +518,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if aiEnabled {
             lines.append("ai.enabled = true")
+        }
+        if !resumeAgentsOnRestore {
+            lines.append("agents.resume-on-restore = false")
         }
         if terminalBackend != .fallback {
             lines.append("terminal.backend = \(TOML.quote(terminalBackend.rawValue))")

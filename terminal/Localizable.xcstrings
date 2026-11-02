@@ -614,6 +614,22 @@
         }
       }
     },
+    "Claude Code and Codex conversations that were open in a pane come back when Terminal reopens: the pane runs the agent’s own resume command once its shell is ready." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペインで開いていたClaude CodeとCodexの会話は、Terminalを再度開いたときに戻ります。シェルの準備ができると、ペインでエージェント自身の再開コマンドが実行されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "面板中打开的 Claude Code 和 Codex 对话会在 Terminal 重新打开时恢复：Shell 就绪后，面板会运行代理自身的恢复命令。"
+          }
+        }
+      }
+    },
     "Clean" : {
       "localizations" : {
         "ja" : {
@@ -6415,6 +6431,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新启动时恢复会话历史"
+          }
+        }
+      }
+    },
+    "Resume agent sessions after relaunch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再起動後にエージェントのセッションを再開"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新启动后恢复代理会话"
           }
         }
       }
