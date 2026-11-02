@@ -162,6 +162,14 @@ check "sendText reaches the shell and readScreen sees it" \
 state=$(automate queryState)
 check "queryState reports the window" '"projects"' "$state"
 
+# The app renders its own window, so chrome a check cannot reach through the
+# grid or the snapshot — a sidebar badge, the agent roster — can still be
+# looked at, with no Screen Recording grant.
+shot=$(mktemp -t e2e-window).png
+automate snapshotWindow "$shot" >/dev/null
+check "snapshotWindow writes a PNG of the window" "PNG image" "$(file "$shot")"
+rm -f "$shot"
+
 before=$(print -r -- "$state" | /usr/bin/python3 -c '
 import json, sys
 snapshot = json.load(sys.stdin)

@@ -115,6 +115,31 @@ extension TerminalCLIService {
                 return .failure("the window state could not be encoded")
             }
             return .success(String(decoding: data, as: UTF8.self))
+
+        case .snapshotWindow:
+            guard let path = request.arguments?.first else {
+                return .failure("snapshotWindow needs a file path")
+            }
+            // The same workspace `queryState` answers for, never a Settings
+            // or About window that happens to be key.
+            guard let view = TerminalManager.keyWindowManager?.automationContentView else {
+                return .failure("no window is open")
+            }
+            // The window's own drawing, not a screen grab: nothing is read
+            // from the display, so no TCC prompt and no permission to lose.
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                return .failure("the window could not be rendered")
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+                return .failure("the rendering could not be encoded")
+            }
+            do {
+                try png.write(to: URL(fileURLWithPath: path))
+            } catch {
+                return .failure("the snapshot could not be written: \(error.localizedDescription)")
+            }
+            return .success(path)
         }
     }
 

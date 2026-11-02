@@ -889,6 +889,13 @@ final class TerminalManager: nonisolated ObservableObject {
     /// This window's state, in the same shape a saved session is written in.
     /// Terminal history is not captured: a test asserting on the layout does
     /// not want a copy of every shell's scrollback in the answer.
+    /// The workspace window a driver's `snapshotWindow` renders: this
+    /// manager's own, so the capture and `queryState` describe the same
+    /// window even while Settings or About holds key.
+    var automationContentView: NSView? {
+        window?.contentView
+    }
+
     func automationSnapshot() -> SessionSnapshot {
         makeWindowSnapshot(captureTerminalHistory: false).snapshot
     }

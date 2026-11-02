@@ -127,6 +127,11 @@ public enum TerminalCLIAutomationAction: String, CaseIterable, Sendable {
     /// The model-layer state a test wants to assert on, as the same JSON a
     /// saved session is written in.
     case queryState = "automation.queryState"
+    /// Render the window into a PNG at the given path. The app draws its
+    /// own chrome, so a driver can look at a sidebar or a badge without the
+    /// Screen Recording grant a debug build loses on every rebuild. Metal
+    /// surfaces are outside the window's own drawing and come out blank.
+    case snapshotWindow = "automation.snapshotWindow"
 
     public init?(action: String) {
         self.init(rawValue: action)
