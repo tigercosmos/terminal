@@ -116,6 +116,74 @@ extension TerminalCLIService {
             }
             return .success(String(decoding: data, as: UTF8.self))
 
+        case .pressKey:
+            // `pressKey <characters> [repeats] [keyCode] [flags] [ignoring]`:
+            // the last three let a driver hold a key that is not plain text
+            // — an arrow, Backspace, Ctrl-d, Shift-J — by naming the virtual
+            // key, a comma list of shift/control/option, and the characters
+            // the key gives without modifiers, the way AppKit fills them in.
+            guard let characters = request.arguments?.first, !characters.isEmpty else {
+                return .failure("pressKey needs the key's characters")
+            }
+            let extra = Array(request.arguments?.dropFirst() ?? [])
+            let repeats = extra.first.flatMap(Int.init) ?? 0
+            guard repeats >= 0 else {
+                return .failure("pressKey repeats must not be negative")
+            }
+            let keyCode = extra.dropFirst().first.flatMap(UInt16.init) ?? Self.keyCode(for: characters)
+            var flags: NSEvent.ModifierFlags = []
+            for name in extra.dropFirst(2).first?.split(separator: ",") ?? [] {
+                switch name {
+                case "shift": flags.insert(.shift)
+                case "control": flags.insert(.control)
+                case "option": flags.insert(.option)
+                default: return .failure("unknown modifier “\(name)”")
+                }
+            }
+            if Self.functionKeyCodes.contains(keyCode) { flags.insert(.function) }
+            let ignoring = extra.dropFirst(3).first ?? characters
+            guard let surface = focusedSurface(), let window = surface.window else {
+                return .failure("no terminal is focused")
+            }
+            // The driver's shell is not trusted to post events, so the
+            // events are made here and handed to the window, which routes
+            // them to its first responder exactly as a real press would be.
+            // The pane has to be that responder: a driver's window was never
+            // clicked, and a pane opened a moment ago may not have taken
+            // focus on its own.
+            if let responder = window.firstResponder as? NSView,
+               responder.isDescendant(of: surface) {
+                // The pane already has the keyboard.
+            } else {
+                window.makeFirstResponder(surface)
+            }
+            func event(_ type: NSEvent.EventType, isARepeat: Bool) -> NSEvent? {
+                NSEvent.keyEvent(
+                    with: type, location: .zero, modifierFlags: flags,
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    characters: characters, charactersIgnoringModifiers: ignoring,
+                    isARepeat: isARepeat, keyCode: keyCode
+                )
+            }
+            // Spaced like the real thing rather than sent in one burst: the
+            // input context's press-and-hold decision runs on timers, and a
+            // burst with no run-loop turn between events would not reach it.
+            var schedule: [(after: TimeInterval, event: NSEvent?)] = [(0, event(.keyDown, isARepeat: false))]
+            var elapsed = NSEvent.keyRepeatDelay
+            for _ in 0..<repeats {
+                schedule.append((elapsed, event(.keyDown, isARepeat: true)))
+                elapsed += NSEvent.keyRepeatInterval
+            }
+            schedule.append((elapsed, event(.keyUp, isARepeat: false)))
+            for (after, event) in schedule {
+                guard let event else { return .failure("the key event could not be made") }
+                DispatchQueue.main.asyncAfter(deadline: .now() + after) {
+                    window.sendEvent(event)
+                }
+            }
+            return .success(String(format: "%.2f", elapsed))
+
         case .snapshotWindow:
             guard let path = request.arguments?.first else {
                 return .failure("snapshotWindow needs a file path")
@@ -180,6 +248,26 @@ extension TerminalCLIService {
         }
         return nil
     }
+
+    /// The US-layout virtual key for a character `pressKey` types. Only the
+    /// special keys in `AlacrittyKeyMap` read the code; a letter is encoded
+    /// from its characters, so an unknown character gets a code no key owns.
+    private static func keyCode(for characters: String) -> UInt16 {
+        let codes: [Character: UInt16] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8,
+            "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+            "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45,
+            "m": 46, " ": 49, "\r": 36, "\t": 48, "\u{1b}": 53, "\u{7f}": 51,
+        ]
+        return characters.first.flatMap { codes[$0] } ?? 0xFFFF
+    }
+
+    /// Keys AppKit marks with `.function`: arrows, paging, Home/End, and
+    /// forward delete. `AlacrittyKeyMap` does not read the flag, but a real
+    /// event carries it, so the synthesized one does too.
+    private static let functionKeyCodes: Set<UInt16> = [
+        123, 124, 125, 126, 115, 119, 116, 121, 117,
+    ]
 
     private func focusedSurface() -> (any TerminalBackendSurface)? {
         TerminalManager.keyWindowManager?.selectedSession?.surface

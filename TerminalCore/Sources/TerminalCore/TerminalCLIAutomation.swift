@@ -132,6 +132,17 @@ public enum TerminalCLIAutomationAction: String, CaseIterable, Sendable {
     /// Screen Recording grant a debug build loses on every rebuild. Metal
     /// surfaces are outside the window's own drawing and come out blank.
     case snapshotWindow = "automation.snapshotWindow"
+    /// Hold a key: `pressKey <characters> [repeats] [keyCode] [flags]
+    /// [ignoring]` sends one key-down, then that many key-down repeats at
+    /// the system key-repeat delay and interval, then the key-up, through
+    /// the window's own event path. The optional virtual key, comma list of
+    /// `shift`/`control`/`option`, and unmodified characters let a driver
+    /// hold an arrow, Backspace, or a Ctrl chord. The only way to exercise
+    /// `keyDown` without an Accessibility grant, which a driver's shell does
+    /// not have; macOS press-and-hold and the input method sit in front of
+    /// the window and are not exercised. Answers how long the hold lasts, in
+    /// seconds, so the driver knows when to read the screen.
+    case pressKey = "automation.pressKey"
 
     public init?(action: String) {
         self.init(rawValue: action)

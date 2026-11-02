@@ -168,6 +168,22 @@ check "queryState reports the window" '"projects"' "$state"
 shot=$(mktemp -t e2e-window).png
 automate snapshotWindow "$shot" >/dev/null
 check "snapshotWindow writes a PNG of the window" "PNG image" "$(file "$shot")"
+
+# A held key repeats. The events go through the window's own path, the way
+# a key on the keyboard does, so this covers `keyDown` and not just the
+# typed-text shortcut every other check takes.
+held=$(mktemp -t e2e-held)
+automate sendText "cat > '$held'
+"
+sleep 0.5
+hold=$(automate pressKey j 4)
+sleep "$hold"
+sleep 0.3
+automate sendText "
+$(printf '\004')"
+sleep 0.5
+check "pressKey repeats a held key" "jjjjj" "$(cat "$held")"
+rm -f "$held"
 rm -f "$shot"
 
 before=$(print -r -- "$state" | /usr/bin/python3 -c '
