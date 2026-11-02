@@ -552,6 +552,48 @@ final class TerminalManager: nonisolated ObservableObject {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    /// One row of the sidebar's agent roster: the agent's terminal and where
+    /// it lives, so the row can say "project › tab" without searching again.
+    struct AgentRosterEntry: Identifiable {
+        /// The session's id: a pane holds one agent at a time, and the id
+        /// survives the agent's phase changes so a row never re-identifies.
+        let id: UUID
+        let session: TerminalSession
+        let project: Project
+        let tab: PaneTab
+    }
+
+    /// Every session with an agent status, in project order, then tab order,
+    /// then split-tree order. Deliberately not re-sorted by state so rows never
+    /// jump under the pointer; the badge already makes blocked/done stand out.
+    ///
+    /// Computed rather than stored: every session's `objectWillChange` is
+    /// forwarded through its project to this manager, so a view observing the
+    /// manager re-reads the roster when an agent appears, changes phase, or
+    /// leaves, with no separate trigger to keep in step.
+    var agentRoster: [AgentRosterEntry] {
+        projects.flatMap { project in
+            project.tabs.flatMap { tab in
+                tab.sessions.compactMap { session in
+                    guard session.agentStatus != nil else { return nil }
+                    return AgentRosterEntry(
+                        id: session.id, session: session, project: project, tab: tab
+                    )
+                }
+            }
+        }
+    }
+
+    /// Reveal the agent's pane (project, tab, focused pane), mark a finished
+    /// agent seen, and bring the window forward — the same contract as
+    /// `focusNextAgentAttention`'s reveal step. Clicking a row is an explicit
+    /// focus action, so acknowledging `done` here is intended.
+    func focusAgent(_ session: TerminalSession) {
+        revealSession(session)
+        session.markAutomationAgentSeen()
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     /// Clears the terminal in the focused pane. No-op while another content
     /// kind is focused, so ⌘K never wipes an off-screen terminal.
     func clearActiveTerminal() {

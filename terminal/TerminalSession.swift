@@ -41,6 +41,11 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// Recognized coding agent occupying this terminal, if any. The monitor
     /// reconciles foreground process identity with explicit lifecycle events.
     @Published var agentStatus: KeroAgentStatus?
+    /// User-chosen label for the agent roster row, e.g. "reviewer". Display
+    /// only: the automation alias stays the CLI target, so renaming a row can
+    /// never break a script addressing the agent. Cleared with the agent
+    /// status so a label does not carry over to the next agent in this pane.
+    @Published var agentCustomLabel: String?
 
     /// The emulator driving this session. Fixed for the session's lifetime —
     /// changing the setting only affects terminals opened afterwards.

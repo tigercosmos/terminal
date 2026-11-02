@@ -116,6 +116,23 @@
         }
       }
     },
+    "%@, %@, in project %@, tab %@" : {
+      "comment" : "Accessibility label for an agent row in the sidebar. Placeholders: agent name, agent state (such as “working”), project name, tab title.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@、%@、プロジェクト %@、タブ %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@，%@，项目 %@，标签页 %@"
+          }
+        }
+      }
+    },
     "%lld agents finished" : {
       "localizations" : {
         "ja" : {
@@ -532,6 +549,23 @@
         }
       }
     },
+    "blocked" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要対応"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待处理"
+          }
+        }
+      }
+    },
     "Branch name" : {
       "localizations" : {
         "ja" : {
@@ -676,6 +710,23 @@
         }
       }
     },
+    "done" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成"
+          }
+        }
+      }
+    },
     "Enter a name for the new branch." : {
       "localizations" : {
         "ja" : {
@@ -736,6 +787,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隐藏更改的文件"
+          }
+        }
+      }
+    },
+    "idle" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空闲"
           }
         }
       }
@@ -1076,6 +1144,22 @@
         }
       }
     },
+    "Rename Agent…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント名を変更…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名代理…"
+          }
+        }
+      }
+    },
     "Renamed from %@" : {
       "localizations" : {
         "ja" : {
@@ -1088,6 +1172,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重命名自 %@"
+          }
+        }
+      }
+    },
+    "Reveal Pane" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペインを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示窗格"
           }
         }
       }
@@ -1152,6 +1252,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅在 Git 仓库中显示工具栏"
+          }
+        }
+      }
+    },
+    "starting" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "起動中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动中"
           }
         }
       }
@@ -1558,6 +1675,23 @@
         }
       }
     },
+    "unknown" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知"
+          }
+        }
+      }
+    },
     "Unknown +agent command %@. Run `terminal +agent --help`." : {
       "localizations" : {
         "ja" : {
@@ -1682,6 +1816,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用法：\n  terminal +pane current\n  terminal +pane list\n  terminal +pane get [--pane ID | --current]\n  terminal +pane split [--pane ID] [--left|--right|--up|--down] [--cwd PATH] [--focus]\n  terminal +pane run [--pane ID] -- command [arguments...]\n  terminal +pane send [--pane ID] --text TEXT [--enter]\n  terminal +pane read [--pane ID] [--lines N] [--columns N]\n  terminal +pane wait-output [--pane ID] --contains TEXT [--timeout MS]\n  terminal +pane protocol\n\n目标默认为调用它的终端。拆分默认向右进行，除非明确指定 --focus，\n否则不会抢走焦点。`run` 接受 argv，并为目标 Shell 逐个引用参数。\n`send` 是原始输入。所有成功的结果都是 JSON；读取不会将代理输出标记为已读。"
+          }
+        }
+      }
+    },
+    "Use Agent Name" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェント名を使用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用代理名称"
           }
         }
       }
@@ -8010,6 +8160,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网页"
+          }
+        }
+      }
+    },
+    "working" : {
+      "comment" : "Agent state in the sidebar roster.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作中"
           }
         }
       }

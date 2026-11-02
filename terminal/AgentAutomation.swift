@@ -25,6 +25,20 @@ enum KeroAgentPhase: String, Codable, CaseIterable, Sendable {
         case .idle: return 1
         }
     }
+    /// Short agent state shown beside its name in the sidebar roster.
+    /// `created` reads as "starting", the word the pane and tab badges already
+    /// use for it: the raw case name says nothing to someone who never ran
+    /// `terminal +agent start`.
+    var rosterLabel: String {
+        switch self {
+        case .created: return String(localized: "starting", comment: "Agent state in the sidebar roster.")
+        case .working: return String(localized: "working", comment: "Agent state in the sidebar roster.")
+        case .blocked: return String(localized: "blocked", comment: "Agent state in the sidebar roster.")
+        case .done: return String(localized: "done", comment: "Agent state in the sidebar roster.")
+        case .idle: return String(localized: "idle", comment: "Agent state in the sidebar roster.")
+        case .unknown: return String(localized: "unknown", comment: "Agent state in the sidebar roster.")
+        }
+    }
 }
 
 enum KeroAgentStateAuthority: String, Codable, Sendable {
@@ -302,6 +316,10 @@ extension TerminalSession {
     }
 
     func declareAutomationAgent(alias: String, kind: KeroAgentKind) {
+        // A declaration is a fresh launch. The previous agent's status may
+        // not have been cleared yet if the monitor has not ticked since it
+        // exited, so drop its roster label here rather than relabel this one.
+        agentCustomLabel = nil
         agentObservation.alias = alias
         agentObservation.declaredKind = kind
         agentObservation.integrationPhase = nil
@@ -443,6 +461,13 @@ extension TerminalSession {
 
         if foreground != agentObservation.lastForegroundPID {
             agentObservation.lastForegroundPID = foreground
+            // A different agent process in the same pane between two ticks
+            // is a relaunch the status never cleared for. The roster label
+            // named the old one, so it must not carry over.
+            if processIsAgent, let previous = agentStatus?.processID,
+               let foreground, previous != foreground {
+                agentCustomLabel = nil
+            }
             if !processIsAgent {
                 agentObservation.integrationPhase = nil
                 agentObservation.integrationReason = nil
@@ -564,6 +589,7 @@ extension TerminalSession {
 
     private func clearAutomationAgentStatus() {
         agentStatus = nil
+        agentCustomLabel = nil
         agentObservation.alias = nil
         agentObservation.declaredKind = nil
         agentObservation.integrationPhase = nil
@@ -643,6 +669,17 @@ extension TerminalSession {
     var agentRollup: KeroAgentRollup? {
         PaneTab.rollup(agentStatus.map { [$0] } ?? [])
     }
+    /// The name the sidebar roster shows for this pane's agent. Meaningful
+    /// only while `agentStatus` is set; without one it falls back to the
+    /// label or an empty kind name.
+    var agentDisplayName: String {
+        KeroAgentRoster.displayName(
+            customLabel: agentCustomLabel,
+            alias: agentStatus?.alias,
+            kindName: agentStatus?.kind.displayName ?? ""
+        )
+    }
+
 }
 
 extension Project {

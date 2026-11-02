@@ -69,6 +69,8 @@ struct SidebarView: View {
                 .padding(.top, 8)
             }
 
+            SidebarAgentsSection(manager: manager, fontSize: settings.sidebarFontSize)
+
             HStack(spacing: 2) {
                 SidebarFooterButton(
                     systemImage: "plus",

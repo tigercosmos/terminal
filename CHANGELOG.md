@@ -14,6 +14,15 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- An **Agents** section at the bottom of the sidebar lists every coding agent
+  running in the window, across all projects: its badge, its name, whether it
+  is starting, working, blocked, done, or idle, and the project and tab it is
+  in. Click a row to jump to that agent's pane, or right-click → **Rename
+  Agent…** to give it a label of your own, such as "reviewer". The section
+  hides itself when no agent is running
+
 ## [0.9.1]
 
 - Selected text in an Alacritty pane stays selected, and copies with ⌘C,
