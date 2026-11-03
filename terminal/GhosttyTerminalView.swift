@@ -69,12 +69,14 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
         performBindingAction("text:\\x0c")
     }
 
-    /// Splits the line breaks out of `text` and delivers each one as a typed
-    /// Return, because `sendText` reaches the program inside bracketed-paste
-    /// markers and a line editor treats a newline there as buffer content.
-    /// The same binding action already carries the form feed `clearScreen`
-    /// sends, which is the one path into this surface that bypasses the paste
-    /// wrapper.
+    /// Writes `text` the way keystrokes would, through the `text:` binding
+    /// action: `sendText` is libghostty's paste path and wraps the text in
+    /// bracketed-paste markers whenever the program asked for them, which is
+    /// almost every program a command is typed at. A line editor reads a
+    /// newline inside the markers as buffer content, and vim in normal mode
+    /// inserts a pasted `i` as a literal letter rather than entering insert
+    /// mode. The same binding action already carries the form feed
+    /// `clearScreen` sends. Line breaks are delivered as typed Returns.
     func sendTypedText(_ text: String) {
         // CR and LF both submit, the way writing either straight to a PTY
         // does. Swift reads CRLF as one Character, so a Windows line ending is
@@ -85,22 +87,16 @@ final class GhosttyTerminalView: AppTerminalView, TerminalBackendSurface {
             $0 == "\n" || $0 == "\r" || $0 == "\r\n"
         }
         for (index, line) in lines.enumerated() {
-            if line.unicodeScalars.contains(where: Self.isControl) {
-                // A control character inside a paste reaches the program as
-                // pasted text, not as the key: Ctrl-C would not interrupt.
-                // The binding action writes it as typed.
+            // Every line goes this way, not only one carrying a control
+            // character: a printable line handed to `sendText` reached vim
+            // as a paste and the typed `i` ended up on screen as text.
+            if !line.isEmpty {
                 performBindingAction("text:" + Self.bindingLiteral(line))
-            } else if !line.isEmpty {
-                sendText(String(line))
             }
             // A trailing newline leaves a final empty component, so this runs
             // the line rather than typing another one.
             if index < lines.count - 1 { performBindingAction("text:\\x0d") }
         }
-    }
-
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.value < 0x20 || scalar.value == 0x7F
     }
 
     /// `text:` takes a Zig string literal. Printable ASCII passes through and

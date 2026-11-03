@@ -16,6 +16,11 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
+- Text sent to a libghostty pane by **cd Here**, `terminal +pane send`, and
+  the other commands Terminal types for you now arrives as keystrokes instead
+  of a paste. A program that reads pastes specially saw the difference: vim
+  inserted the `i` meant to enter insert mode as a letter, and the command
+  after it never ran. Alacritty panes always typed it
 - An **Agents** section at the bottom of the sidebar lists every coding agent
   running in the window, across all projects: its badge, its name, whether it
   is starting, working, blocked, done, or idle, and the project and tab it is

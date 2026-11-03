@@ -489,6 +489,46 @@ sleep 0.5
 automate runCommand close-tab
 rm -rf "$work"
 
+# --- vim: insert, arrows, Escape, write, and back to the shell -------------------
+
+# The editor a user reaches for most, driven the way they drive it. Text
+# goes in through the typed path, so vim sees keystrokes rather than a
+# bracketed paste; the arrows and Escape are real key events, the only
+# route by which a function key reaches the backend's key map. `-u NONE`
+# keeps the developer's vimrc out of the assertion. The file written is
+# the proof that every stage landed, and the screen afterwards proves the
+# alternate screen was torn down and the shell handed back.
+edit=$(mktemp -d)
+automate runCommand new-session
+sleep 1.5
+automate sendText "vim -u NONE -N '$edit/note.txt'
+"
+sleep 1.5
+automate sendText "ione three"
+sleep 0.3
+check "vim enters insert mode from a typed i" "-- INSERT --" "$(automate readScreen)"
+hold=$(automate pressKey $'\uF702' 4 123)
+sleep "$hold"
+sleep 0.3
+automate sendText "two "
+sleep 0.3
+automate pressKey $'\e' >/dev/null
+sleep 0.5
+automate sendText ":wq
+"
+sleep 1
+check "the arrows moved the cursor and :wq wrote the file" \
+      "one two three" "$(cat "$edit/note.txt" 2>/dev/null)"
+automate sendText "echo VIM-DONE-\$((20+2))
+"
+sleep 0.5
+screen=$(automate readScreen)
+check "quitting vim hands the main screen back to the shell" "VIM-DONE-22" "$screen"
+check "nothing of the alternate screen lingers" "insert=0" \
+      "insert=$(print -r -- "$screen" | grep -c -- '-- INSERT --')"
+automate runCommand close-tab
+rm -rf "$edit"
+
 # An action the app does not offer is refused rather than run.
 if automate eval "rm -rf /" 2>/dev/null; then
     fail "an unknown automation action was accepted"
