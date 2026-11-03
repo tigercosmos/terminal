@@ -52,7 +52,7 @@ endef
 
 .DEFAULT_GOAL := help
 .PHONY: help deps build build-release run install uninstall \
-        test test-swift test-rust test-web e2e lint fmt fmt-check \
+        test test-swift test-rust test-web e2e e2e-remote lint fmt fmt-check \
         web web-build dist clean clean-derived prune-derived
 
 help: ## Show this help
@@ -105,6 +105,13 @@ e2e: prune-derived build ## Drive a running Debug build over the CLI channel
 	for backend in $(E2E_BACKENDS); do \
 		scripts/e2e.sh "$$app" "$$backend" || exit 1; \
 	done
+
+# The build stays here; only the bundle and the driver cross the wire. The
+# other Mac needs a console login and nothing from Xcode. See the script.
+E2E_HOST ?= air
+e2e-remote: prune-derived build ## Run the e2e suite on E2E_HOST against a build made here
+	@$(call resolve_app,Debug); \
+	scripts/e2e-remote.sh "$(E2E_HOST)" "$$app" $(E2E_BACKENDS)
 
 test-rust: ## Test the Alacritty backend's Rust bridge
 	cargo test --locked --manifest-path $(BRIDGE)

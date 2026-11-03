@@ -87,6 +87,11 @@ Both surfaces implement one protocol separately, so a run that only drove the
 default would not see where they disagree. `make e2e E2E_BACKENDS=alacritty`
 narrows it while iterating.
 
+`make e2e-remote E2E_HOST=air` builds here and runs the same suite on another
+Mac: the bundle and `scripts/e2e.sh` go over rsync, and the checks run through
+ssh. The other machine needs a user logged in at the console and nothing from
+Xcode, so a laptop with only the Command Line Tools can host the app under test.
+
 Logic that needs no window lives in the `TerminalCore` package and is covered
 by `make test-swift`. When a change belongs there, a test is the verification —
 and it keeps working after the next person changes something nearby, which
