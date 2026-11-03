@@ -186,6 +186,35 @@ check "pressKey repeats a held key" "jjjjj" "$(cat "$held")"
 rm -f "$held"
 rm -f "$shot"
 
+# Uncommitted input-method text stays in view where a program leaves nothing to
+# anchor it to: the cursor hidden, as a TUI keeps it, and in the last column.
+# libghostty draws its own composition, out of reach of a driver.
+if [[ $backend == alacritty ]]; then
+    automate sendText "printf '\\033[?25l\\033[999C'; sleep 8; printf '\\033[?25h\\n'
+"
+    # Polled rather than slept: a background shell can take a while to run the
+    # command, and until it does the composition sits at the old prompt. The
+    # same printf hides the cursor, so reaching the last column means both took
+    # effect. `fits` alone would also pass with the cursor at the line's start,
+    # so this also proves the composition was pulled back from the edge.
+    composition_x=""
+    for _ in {1..25}; do
+        composing=$(automate composeText 注音)
+        composition_x=${${composing#*x=}%% *}
+        [[ $composition_x == <-> ]] && (( composition_x > 100 )) && break
+        sleep 0.2
+    done
+    [[ $composition_x == <-> ]] && (( composition_x > 100 )) \
+        || fail "the composition never followed the cursor to the last column: $composing"
+    check "a composition shows while the cursor is hidden" "visible" "$composing"
+    check "a composition at the right edge stays in the pane" "fits=true" "$composing"
+    composing=$(automate composeText "$(printf '今天天氣真好%.0s' {1..40})")
+    check "a composition wider than the pane stays in the pane" "fits=true" "$composing"
+    check "ending a composition hides it" "hidden" "$(automate composeText "")"
+    # Outlasts the `sleep` above, so the next check types at a prompt.
+    sleep 8
+fi
+
 before=$(print -r -- "$state" | /usr/bin/python3 -c '
 import json, sys
 snapshot = json.load(sys.stdin)

@@ -184,6 +184,13 @@ extension TerminalCLIService {
             }
             return .success(String(format: "%.2f", elapsed))
 
+        case .composeText:
+            // libghostty draws its own composition, out of reach from here.
+            guard let surface = focusedSurface() as? AlacrittyTerminalView else {
+                return .failure("composeText drives the Alacritty backend only")
+            }
+            return .success(surface.automationCompose(request.arguments?.first ?? ""))
+
         case .snapshotWindow:
             guard let path = request.arguments?.first else {
                 return .failure("snapshotWindow needs a file path")

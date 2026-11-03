@@ -1601,6 +1601,43 @@ pub unsafe extern "C" fn terminal_alacritty_display_offset(handle: *mut Terminal
     term.grid().display_offset()
 }
 
+/// The viewport cell an input method's uncommitted text belongs at.
+///
+/// Not the snapshot's cursor, which is -1 whenever there is no cursor to draw.
+/// A TUI hides its cursor constantly — some for good, most around each redraw
+/// — and a composition must stay on screen regardless, because it is the only
+/// sight of what is being typed. Scrolled back, the cursor can be below the
+/// viewport; the composition then takes the last row rather than moving the
+/// reader's view before anything has been committed.
+fn composition_anchor<T: EventListener>(term: &Term<T>) -> (isize, isize) {
+    let content = term.renderable_content();
+    let point = content.cursor.point;
+    let last_row = term.screen_lines().saturating_sub(1) as isize;
+    let line = point.line.0 as isize + content.display_offset as isize;
+    (line.clamp(0, last_row), point.column.0 as isize)
+}
+
+/// Separate from `terminal_alacritty_snapshot` because an input method asks
+/// on every keystroke and a snapshot rebuilds every visible cell.
+///
+/// # Safety
+/// `handle` must be live; `line` and `column` must be valid for writes.
+#[no_mangle]
+pub unsafe extern "C" fn terminal_alacritty_composition_anchor(
+    handle: *mut TerminalHandle,
+    line: *mut isize,
+    column: *mut isize,
+) {
+    if handle.is_null() || line.is_null() || column.is_null() {
+        return;
+    }
+    let mut term = (*handle).term.lock();
+    clamp_display_offset(&mut term);
+    let (anchor_line, anchor_column) = composition_anchor(&term);
+    *line = anchor_line;
+    *column = anchor_column;
+}
+
 /// # Safety
 /// `handle` must be live and `theme` valid for the call.
 #[no_mangle]
@@ -3655,6 +3692,29 @@ mod tests {
             Point::new(Line(1), Column(3)),
         );
         assert_eq!(text, "bcd\nhij");
+    }
+
+    /// A TUI that hides its cursor still has one, and that is where a
+    /// composition goes: the snapshot answering -1 here is what made typed
+    /// Chinese invisible until it was committed.
+    #[test]
+    fn a_composition_follows_a_hidden_cursor() {
+        let term = parse_sized(20, 3, b"\x1b[?25l\x1b[2;5H");
+        assert_eq!(composition_anchor(&term), (1, 4));
+    }
+
+    /// Scrolled back, the cursor is below the viewport. The composition stays
+    /// visible on the last row rather than drawing off the bottom.
+    #[test]
+    fn a_composition_stays_in_the_viewport_when_scrolled_back() {
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+        assert_eq!(composition_anchor(&term), (2, 3));
+
+        term.scroll_display(Scroll::Delta(1));
+        assert_eq!(composition_anchor(&term), (2, 3));
+
+        term.scroll_display(Scroll::Delta(2));
+        assert_eq!(composition_anchor(&term), (2, 3));
     }
 
     #[test]

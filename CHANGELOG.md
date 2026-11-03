@@ -21,6 +21,10 @@ the original feature bullet instead of adding separate entries for them.
   of a paste. A program that reads pastes specially saw the difference: vim
   inserted the `i` meant to enter insert mode as a letter, and the command
   after it never ran. Alacritty panes always typed it
+- Text being composed with an input method (Bopomofo, Pinyin, Japanese) stays
+  visible in Alacritty panes while a program hides the cursor, when the line is
+  near the right edge, and when scrolled back. The candidate window opens beside
+  it instead of in the pane's top-left corner
 - An **Agents** section at the bottom of the sidebar lists every coding agent
   running in the window, across all projects: its badge, its name, whether it
   is starting, working, blocked, done, or idle, and the project and tab it is

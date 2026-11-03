@@ -143,6 +143,11 @@ public enum TerminalCLIAutomationAction: String, CaseIterable, Sendable {
     /// the window and are not exercised. Answers how long the hold lasts, in
     /// seconds, so the driver knows when to read the screen.
     case pressKey = "automation.pressKey"
+    /// Set the uncommitted text an input method would, on an Alacritty pane:
+    /// `composeText <text>`, or no text to end the composition. No input
+    /// source is involved, since a driver cannot switch the developer's.
+    /// Answers `hidden`, or `visible` with where the text landed.
+    case composeText = "automation.composeText"
 
     public init?(action: String) {
         self.init(rawValue: action)

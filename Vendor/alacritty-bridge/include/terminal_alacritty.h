@@ -212,6 +212,9 @@ void terminal_alacritty_scroll_to_offset(TerminalHandle *handle, size_t offset);
 /// How many lines the viewport sits above the live prompt. Cheaper than a
 /// snapshot, which rebuilds every visible cell.
 size_t terminal_alacritty_display_offset(TerminalHandle *handle);
+/// The viewport cell an input method's composition belongs at. Answers whether
+/// or not the cursor is shown, and stays in the viewport when scrolled back.
+void terminal_alacritty_composition_anchor(TerminalHandle *handle, intptr_t *line, intptr_t *column);
 void terminal_alacritty_set_theme(TerminalHandle *handle, const AlacrittyPalette *theme);
 /// Replaces the default cursor, unless the program selected its own with DECSCUSR.
 void terminal_alacritty_set_cursor_style(TerminalHandle *handle, uint8_t shape, bool blinking);

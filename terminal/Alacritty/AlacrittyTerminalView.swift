@@ -668,7 +668,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             && terminal_alacritty_overscan_row(handle, &overscan)
         applyHoveredURLUnderline(to: &snapshot)
         updateKittyGraphics(handle: handle)
-        updateMarkedTextOverlay(snapshot: snapshot)
+        updateMarkedTextOverlay()
         updateCursorBlinking(snapshot.cursor_blinking)
         if cursorBlinking, !cursorVisible {
             snapshot.cursor_line = -1
@@ -821,20 +821,44 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         CATransaction.commit()
     }
 
-    private func updateMarkedTextOverlay(snapshot: TerminalSnapshot) {
-        guard !markedText.isEmpty,
-              snapshot.cursor_line >= 0,
-              snapshot.cursor_column >= 0
-        else {
+    /// The cell an IME composition is anchored to, in view coordinates. See
+    /// `terminal_alacritty_composition_anchor` for why this is not the
+    /// snapshot's cursor.
+    private func compositionCell() -> NSRect? {
+        guard let handle else { return nil }
+        var line = 0
+        var column = 0
+        terminal_alacritty_composition_anchor(handle, &line, &column)
+        return NSRect(
+            x: Self.padding.x + CGFloat(column) * metrics.cellWidth,
+            y: bounds.height - Self.padding.y - CGFloat(line + 1) * metrics.cellHeight,
+            width: metrics.cellWidth,
+            height: metrics.cellHeight
+        )
+    }
+
+    /// Called directly when the composition changes as well as on every frame.
+    /// The field is an ordinary subview needing no drawable, and a frame can be
+    /// held back — by a TUI's synchronized update, or an exhausted drawable
+    /// pool — for long enough that typing appears to go nowhere.
+    private func updateMarkedTextOverlay() {
+        guard !markedText.isEmpty, let cell = compositionCell() else {
             markedTextField.isHidden = true
             return
         }
+        // In the attributes because a field showing an attributed string
+        // ignores its own `lineBreakMode`. Only a composition wider than the
+        // pane truncates, and it must lose its oldest characters: the newest
+        // is the one being typed.
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingHead
         let attributes: [NSAttributedString.Key: Any] = [
             .font: metrics.regular,
             .foregroundColor: Theme.terminal(
                 dark: NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ).foregroundNSColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .paragraphStyle: paragraphStyle,
         ]
         let attributed = NSAttributedString(string: markedText, attributes: attributes)
         markedTextField.attributedStringValue = attributed
@@ -842,19 +866,22 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             dark: NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         ).backgroundNSColor
         // Size from the field itself, not the string: the cell adds its own
-        // horizontal insets, and `.byClipping` drops any glyph that does not
-        // fit whole — so a frame sized to the string alone hid the last
-        // character of every composition until the IME committed it.
-        let width = max(
-            markedTextField.fittingSize.width.rounded(.up),
-            metrics.cellWidth
+        // horizontal insets, and it drops any glyph that does not fit whole —
+        // so a frame sized to the string alone hid the last character of every
+        // composition until the IME committed it.
+        let usableWidth = max(bounds.width - Self.padding.x * 2, metrics.cellWidth)
+        let width = min(
+            max(markedTextField.fittingSize.width.rounded(.up), metrics.cellWidth),
+            usableWidth
         )
+        // Near the right edge the composition grows back over the line rather
+        // than past the pane, where it would be cut off by the next pane or
+        // the window. A native text field keeps its text in view the same way.
         markedTextField.frame = NSRect(
-            x: Self.padding.x + CGFloat(snapshot.cursor_column) * metrics.cellWidth,
-            y: bounds.height - Self.padding.y
-                - CGFloat(snapshot.cursor_line + 1) * metrics.cellHeight,
+            x: max(Self.padding.x, min(cell.minX, bounds.width - Self.padding.x - width)),
+            y: cell.minY,
             width: width,
-            height: metrics.cellHeight
+            height: cell.height
         )
         markedTextField.isHidden = false
     }
@@ -2102,6 +2129,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 extension AlacrittyTerminalView: NSTextInputClient {
     func insertText(_ string: Any, replacementRange: NSRange) {
         markedText = ""
+        updateMarkedTextOverlay()
         let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
         guard !text.isEmpty else { return }
         write(Array(text.utf8))
@@ -2110,12 +2138,12 @@ extension AlacrittyTerminalView: NSTextInputClient {
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         markedText = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        scheduleRender(force: true)
+        updateMarkedTextOverlay()
     }
 
     func unmarkText() {
         markedText = ""
-        scheduleRender(force: true)
+        updateMarkedTextOverlay()
     }
 
     func selectedRange() -> NSRange {
@@ -2140,17 +2168,11 @@ extension AlacrittyTerminalView: NSTextInputClient {
 
     /// Places the IME candidate window under the cursor.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        guard let handle, let window else { return .zero }
-        var snapshot = TerminalSnapshot()
-        terminal_alacritty_snapshot(handle, &snapshot)
-        let column = CGFloat(max(snapshot.cursor_column, 0))
-        let line = CGFloat(max(snapshot.cursor_line, 0))
-        let local = NSRect(
-            x: Self.padding.x + column * metrics.cellWidth,
-            y: bounds.maxY - Self.padding.y - (line + 1) * metrics.cellHeight,
-            width: metrics.cellWidth,
-            height: metrics.cellHeight
-        )
+        guard let window, var local = compositionCell() else { return .zero }
+        // Beside the text, wherever the right edge pushed it.
+        if !markedTextField.isHidden {
+            local.origin.x = markedTextField.frame.minX
+        }
         return window.convertToScreen(convert(local, to: nil))
     }
 
@@ -2161,6 +2183,25 @@ extension AlacrittyTerminalView: NSTextInputClient {
         // otherwise beep.
     }
 }
+
+#if DEBUG
+extension AlacrittyTerminalView {
+    /// Sets the composition the way an input method does, and says where it
+    /// landed, for ``TerminalCLIAutomationAction/composeText``.
+    func automationCompose(_ text: String) -> String {
+        setMarkedText(
+            text,
+            selectedRange: NSRange(location: text.utf16.count, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        guard !markedTextField.isHidden else { return "hidden" }
+        let frame = markedTextField.frame
+        return "visible x=\(Int(frame.minX)) maxX=\(Int(frame.maxX)) y=\(Int(frame.minY)) "
+            + "bounds=\(Int(bounds.width))x\(Int(bounds.height)) "
+            + "fits=\(bounds.contains(frame))"
+    }
+}
+#endif
 
 // MARK: - Callback plumbing
 

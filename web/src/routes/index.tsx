@@ -270,6 +270,11 @@ const FEATURES: { group: string; rows: Row[] }[] = [
           'holding a key down repeats it — hold j or k to run through git log or a file in less, instead of tapping',
       },
       {
+        name: 'Input methods that stay in view',
+        detail:
+          'in Alacritty panes, text you are still composing in Bopomofo, Pinyin or Japanese stays on screen while a program hides the cursor, near the right edge, and when scrolled back, with the candidate window beside it',
+      },
+      {
         name: 'Desktop notifications',
         detail:
           'a bell in an unfocused session, or a notification escape from a long-running command, reaches Notification Center with the system sound — click one and it jumps to the session that posted it',
