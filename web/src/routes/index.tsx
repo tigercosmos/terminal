@@ -24,9 +24,9 @@ const BREW_COMMAND = ''
 
 // Shown only if the release can't be looked up; kept current so downloads still work.
 const FALLBACK: Release = {
-  version: '0.9.1',
+  version: '0.10.0',
   minSystem: '15.6',
-  dmg: `${GITHUB_URL}/releases/download/v0.9.1/terminal-0.9.1.dmg`,
+  dmg: `${GITHUB_URL}/releases/download/v0.10.0/terminal-0.10.0.dmg`,
 }
 
 /**
@@ -383,7 +383,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'Does it run the agent for me?',
-    a: 'No. Terminal never wraps, proxies, or rewrites what you type — the agent CLI you install is the one that runs, with your shell and its config untouched. Nothing is sent anywhere on your behalf.',
+    a: 'No. Terminal never wraps, proxies, or rewrites what you type — the agent CLI you install is the one that runs, with your shell and its config untouched. The one thing it starts unasked is a Claude Code or Codex conversation a pane was running before a relaunch, which you can turn off in Settings → Agents. Nothing is sent anywhere on your behalf.',
   },
   {
     q: 'Is terminal free?',

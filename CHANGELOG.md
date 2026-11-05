@@ -14,17 +14,8 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
-## [unrelease]
+## [0.10.0]
 
-- Text sent to a libghostty pane by **cd Here**, `terminal +pane send`, and
-  the other commands Terminal types for you now arrives as keystrokes instead
-  of a paste. A program that reads pastes specially saw the difference: vim
-  inserted the `i` meant to enter insert mode as a letter, and the command
-  after it never ran. Alacritty panes always typed it
-- Text being composed with an input method (Bopomofo, Pinyin, Japanese) stays
-  visible in Alacritty panes while a program hides the cursor, when the line is
-  near the right edge, and when scrolled back. The candidate window opens beside
-  it instead of in the pane's top-left corner
 - An **Agents** section at the bottom of the sidebar lists every coding agent
   running in the window, across all projects: its badge, its name, whether it
   is starting, working, blocked, done, or idle, and the project and tab it is
@@ -37,6 +28,22 @@ the original feature bullet instead of adding separate entries for them.
   +agent`. Nothing is added to the agent's own config. A conversation that
   no longer exists comes back as a plain shell. Turn it off with **Resume
   agent sessions after relaunch** in Settings → Agents
+- Text sent to a libghostty pane by **cd Here**, `terminal +pane send`, and
+  the other commands Terminal types for you now arrives as keystrokes instead
+  of a paste. A program that reads pastes specially saw the difference: vim
+  inserted the `i` meant to enter insert mode as a letter, and the command
+  after it never ran. Alacritty panes always typed it
+- Text being composed with an input method (Bopomofo, Pinyin, Japanese) stays
+  visible in Alacritty panes while a program hides the cursor, when the line is
+  near the right edge, and when scrolled back. The candidate window opens beside
+  it instead of in the pane's top-left corner
+- Narrowing an Alacritty pane while Claude Code runs no longer leaves copies
+  of its frame in the scrollback, one for each step of a dragged divider. The
+  rows a narrower pane wraps now fill the blank rows below the cursor before
+  anything is pushed into history, as in Terminal.app, iTerm2, Ghostty, and
+  kitty
+- A program that stacks combining marks onto one character can no longer grow
+  an Alacritty pane's memory without limit. A cell keeps the first nine marks
 
 ## [0.9.1]
 
