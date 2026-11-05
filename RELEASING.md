@@ -45,6 +45,9 @@ Cutting one:
 git tag v1.1 && git push origin v1.1
 ```
 
+The `release` skill in `.claude/skills/` walks an agent through this, including
+the changelog, README, and website updates that go with it.
+
 It runs on `xcode-27`, GitHub's preview image, because that is the only hosted
 runner carrying an Xcode that can open this project — `macos-latest` stops at
 26.6. Preview images can queue for a while or go missing; if the job can't

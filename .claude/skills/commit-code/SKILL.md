@@ -63,7 +63,7 @@ These contradict common defaults, so apply them deliberately:
   `.claude/settings.local.json`) must not ride along.
 - **Topic branch only.** Never commit directly on `main`; branch first (the
   `worktree` skill isolates the work when the main checkout should stay
-  clean).
+  clean). The one exception is a release commit; see the `release` skill.
 - **Never bump the version** unless the task is cutting a release.
   `MARKETING_VERSION` and numbered `CHANGELOG.md` headings are maintainer-only
   (`RELEASING.md`) — ordinary work writes under `## [unrelease]` and leaves the

@@ -43,7 +43,8 @@ into `.claude/`.
 - `.claude/skills/` — `verify-change` (build, run, exercise, test),
   `swift-style-review` (after editing Swift under `terminal/`), `commit-code`,
   `create-pr`, `worktree`, `sync-upstream` (take Kero's new work, see
-  [SYNC.md](SYNC.md)).
+  [SYNC.md](SYNC.md)), `release` (bump, update the docs, and publish, see
+  [RELEASING.md](RELEASING.md)).
 - `.claude/hooks/check-source.sh` — reports rustfmt findings on an edited
   `.rs` file. Advisory; the bridge has a few pre-existing diffs.
 - `.claude/settings.json` — permissions, hooks, status line. Machine-local
