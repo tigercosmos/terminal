@@ -416,7 +416,7 @@ enum KeroAutomationRouter {
         }
         let params = request.params
         let id = params["id"]?.stringValue.flatMap { $0.utf8.count <= 256 ? $0 : nil }
-        let change: KeroClaudeHook.Action
+        let change: KeroAgentHook.Action
         switch params["change"]?.stringValue {
         case "start":
             guard let id, let type = params["type"]?.stringValue, !type.isEmpty else {

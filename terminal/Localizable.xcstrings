@@ -312,6 +312,57 @@
         }
       }
     },
+    "Codex is set up on this Mac, but Terminal could not find the `codex` command in your login shell’s PATH, so its Codex hooks were not changed." : {
+      "comment" : "Shown in Settings → Agents when Codex's config folder exists but its command cannot be found.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacにはCodexが設定されていますが、ログインシェルのPATHに`codex`コマンドが見つからなかったため、TerminalのCodexフックは変更されていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 上已设置 Codex，但 Terminal 在登录 shell 的 PATH 中找不到 `codex` 命令，因此未更改 Terminal 的 Codex 钩子。"
+          }
+        }
+      }
+    },
+    "Terminal could not prepare its Codex plugin: %@" : {
+      "comment" : "Shown in Settings → Agents. Placeholder: the system's description of a file error.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TerminalはCodexプラグインを準備できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal 无法准备其 Codex 插件：%@"
+          }
+        }
+      }
+    },
+    "`codex %@` failed: %@" : {
+      "comment" : "Shown in Settings → Agents. Placeholders: the arguments Terminal passed to the codex command, then that command's own output.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`codex %@` が失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "`codex %@` 失败：%@"
+          }
+        }
+      }
+    },
     "`terminal +agent start` requires --kind." : {
       "localizations" : {
         "ja" : {
@@ -955,18 +1006,18 @@
         }
       }
     },
-    "Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`." : {
+    "Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, Codex, OpenCode, Pi and Grok Build where they are installed. Codex asks you to review Terminal’s hooks once, the next time it starts. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Terminalの自動化スキルをClaude Code、Codexなどのエージェントにリンクし、インストール済みのClaude Code、OpenCode、Pi、Grok Buildにはライフサイクルフックをリンクします。エージェントは`terminal +pane`と`terminal +agent`でペインを分割し、別のエージェントを起動して完了を待てるようになります。"
+            "value" : "Terminalの自動化スキルをClaude Code、Codexなどのエージェントにリンクし、インストール済みのClaude Code、Codex、OpenCode、Pi、Grok Buildにはライフサイクルフックをリンクします。Codexは次回の起動時に、Terminalのフックを一度だけ確認するよう求めます。エージェントは`terminal +pane`と`terminal +agent`でペインを分割し、別のエージェントを起動して完了を待てるようになります。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将 Terminal 的自动化技能链接到 Claude Code、Codex 等代理，并将生命周期钩子链接到已安装的 Claude Code、OpenCode、Pi 和 Grok Build。之后代理可以通过 `terminal +pane` 和 `terminal +agent` 拆分面板、启动其他代理并等待其完成。"
+            "value" : "将 Terminal 的自动化技能链接到 Claude Code、Codex 等代理，并将生命周期钩子链接到已安装的 Claude Code、Codex、OpenCode、Pi 和 Grok Build。Codex 会在下次启动时请你检查一次 Terminal 的钩子。之后代理可以通过 `terminal +pane` 和 `terminal +agent` 拆分面板、启动其他代理并等待其完成。"
           }
         }
       }

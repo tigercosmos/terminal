@@ -11,6 +11,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var updater = Updater.shared
+    @ObservedObject private var codexInstaller = CodexIntegrationInstaller.shared
     @State private var relaunchError = ""
     @State private var isShowingRelaunchError = false
     /// Why the last change to the agents setting was refused — a file Terminal
@@ -233,11 +234,16 @@ struct SettingsView: View {
                         set: setAIEnabled
                     )
                 )
-                Text("Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`.")
+                Text("Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, Codex, OpenCode, Pi and Grok Build where they are installed. Codex asks you to review Terminal’s hooks once, the next time it starts. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if !aiError.isEmpty {
                     Text(verbatim: aiError)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
+                if settings.aiEnabled, let problem = codexInstaller.problem {
+                    Text(verbatim: problem)
                         .font(.callout)
                         .foregroundStyle(.red)
                 }

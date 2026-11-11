@@ -1,26 +1,39 @@
 //
-//  KeroClaudeHook.swift
+//  KeroAgentHook.swift
 //  TerminalCore
 //
 
 import Foundation
 
-/// Turns one Claude Code hook event into what Terminal records about the
-/// agent. Claude Code runs Terminal's bundled plugin hooks with the event's
-/// JSON on stdin; this is the whole of the reading, kept free of the socket
-/// and the app so the mapping is tested without either.
+/// Turns one Claude Code or Codex hook event into what Terminal records
+/// about the agent. Both run Terminal's bundled plugin hooks with the
+/// event's JSON on stdin, in shapes close enough to share one reading; this
+/// is the whole of it, kept free of the socket and the app so the mapping is
+/// tested without either.
 ///
 /// Every hook names its event on the command line rather than trusting
 /// `hook_event_name` alone: the plugin file decides which events are wired,
-/// and a field Claude Code renames must not silently re-route one.
-public nonisolated enum KeroClaudeHook {
+/// and a field an agent renames must not silently re-route one.
+public nonisolated enum KeroAgentHook {
+    public enum Agent: String, Sendable {
+        case claude
+        case codex
+
+        var displayName: String {
+            switch self {
+            case .claude: "Claude Code"
+            case .codex: "Codex"
+            }
+        }
+    }
+
     public enum Action: Equatable, Sendable {
         /// The agent's own state: `working`, `blocked`, or `idle`.
         case report(state: String, reason: String)
         case subagentStarted(id: String, type: String)
         case subagentStopped(id: String)
         /// The main turn ended. Only background subagents can still be
-        /// running; `ids` are the ones Claude Code still lists and `count`
+        /// running; `ids` are the ones the agent still lists and `count`
         /// how many it lists, for the case where its task ids are not the
         /// ids `SubagentStart` reported.
         case subagentsRemaining(ids: [String], count: Int)
@@ -37,43 +50,53 @@ public nonisolated enum KeroClaudeHook {
     /// through the subagent hooks too, so both keep their roster rows.
     private static let agentBackgroundTypes: Set<String> = ["subagent", "teammate"]
 
-    public static func actions(event: String, input: KeroJSONValue?) -> [Action] {
+    public static func actions(
+        agent: Agent,
+        event: String,
+        input: KeroJSONValue?
+    ) -> [Action] {
         let fields = input?.objectValue ?? [:]
+        let name = agent.displayName
         switch event {
         case "UserPromptSubmit":
-            return [.report(state: "working", reason: "Claude Code prompt submitted")]
+            return [.report(state: "working", reason: "\(name) prompt submitted")]
 
         // A tool finishing is the first event after a permission prompt is
         // answered; there is no event for the answer itself.
         case "PostToolUse", "PostToolUseFailure":
-            return [.report(state: "working", reason: "Claude Code ran a tool")]
+            return [.report(state: "working", reason: "\(name) ran a tool")]
 
         case "PermissionRequest":
-            return [.report(state: "blocked", reason: "Claude Code is waiting for permission")]
+            return [.report(state: "blocked", reason: "\(name) is waiting for permission")]
 
+        // Claude Code only: Codex has no notification hook.
         case "Notification":
             switch fields["notification_type"]?.stringValue {
             case "permission_prompt", "elicitation_dialog", "elicitation_url_dialog":
-                return [.report(state: "blocked", reason: "Claude Code is waiting for input")]
+                return [.report(state: "blocked", reason: "\(name) is waiting for input")]
             // Stop does not run when the user interrupts a turn. This fires a
             // minute after Claude Code last answered with no new input, so an
             // interrupted turn does not read as working forever.
             case "idle_prompt":
-                return [.report(state: "idle", reason: "Claude Code is waiting for a prompt")]
+                return [.report(state: "idle", reason: "\(name) is waiting for a prompt")]
             default:
                 return []
             }
+
+        // Codex only: it reports an interrupt, where Claude Code is silent.
+        case "Interrupt":
+            return [.report(state: "idle", reason: "\(name) turn interrupted")]
 
         case "Stop":
             // The turn did end, but an input that could not be read says
             // nothing about what still runs in the background. Leave the
             // subagent list as it is: the app keeps an agent with listed
             // subagents working, so an unreadable Stop cannot clear them and
-            // call the agent done while they work.
-            guard input?.objectValue != nil else {
-                return [.report(state: "idle", reason: "Claude Code finished its turn")]
+            // call the agent done while they work. Codex's Stop never lists
+            // background tasks, so its subagents leave only by their own stop.
+            guard let tasks = fields["background_tasks"]?.arrayValue?.compactMap(\.objectValue) else {
+                return [.report(state: "idle", reason: "\(name) finished its turn")]
             }
-            let tasks = (fields["background_tasks"]?.arrayValue ?? []).compactMap(\.objectValue)
             let subagents = tasks.filter {
                 agentBackgroundTypes.contains($0["type"]?.stringValue ?? "")
             }
@@ -87,12 +110,12 @@ public nonisolated enum KeroClaudeHook {
             return [
                 remaining,
                 awaited
-                    ? .report(state: "working", reason: "Claude Code is waiting for background agents")
-                    : .report(state: "idle", reason: "Claude Code finished its turn"),
+                    ? .report(state: "working", reason: "\(name) is waiting for background agents")
+                    : .report(state: "idle", reason: "\(name) finished its turn"),
             ]
 
         case "StopFailure":
-            return [.report(state: "blocked", reason: "Claude Code stopped on an error")]
+            return [.report(state: "blocked", reason: "\(name) stopped on an error")]
 
         case "SubagentStart":
             // Claude Code also runs internal agents (prompt suggestions,
@@ -102,7 +125,7 @@ public nonisolated enum KeroClaudeHook {
                   let type = nonEmpty(fields["agent_type"])
             else { return [] }
             return [
-                .report(state: "working", reason: "Claude Code started a subagent"),
+                .report(state: "working", reason: "\(name) started a subagent"),
                 .subagentStarted(id: id, type: String(type.prefix(80))),
             ]
 
@@ -136,7 +159,7 @@ public nonisolated struct KeroAgentSubagent: Equatable, Sendable, Identifiable {
     /// Applies one change to a pane's subagent list. Kept beside the type so
     /// the reconciliation rules are tested without a session.
     public static func applying(
-        _ action: KeroClaudeHook.Action,
+        _ action: KeroAgentHook.Action,
         to subagents: [Self]
     ) -> [Self] {
         switch action {

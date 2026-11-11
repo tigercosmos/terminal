@@ -532,7 +532,7 @@ extension TerminalSession {
     /// Applies a subagent change from the agent's native integration.
     /// Refused, like a state report, unless a recognized agent runs here: a
     /// stray hook must not give a plain shell a roster row.
-    func reportAutomationSubagents(_ change: KeroClaudeHook.Action) -> Bool {
+    func reportAutomationSubagents(_ change: KeroAgentHook.Action) -> Bool {
         // The same recognition `reportAutomationAgent` uses, remembered
         // process first, so a Stop hook's subagent change and its state
         // report are accepted or refused together.

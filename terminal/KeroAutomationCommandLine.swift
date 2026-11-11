@@ -224,8 +224,8 @@ enum KeroAutomationCommandLine {
     /// intentionally absent from help and never appears in an agent prompt.
     /// Hook failures stay passive; Terminal does not guess state from terminal text.
     private static func runAgentIntegration(_ arguments: [String]) {
-        if arguments.count == 2, arguments[0] == "claude" {
-            runClaudeIntegration(event: arguments[1])
+        if arguments.count == 2, let agent = KeroAgentHook.Agent(rawValue: arguments[0]) {
+            runHookIntegration(agent: agent, event: arguments[1])
             return
         }
         guard arguments.count == 2 || arguments.count == 3,
@@ -262,11 +262,11 @@ enum KeroAutomationCommandLine {
         )
     }
 
-    /// One Claude Code hook. Prints nothing: Claude Code adds a
+    /// One Claude Code or Codex hook. Prints nothing: both add a
     /// `UserPromptSubmit` or `SubagentStart` hook's output to the model's
-    /// context, and reads a `PermissionRequest` hook's output as a decision.
-    private static func runClaudeIntegration(event: String) {
-        let actions = KeroClaudeHook.actions(event: event, input: readHookInput())
+    /// context, and read a `PermissionRequest` hook's output as a decision.
+    private static func runHookIntegration(agent: KeroAgentHook.Agent, event: String) {
+        let actions = KeroAgentHook.actions(agent: agent, event: event, input: readHookInput())
         guard !actions.isEmpty, let connection = try? AppConnection() else { return }
         for action in actions {
             let method: String
@@ -298,7 +298,7 @@ enum KeroAutomationCommandLine {
     /// a pipe hands over what it has, not the whole of it — and abandoned
     /// past a bound rather than held in memory on the way to a few fields.
     /// Truncated JSON would not decode, so a nil here means "unknown", and
-    /// `KeroClaudeHook` treats it as such rather than as an empty event.
+    /// `KeroAgentHook` treats it as such rather than as an empty event.
     private static func readHookInput() -> KeroJSONValue? {
         let limit = 4 * 1_024 * 1_024
         var input = Data()

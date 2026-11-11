@@ -1,0 +1,81 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex UserPromptSubmit # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex PostToolUse # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex PermissionRequest # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex Stop # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex Interrupt # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex SubagentStart # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration codex SubagentStop # TERMINAL_INTEGRATION_ID=codex",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

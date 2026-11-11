@@ -16,14 +16,16 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unrelease]
 
-- Claude Code now shows its real state. Its badges and its row in the
-  sidebar's **Agents** section say it is working while it answers, blocked
-  while it waits for your permission, and done when it finishes in a pane you
-  are not looking at, with a notification; before, it always read idle. An
-  agent waiting on background subagents stays working, and the subagents it
-  runs are listed under its row. **Let coding agents coordinate panes** in
-  Settings → Agents links the hooks into Claude Code as a plugin in
-  `~/.claude/skills`; your `settings.json` is not edited
+- Claude Code and Codex now show their real state. Their badges and their
+  rows in the sidebar's **Agents** section say they are working while they
+  answer, blocked while they wait for your permission, and done when they
+  finish in a pane you are not looking at, with a notification; before, both
+  always read idle. An agent waiting on its subagents stays working, and the
+  subagents it runs are listed under its row. **Let coding agents coordinate
+  panes** in Settings → Agents adds the hooks as each agent's own plugin:
+  linked into `~/.claude/skills` for Claude Code, and installed with `codex
+  plugin` for Codex, which asks you to review them once. Terminal never
+  edits either agent's settings file itself
 
 ## [0.10.0]
 

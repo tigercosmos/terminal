@@ -471,21 +471,23 @@ done
 [[ ! -s $work/hand1.log && ! -s $work/hand2.log ]] \
     || fail "a refused prompt still reached an agent"
 
-# Claude Code's state comes only from its hooks. A stand-in `claude` runs each
-# hook the way Claude Code does — a child of the agent process, with the
+# Claude Code's and Codex's state comes only from their hooks. A stand-in runs
+# each hook the way the agent does — a child of the agent process, with the
 # pane's environment, the event's JSON on stdin — reading one event per line
-# from a FIFO the test writes to.
+# from a FIFO the test writes to. Its own name, `claude` or `codex`, is both
+# what Terminal recognizes and which integration it reports through.
 mkdir -p "$work/hookbin"
 mkfifo "$work/hooks.fifo"
 cat > "$work/hookbin/claude" <<'AGENT'
 #!/bin/zsh
 exec 3<>"$1"
 while IFS=' ' read -r -u3 event payload; do
-    print -r -- "$payload" | terminal +agent _integration claude "$event"
+    print -r -- "$payload" | terminal +agent _integration "${0:t}" "$event"
     print -r -- "$event" >> "$1.done"
 done
 AGENT
 chmod +x "$work/hookbin/claude"
+cp "$work/hookbin/claude" "$work/hookbin/codex"
 hook() {
     local payload=${2:-'{}'}
     local before=$(cat "$work/hooks.fifo.done" 2>/dev/null | wc -l)
@@ -499,7 +501,7 @@ hook() {
     fail "the stand-in never ran the $1 hook"
 }
 agent_field() {
-    in_shell agent.json terminal +agent get claude | json_field "agent.$1"
+    in_shell agent.json terminal +agent get "${2:-claude}" | json_field "agent.$1"
 }
 # The two stand-ins above were only sent Ctrl-C; a run into a pane whose agent
 # has not exited yet is refused as busy.
@@ -528,6 +530,26 @@ check "a finished turn in a pane not in view is done" "done" "$(agent_field stat
 hook Notification '{"notification_type":"idle_prompt"}'
 check "the minute-later idle notice does not hide an unseen done" "done" "$(agent_field state)"
 in_shell stop-hooked.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
+
+# Codex's Stop lists no background tasks, so a subagent it started keeps the
+# agent working until its own stop; and Codex reports an interrupt.
+for _ in {1..25}; do
+    [[ $(in_shell list-before-codex.json terminal +agent list) == *"[]"* ]] && break
+    sleep 0.2
+done
+in_shell codex.json terminal +pane run --pane "$worker" -- "'$work/hookbin/codex'" "'$work/hooks.fifo'" >/dev/null
+sleep 2
+check "a hand-started Codex is idle until its hooks say otherwise" "idle" "$(agent_field state codex)"
+hook UserPromptSubmit
+hook SubagentStart '{"agent_id":"cx-1","agent_type":"worker"}'
+hook Stop '{"stop_hook_active":false,"last_assistant_message":"waiting"}'
+check "a Codex turn that ends with a subagent running is still working" "working" "$(agent_field state codex)"
+check "and the subagent is still listed" '"type": "worker"' "$(agent_field subagents codex)"
+hook SubagentStop '{"agent_id":"cx-1","agent_type":"worker"}'
+hook UserPromptSubmit
+hook Interrupt
+check "an interrupted Codex turn in a pane not in view is done" "done" "$(agent_field state codex)"
+in_shell stop-codex.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
 
 # --- a TUI repainting after a resize --------------------------------------------
 

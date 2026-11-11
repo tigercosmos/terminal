@@ -1,5 +1,5 @@
 //
-//  KeroClaudeHookTests.swift
+//  KeroAgentHookTests.swift
 //  TerminalCore
 //
 
@@ -8,15 +8,15 @@ import Testing
 
 @testable import TerminalCore
 
-/// Claude Code's hooks are the only source of its working, blocked and done
+/// Claude Code's and Codex's hooks are the only source of its working, blocked and done
 /// states, and of its subagents. Each test feeds a hook's stdin as Claude
 /// Code writes it and checks what Terminal records.
-struct KeroClaudeHookTests {
+struct KeroAgentHookTests {
     private func input(_ json: String) throws -> KeroJSONValue {
         try JSONDecoder().decode(KeroJSONValue.self, from: Data(json.utf8))
     }
 
-    private func states(_ actions: [KeroClaudeHook.Action]) -> [String] {
+    private func states(_ actions: [KeroAgentHook.Action]) -> [String] {
         actions.compactMap {
             if case .report(let state, _) = $0 { return state }
             return nil
@@ -24,31 +24,31 @@ struct KeroClaudeHookTests {
     }
 
     @Test func aPromptStartsWorkAndAToolFinishingKeepsIt() {
-        #expect(states(KeroClaudeHook.actions(event: "UserPromptSubmit", input: nil)) == ["working"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "UserPromptSubmit", input: nil)) == ["working"])
         // The first event after a permission prompt is answered.
-        #expect(states(KeroClaudeHook.actions(event: "PostToolUse", input: nil)) == ["working"])
-        #expect(states(KeroClaudeHook.actions(event: "PostToolUseFailure", input: nil)) == ["working"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "PostToolUse", input: nil)) == ["working"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "PostToolUseFailure", input: nil)) == ["working"])
     }
 
     @Test func waitingForTheUserIsBlocked() throws {
-        #expect(states(KeroClaudeHook.actions(event: "PermissionRequest", input: nil)) == ["blocked"])
-        #expect(states(KeroClaudeHook.actions(event: "StopFailure", input: nil)) == ["blocked"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "PermissionRequest", input: nil)) == ["blocked"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "StopFailure", input: nil)) == ["blocked"])
         let prompt = try input(#"{"notification_type": "permission_prompt"}"#)
-        #expect(states(KeroClaudeHook.actions(event: "Notification", input: prompt)) == ["blocked"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "Notification", input: prompt)) == ["blocked"])
     }
 
     /// Stop does not run on an interrupt; the idle notice a minute later is
     /// what ends the turn then. Other notifications say nothing about state.
     @Test func onlyTheIdleNoticeAndPromptsAmongNotificationsChangeState() throws {
         let idle = try input(#"{"notification_type": "idle_prompt"}"#)
-        #expect(states(KeroClaudeHook.actions(event: "Notification", input: idle)) == ["idle"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "Notification", input: idle)) == ["idle"])
         let auth = try input(#"{"notification_type": "auth_success"}"#)
-        #expect(KeroClaudeHook.actions(event: "Notification", input: auth).isEmpty)
+        #expect(KeroAgentHook.actions(agent: .claude, event: "Notification", input: auth).isEmpty)
     }
 
     @Test func aStopWithNothingInTheBackgroundEndsTheTurn() throws {
         let stop = try input(#"{"stop_hook_active": false, "background_tasks": []}"#)
-        #expect(KeroClaudeHook.actions(event: "Stop", input: stop) == [
+        #expect(KeroAgentHook.actions(agent: .claude, event: "Stop", input: stop) == [
             .subagentsRemaining(ids: [], count: 0),
             .report(state: "idle", reason: "Claude Code finished its turn"),
         ])
@@ -63,14 +63,14 @@ struct KeroClaudeHookTests {
           {"id": "b1", "type": "shell", "status": "running", "command": "npm run dev"}
         ]}
         """#)
-        let actions = KeroClaudeHook.actions(event: "Stop", input: waiting)
+        let actions = KeroAgentHook.actions(agent: .claude, event: "Stop", input: waiting)
         #expect(actions.first == .subagentsRemaining(ids: ["a1"], count: 1))
         #expect(states(actions) == ["working"])
 
         let server = try input(#"""
         {"background_tasks": [{"id": "b1", "type": "shell", "status": "running"}]}
         """#)
-        #expect(states(KeroClaudeHook.actions(event: "Stop", input: server)) == ["idle"])
+        #expect(states(KeroAgentHook.actions(agent: .claude, event: "Stop", input: server)) == ["idle"])
     }
 
     /// Agent team teammates run through the subagent hooks; one still at
@@ -79,7 +79,7 @@ struct KeroClaudeHookTests {
         let waiting = try input(#"""
         {"background_tasks": [{"id": "t1", "type": "teammate", "status": "running"}]}
         """#)
-        let actions = KeroClaudeHook.actions(event: "Stop", input: waiting)
+        let actions = KeroAgentHook.actions(agent: .claude, event: "Stop", input: waiting)
         #expect(actions.first == .subagentsRemaining(ids: ["t1"], count: 1))
         #expect(states(actions) == ["working"])
     }
@@ -87,30 +87,55 @@ struct KeroClaudeHookTests {
     /// Input too large or cut short decodes to nothing. That must not read
     /// as "no background tasks" and clear the subagents still running.
     @Test func anUnreadableStopLeavesTheSubagentsAlone() {
-        #expect(KeroClaudeHook.actions(event: "Stop", input: nil) == [
+        #expect(KeroAgentHook.actions(agent: .claude, event: "Stop", input: nil) == [
             .report(state: "idle", reason: "Claude Code finished its turn"),
         ])
     }
 
     @Test func subagentsAreReportedByIDAndType() throws {
         let start = try input(#"{"agent_id": "a1", "agent_type": "Explore"}"#)
-        #expect(KeroClaudeHook.actions(event: "SubagentStart", input: start) == [
+        #expect(KeroAgentHook.actions(agent: .claude, event: "SubagentStart", input: start) == [
             .report(state: "working", reason: "Claude Code started a subagent"),
             .subagentStarted(id: "a1", type: "Explore"),
         ])
         let stop = try input(#"{"agent_id": "a1", "agent_type": "Explore"}"#)
-        #expect(KeroClaudeHook.actions(event: "SubagentStop", input: stop) == [.subagentStopped(id: "a1")])
+        #expect(KeroAgentHook.actions(agent: .claude, event: "SubagentStop", input: stop) == [.subagentStopped(id: "a1")])
     }
 
     /// Prompt suggestions and `/btw` run as subagents with no type.
     @Test func internalAgentsGetNoRow() throws {
         let unnamed = try input(#"{"agent_id": "a9", "agent_type": ""}"#)
-        #expect(KeroClaudeHook.actions(event: "SubagentStart", input: unnamed).isEmpty)
-        #expect(KeroClaudeHook.actions(event: "SubagentStart", input: nil).isEmpty)
+        #expect(KeroAgentHook.actions(agent: .claude, event: "SubagentStart", input: unnamed).isEmpty)
+        #expect(KeroAgentHook.actions(agent: .claude, event: "SubagentStart", input: nil).isEmpty)
+    }
+
+    // MARK: - Codex
+
+    /// Codex reports an interrupt; Claude Code does not.
+    @Test func aCodexInterruptEndsTheTurn() {
+        #expect(states(KeroAgentHook.actions(agent: .codex, event: "Interrupt", input: nil)) == ["idle"])
+    }
+
+    /// Codex's Stop lists no background tasks. Reading that as "none left"
+    /// would drop subagents still running at the end of every turn.
+    @Test func aCodexStopLeavesItsSubagentsAlone() throws {
+        let stop = try input(#"{"stop_hook_active": false, "last_assistant_message": "hi"}"#)
+        #expect(KeroAgentHook.actions(agent: .codex, event: "Stop", input: stop) == [
+            .report(state: "idle", reason: "Codex finished its turn"),
+        ])
+    }
+
+    @Test func codexSubagentsAndPermissionsReadLikeClaudeCodes() throws {
+        let start = try input(#"{"agent_id": "c1", "agent_type": "worker", "turn_id": "t"}"#)
+        #expect(KeroAgentHook.actions(agent: .codex, event: "SubagentStart", input: start).last
+            == .subagentStarted(id: "c1", type: "worker"))
+        let permission = try input(#"{"tool_name": "shell", "tool_input": {}}"#)
+        #expect(states(KeroAgentHook.actions(agent: .codex, event: "PermissionRequest", input: permission))
+            == ["blocked"])
     }
 
     @Test func unknownEventsDoNothing() {
-        #expect(KeroClaudeHook.actions(event: "PreCompact", input: nil).isEmpty)
+        #expect(KeroAgentHook.actions(agent: .claude, event: "PreCompact", input: nil).isEmpty)
     }
 
     // MARK: - Subagent list

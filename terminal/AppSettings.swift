@@ -451,6 +451,9 @@ final class AppSettings: nonisolated ObservableObject {
             try KeroAgentIntegrations.uninstallManaged()
         }
         aiEnabled = enabled
+        // Last, and in the background: Codex installs through its own CLI,
+        // which takes seconds and may be missing. Settings shows a failure.
+        CodexIntegrationInstaller.shared.reconcile(enabled: enabled)
     }
 
     /// The links point into the app bundle, which an update normally leaves in
@@ -467,6 +470,9 @@ final class AppSettings: nonisolated ObservableObject {
         } catch {
             NSLog("terminal: failed to refresh AI support: \(error)")
         }
+        // Compares Codex's cached hooks with this build's before running
+        // anything, so an unchanged install costs a file read at launch.
+        CodexIntegrationInstaller.shared.reconcile(enabled: true)
     }
 
     private func save() {
