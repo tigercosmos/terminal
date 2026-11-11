@@ -33,7 +33,8 @@ the full feature list, every keyboard shortcut, and the changelog.
   agent can split a pane, start another agent in it, prompt it, and wait for
   its answer with `terminal +pane` and `terminal +agent`. A badge on each pane,
   tab, and project shows which agents are working, blocked, or done, and an
-  Agents section in the sidebar lists every running agent across projects.
+  Agents section in the sidebar lists every running agent across projects,
+  with the subagents Claude Code or Codex runs under it.
 - **Watch what they started** — the focused shell's working directory, the
   processes running under it, and the ports they are listening on; long
   commands and bells reach Notification Center when the pane is unfocused.

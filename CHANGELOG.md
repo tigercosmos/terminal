@@ -14,7 +14,7 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
-## [unrelease]
+## [0.11.0]
 
 - Claude Code and Codex now show their real state. Their badges and their
   rows in the sidebar's **Agents** section say they are working while they
@@ -26,6 +26,10 @@ the original feature bullet instead of adding separate entries for them.
   linked into `~/.claude/skills` for Claude Code, and installed with `codex
   plugin` for Codex, which asks you to review them once. Terminal never
   edits either agent's settings file itself
+- An agent that finished in a pane you have not looked at now stays done in
+  the **Agents** section until you focus its pane, instead of turning idle at
+  its next report. An agent started with `terminal +agent start` no longer
+  reads as starting again after a prompt you typed into it yourself
 
 ## [0.10.0]
 
