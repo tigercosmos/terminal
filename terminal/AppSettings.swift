@@ -460,7 +460,18 @@ final class AppSettings: nonisolated ObservableObject {
     /// place. Reconciling at launch repairs them after the app is moved — and
     /// only for a user who turned the setting on.
     func reconcileAIEnabled() {
-        guard aiEnabled else { return }
+        guard aiEnabled else {
+            // A removal that failed when the setting was turned off, for
+            // instance with `codex` missing, is finished here once it can be.
+            let codexHome = KeroCodexPlugin.codexHome(
+                homeURL: FileManager.default.homeDirectoryForCurrentUser,
+                environment: ProcessInfo.processInfo.environment
+            )
+            if KeroCodexPlugin.isInstalled(codexHome: codexHome) {
+                CodexIntegrationInstaller.shared.reconcile(enabled: false)
+            }
+            return
+        }
         do {
             _ = try KeroAutomationSkill.install(
                 destinations: KeroAutomationSkill.Destination.allCases,

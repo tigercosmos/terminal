@@ -111,9 +111,13 @@ struct KeroAgentHookTests {
 
     // MARK: - Codex
 
-    /// Codex reports an interrupt; Claude Code does not.
-    @Test func aCodexInterruptEndsTheTurn() {
-        #expect(states(KeroAgentHook.actions(agent: .codex, event: "Interrupt", input: nil)) == ["idle"])
+    /// Codex reports an interrupt; Claude Code does not. It takes the
+    /// turn's subagents with it, and they send no stop of their own.
+    @Test func aCodexInterruptEndsTheTurnAndItsSubagents() {
+        #expect(KeroAgentHook.actions(agent: .codex, event: "Interrupt", input: nil) == [
+            .subagentsRemaining(ids: [], count: 0),
+            .report(state: "idle", reason: "Codex turn interrupted"),
+        ])
     }
 
     /// Codex's Stop lists no background tasks. Reading that as "none left"
@@ -164,6 +168,44 @@ struct KeroAgentHookTests {
         // Task ids that do not match the hook's agent ids: keep the newest.
         #expect(KeroAgentSubagent.applying(.subagentsRemaining(ids: ["t7"], count: 1), to: list)
             .map(\.id) == ["b"])
+        // Any match means the ids are the agents' own; only those stay, even
+        // when the count says more run than are listed here.
+        #expect(KeroAgentSubagent.applying(.subagentsRemaining(ids: ["a", "t7"], count: 2), to: list)
+            .map(\.id) == ["a"])
+    }
+
+    // MARK: - Which agent a hook belongs to
+
+    /// hook shell (10) → Claude Code (20) → zsh (1): the pane's own agent.
+    /// An npm launcher above Codex's native binary is the same agent.
+    @Test func theReportingAgentIsTheNearestAgentAndItsLaunchers() {
+        let kinds: [pid_t: KeroAgentKind] = [20: .claude, 31: .codex, 32: .codex]
+        let parents: [pid_t: pid_t] = [10: 20, 20: 1, 30: 31, 31: 32, 32: 1]
+        #expect(KeroAgentHook.reportingAgentPIDs(
+            from: 10, recognize: { kinds[$0] }, parent: { parents[$0] }
+        ) == [20])
+        #expect(KeroAgentHook.reportingAgentPIDs(
+            from: 30, recognize: { kinds[$0] }, parent: { parents[$0] }
+        ) == [31, 32])
+    }
+
+    /// `codex exec` run by Claude Code's shell tool, and `claude -p` run the
+    /// same way: the chain stops at the inner agent, so it never names the
+    /// pane's agent above it.
+    @Test func anAgentRunByTheAgentIsNotThePanesAgent() {
+        // hook (1) → codex (2) → bash (3) → claude (4)
+        let kinds: [pid_t: KeroAgentKind] = [2: .codex, 4: .claude, 12: .claude, 14: .claude]
+        let parents: [pid_t: pid_t] = [1: 2, 2: 3, 3: 4, 11: 12, 12: 13, 13: 14]
+        #expect(KeroAgentHook.reportingAgentPIDs(
+            from: 1, recognize: { kinds[$0] }, parent: { parents[$0] }
+        ) == [2])
+        // hook (11) → claude -p (12) → bash (13) → claude (14)
+        #expect(KeroAgentHook.reportingAgentPIDs(
+            from: 11, recognize: { kinds[$0] }, parent: { parents[$0] }
+        ) == [12])
+        #expect(KeroAgentHook.reportingAgentPIDs(
+            from: 99, recognize: { _ in nil }, parent: { _ in nil }
+        ).isEmpty)
     }
 
     @Test func theListIsBounded() {

@@ -242,7 +242,9 @@ struct SettingsView: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                 }
-                if settings.aiEnabled, let problem = codexInstaller.problem {
+                // Shown with the setting off too: a removal that failed leaves
+                // Terminal's plugin in Codex, and this says so.
+                if let problem = codexInstaller.problem {
                     Text(verbatim: problem)
                         .font(.callout)
                         .foregroundStyle(.red)

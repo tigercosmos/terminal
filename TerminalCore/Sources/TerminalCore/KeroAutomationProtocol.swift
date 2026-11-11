@@ -65,11 +65,10 @@ public nonisolated enum KeroJSONValue: Codable, Equatable, Sendable {
     }
 
     public var intValue: Int? {
-        guard case .number(let value) = self,
-              value.rounded() == value,
-              value >= Double(Int.min), value <= Double(Int.max)
-        else { return nil }
-        return Int(value)
+        // `Int(exactly:)`, not a range check: `Double(Int.max)` rounds up to
+        // 2^63, which passes `<=` and then traps in `Int(_:)`.
+        guard case .number(let value) = self else { return nil }
+        return Int(exactly: value)
     }
 
     public var arrayValue: [KeroJSONValue]? {

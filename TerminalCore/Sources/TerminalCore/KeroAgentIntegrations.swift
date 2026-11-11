@@ -167,7 +167,8 @@ public nonisolated enum KeroAgentIntegrations {
             for (folder, expected) in zip(path.dropFirst(), path) where itemType(at: folder) != nil {
                 let entries = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [""]
                 guard itemType(at: folder) == .typeDirectory,
-                      entries.allSatisfy({ $0 == expected.lastPathComponent })
+                      // Finder drops `.DS_Store` into any folder it shows.
+                      entries.allSatisfy({ $0 == expected.lastPathComponent || $0 == ".DS_Store" })
                 else {
                     throw IntegrationError.message(
                         "\(folder.path) is not managed by Terminal, so its \(kind.rawValue) integration was not added there."

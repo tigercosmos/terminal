@@ -329,6 +329,23 @@
         }
       }
     },
+    "It did not finish in %lld seconds." : {
+      "comment" : "Why a command Terminal ran for its Codex integration failed. Placeholder: a number of seconds.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld秒以内に終了しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在 %lld 秒内完成。"
+          }
+        }
+      }
+    },
     "Terminal could not prepare its Codex plugin: %@" : {
       "comment" : "Shown in Settings → Agents. Placeholder: the system's description of a file error.",
       "localizations" : {

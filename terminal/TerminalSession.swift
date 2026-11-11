@@ -54,7 +54,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// rather than waiting for the next unrelated change.
     @Published var agentSessionReference: KeroAgentSessionReference?
     /// Subagents the agent here is running, in start order, as its native
-    /// integration reports them. Only Claude Code reports any. Cleared with
+    /// integration reports them. Only Claude Code and Codex report any. Cleared with
     /// the agent status, like the label.
     @Published var agentSubagents: [KeroAgentSubagent] = []
 

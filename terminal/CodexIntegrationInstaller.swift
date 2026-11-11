@@ -56,6 +56,8 @@ final class CodexIntegrationInstaller: ObservableObject {
         } catch {
             return error.localizedDescription
         }
+        // Current includes a plugin the user switched off in Codex itself:
+        // that is their call, and re-enabling it on every launch would undo it.
         if KeroCodexPlugin.isCurrent(codexHome: codexHome, hooks: hooks) { return nil }
         do {
             try KeroCodexPlugin.writeMarketplace(at: marketplaceURL, hooks: hooks)
@@ -73,13 +75,24 @@ final class CodexIntegrationInstaller: ObservableObject {
             homeURL: FileManager.default.homeDirectoryForCurrentUser,
             environment: ProcessInfo.processInfo.environment
         )
-        defer { try? FileManager.default.removeItem(at: marketplaceURL) }
-        guard KeroCodexPlugin.isInstalled(codexHome: codexHome) else { return nil }
-        return runCodex(KeroCodexPlugin.uninstallArguments)
+        guard KeroCodexPlugin.isInstalled(codexHome: codexHome) else {
+            try? FileManager.default.removeItem(at: marketplaceURL)
+            return nil
+        }
+        // Both steps run even when the first fails: a plugin Codex no longer
+        // lists still leaves its marketplace entry. The folder Codex installs
+        // from goes only once Codex has let go of it, so a removal that fails
+        // here can be retried at the next launch.
+        let problem = runCodex(KeroCodexPlugin.uninstallArguments, stopAtFailure: false)
+        if problem == nil { try? FileManager.default.removeItem(at: marketplaceURL) }
+        return problem
     }
 
-    /// Runs each `codex` invocation in turn, stopping at the first failure.
-    private nonisolated static func runCodex(_ invocations: [[String]]) -> String? {
+    /// Runs each `codex` invocation in turn, returning the first failure.
+    private nonisolated static func runCodex(
+        _ invocations: [[String]],
+        stopAtFailure: Bool = true
+    ) -> String? {
         guard let path = loginShellPath(),
               let codex = KeroCodexPlugin.executable(named: "codex", onPath: path)
         else {
@@ -91,17 +104,22 @@ final class CodexIntegrationInstaller: ObservableObject {
         var environment = ProcessInfo.processInfo.environment
         // `codex` from npm is a Node script; Node is found on the same PATH.
         environment["PATH"] = path
+        var firstProblem: String?
         for arguments in invocations {
             let result = run(codex, arguments: arguments, environment: environment, timeout: 60)
             guard result.status == 0 else {
+                // The last lines say why; the rest is noise in a Settings note.
                 let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                return String(
+                    .split(separator: "\n").suffix(3).joined(separator: "\n")
+                firstProblem = firstProblem ?? String(
                     localized: "`codex \(arguments.joined(separator: " "))` failed: \(detail)",
                     comment: "Shown in Settings → Agents. Placeholders: the arguments Terminal passed to the codex command, then that command's own output."
                 )
+                if stopAtFailure { break }
+                continue
             }
         }
-        return nil
+        return firstProblem
     }
 
     /// The PATH the user's shell sets up, which a GUI app does not inherit.
@@ -150,30 +168,35 @@ final class CodexIntegrationInstaller: ObservableObject {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        // Set before `run()`, so an exit that comes at once is never missed.
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
+        // Read as it arrives, so a chatty shell cannot fill the pipe and
+        // stall, and so the read never waits on the pipe's last writer: a
+        // daemon an rc file started can hold it open long after the shell.
+        let output = OutputBox()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            output.append(handle.availableData)
+        }
+        defer { pipe.fileHandleForReading.readabilityHandler = nil }
         do {
             try process.run()
         } catch {
             return (-1, error.localizedDescription)
         }
-        let deadline = DispatchTime.now() + timeout
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        // Read while it runs, so a chatty shell cannot fill the pipe and stall.
-        let output = OutputBox()
-        let read = DispatchSemaphore(value: 0)
-        let handle = pipe.fileHandleForReading
-        DispatchQueue.global(qos: .utility).async {
-            output.data = handle.readDataToEndOfFile()
-            read.signal()
-        }
-        if finished.wait(timeout: deadline) == .timedOut {
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            // An interactive shell ignores SIGTERM; give it a moment, then
+            // SIGKILL, which nothing ignores.
             process.terminate()
-            finished.wait()
+            if finished.wait(timeout: .now() + 2) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 2)
+            }
+            return (-1, String(localized: "It did not finish in \(Int(timeout)) seconds.", comment: "Why a command Terminal ran for its Codex integration failed. Placeholder: a number of seconds."))
         }
-        read.wait()
-        // Bounded: only the tail is ever shown, in a Settings note.
-        let text = String(decoding: output.data.suffix(16 * 1_024), as: UTF8.self)
-        return (process.terminationStatus, text)
+        // Whatever was written just before the exit is still in flight.
+        Thread.sleep(forTimeInterval: 0.1)
+        return (process.terminationStatus, output.text)
     }
 
     /// Terminal's own folder, apart from Codex's: the marketplace Codex
@@ -192,8 +215,22 @@ final class CodexIntegrationInstaller: ObservableObject {
     }
 }
 
-/// Hands the reader's bytes back once its semaphore has signalled; never
-/// touched by two threads at once.
+/// Collects a process's output from the pipe's handler thread. Bounded:
+/// only the tail is ever shown, in a Settings note.
 private nonisolated final class OutputBox: @unchecked Sendable {
-    var data = Data()
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        data.append(chunk)
+        if data.count > 64 * 1_024 { data = data.suffix(16 * 1_024) }
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return String(decoding: data.suffix(16 * 1_024), as: UTF8.self)
+    }
 }

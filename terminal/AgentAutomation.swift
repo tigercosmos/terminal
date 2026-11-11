@@ -105,6 +105,10 @@ final class KeroAgentObservationState {
     /// is no longer live; a seeded one is kept until its resumed thread comes
     /// up or a thread this process has since used replaces it.
     var sessionReferenceConfirmed = false
+    /// The idle an agent reported while its subagents ran, held back because
+    /// they would wake it. Replayed once the last one stops, unless a new
+    /// turn starts first.
+    var deferredIdleReason: String?
 }
 
 @MainActor
@@ -411,6 +415,7 @@ extension TerminalSession {
         agentObservation.integrationPhase = nil
         agentObservation.integrationReason = nil
         agentObservation.integrationTurnActive = false
+        agentObservation.deferredIdleReason = nil
         agentObservation.awaitingInitialPrompt = true
         agentObservation.commandGraceDeadline = Date().addingTimeInterval(grace)
         updateAutomationAgentStatus(
@@ -442,10 +447,14 @@ extension TerminalSession {
         )
     }
 
+    /// `reporter` is the hook's agent process chain, when the hook sent one;
+    /// see `isFromPaneAgent(_:)`.
     func reportAutomationAgent(
         phase reportedPhase: KeroAgentPhase,
-        reason reportedReason: String?
+        reason reportedReason: String?,
+        reporter: [pid_t]? = nil
     ) -> Bool {
+        guard isFromPaneAgent(reporter) else { return false }
         // A main thread whose turn ended while its background subagents run
         // has not finished: they will wake it with their results. Presenting
         // it idle, or posting "finished", would send the user to a pane with
@@ -454,8 +463,11 @@ extension TerminalSession {
             && !agentSubagents.isEmpty
         let phase: KeroAgentPhase = waitsOnSubagents ? .working : reportedPhase
         let reason = waitsOnSubagents
-            ? "Waiting for \(agentSubagents.count) subagents"
+            ? "Waiting for subagents (\(agentSubagents.count))"
             : reportedReason
+        agentObservation.deferredIdleReason = waitsOnSubagents
+            ? (reportedReason ?? "Reported by native agent integration")
+            : nil
         let foreground = surface.foregroundPid
         let rememberedProcess = agentStatus?.processID
         let recognized = [rememberedProcess, foreground]
@@ -532,17 +544,48 @@ extension TerminalSession {
     /// Applies a subagent change from the agent's native integration.
     /// Refused, like a state report, unless a recognized agent runs here: a
     /// stray hook must not give a plain shell a roster row.
-    func reportAutomationSubagents(_ change: KeroAgentHook.Action) -> Bool {
+    func reportAutomationSubagents(
+        _ change: KeroAgentHook.Action,
+        reporter: [pid_t]? = nil
+    ) -> Bool {
         // The same recognition `reportAutomationAgent` uses, remembered
         // process first, so a Stop hook's subagent change and its state
         // report are accepted or refused together.
-        guard let status = agentStatus,
+        guard isFromPaneAgent(reporter),
+              let status = agentStatus,
               [status.processID, surface.foregroundPid].compactMap({ $0 })
                   .contains(where: { KeroAgentKind.recognize(processID: $0) == status.kind })
         else { return false }
         let updated = KeroAgentSubagent.applying(change, to: agentSubagents)
         if updated != agentSubagents { agentSubagents = updated }
+        if updated.isEmpty { replayDeferredIdle() }
         return true
+    }
+
+    /// Whether a hook's report is about this pane's agent. Every process in
+    /// the pane inherits its automation variables, so an agent the pane's
+    /// agent runs — `codex exec` or `claude -p` from its shell tool — reports
+    /// here too, and its Stop would end the outer agent's turn. A hook that
+    /// sends no chain (OpenCode, Pi, Grok Build) is taken as before.
+    private func isFromPaneAgent(_ reporter: [pid_t]?) -> Bool {
+        guard let reporter else { return true }
+        let own = [agentStatus?.processID, surface.foregroundPid].compactMap { $0 }
+        return reporter.contains { own.contains($0) }
+    }
+
+    /// The last subagent stopped after its agent's turn had ended. When it
+    /// was a background subagent the agent usually wakes for its result at
+    /// once, so the held-back idle waits a moment: replayed straight away it
+    /// would flash "done" and post a notification between the two.
+    private func replayDeferredIdle() {
+        guard let reason = agentObservation.deferredIdleReason else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1_500))
+            guard let self, self.agentSubagents.isEmpty,
+                  self.agentObservation.deferredIdleReason == reason
+            else { return }
+            _ = self.reportAutomationAgent(phase: .idle, reason: reason)
+        }
     }
 
     func markAutomationAgentSeen() {
@@ -842,6 +885,7 @@ extension TerminalSession {
         agentObservation.integrationTurnActive = false
         agentObservation.awaitingInitialPrompt = false
         agentObservation.commandGraceDeadline = nil
+        agentObservation.deferredIdleReason = nil
     }
 
     private func updateAutomationAgentStatus(

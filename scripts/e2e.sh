@@ -482,12 +482,26 @@ cat > "$work/hookbin/claude" <<'AGENT'
 #!/bin/zsh
 exec 3<>"$1"
 while IFS=' ' read -r -u3 event payload; do
-    print -r -- "$payload" | terminal +agent _integration "${0:t}" "$event"
+    if [[ $event == NestedStop ]]; then
+        # An agent this one runs through its shell, as `claude -p` from a
+        # Bash tool: its Stop reaches the same socket with the same pane.
+        # The trailing `:` keeps zsh from exec-ing the agent in its place,
+        # as Claude Code's own shell tool, which runs more after it, does.
+        /bin/zsh -c ': shell tool; "$1" "$2"; :' tool "${0:h}/nested/claude" "$payload"
+    else
+        print -r -- "$payload" | terminal +agent _integration "${0:t}" "$event"
+    fi
     print -r -- "$event" >> "$1.done"
 done
 AGENT
 chmod +x "$work/hookbin/claude"
 cp "$work/hookbin/claude" "$work/hookbin/codex"
+mkdir -p "$work/hookbin/nested"
+cat > "$work/hookbin/nested/claude" <<'AGENT'
+#!/bin/zsh
+print -r -- "$1" | terminal +agent _integration claude Stop
+AGENT
+chmod +x "$work/hookbin/nested/claude"
 hook() {
     local payload=${2:-'{}'}
     local before=$(cat "$work/hooks.fifo.done" 2>/dev/null | wc -l)
@@ -521,6 +535,8 @@ hook Stop '{"background_tasks":[{"id":"sub-1","type":"subagent","status":"runnin
 check "a turn waiting on a background subagent is still working" "working" "$(agent_field state)"
 hook SubagentStop '{"agent_id":"sub-1","agent_type":"Explore"}'
 check "a stopped subagent leaves the list" "[]" "$(agent_field subagents)"
+hook NestedStop '{"background_tasks":[]}'
+check "an agent run by the pane's agent does not end its turn" "working" "$(agent_field state)"
 hook PermissionRequest '{"tool_name":"Bash"}'
 check "a permission prompt makes Claude Code blocked" "blocked" "$(agent_field state)"
 hook PostToolUse '{"tool_name":"Bash"}'
@@ -546,9 +562,14 @@ hook Stop '{"stop_hook_active":false,"last_assistant_message":"waiting"}'
 check "a Codex turn that ends with a subagent running is still working" "working" "$(agent_field state codex)"
 check "and the subagent is still listed" '"type": "worker"' "$(agent_field subagents codex)"
 hook SubagentStop '{"agent_id":"cx-1","agent_type":"worker"}'
+# Nothing wakes the agent after its last subagent: the held-back idle lands.
+sleep 2.5
+check "the turn ends once its last subagent stops" "done" "$(agent_field state codex)"
 hook UserPromptSubmit
+hook SubagentStart '{"agent_id":"cx-2","agent_type":"worker"}'
 hook Interrupt
 check "an interrupted Codex turn in a pane not in view is done" "done" "$(agent_field state codex)"
+check "and the interrupt took its subagents with it" "[]" "$(agent_field subagents codex)"
 in_shell stop-codex.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
 
 # --- a TUI repainting after a resize --------------------------------------------

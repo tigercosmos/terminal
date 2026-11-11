@@ -396,7 +396,9 @@ enum KeroAutomationRouter {
         guard reason?.utf8.count ?? 0 <= 4_096 else {
             return failure(request, "invalid_params", "reason is limited to 4 KiB.")
         }
-        guard session.reportAutomationAgent(phase: phase, reason: reason) else {
+        guard session.reportAutomationAgent(
+            phase: phase, reason: reason, reporter: reporterPIDs(request)
+        ) else {
             return failure(
                 request, "agent_not_recognized",
                 "Declare or start an agent in this terminal before reporting its state."
@@ -405,8 +407,17 @@ enum KeroAutomationRouter {
         return success(request, paneSnapshot(caller, caller: caller))
     }
 
-    /// Subagent changes from Claude Code's hooks. Like `agent.report`, it
-    /// only ever describes the caller's own pane.
+    /// The agent process chain a Claude Code or Codex hook sends; nil from
+    /// hooks that send none. Bounded like every other list here.
+    private static func reporterPIDs(_ request: KeroAutomationRequest) -> [pid_t]? {
+        guard let values = request.params["reporter_pids"]?.arrayValue else { return nil }
+        return values.prefix(32).compactMap { $0.intValue }
+            .filter { $0 > 0 && $0 <= Int(Int32.max) }
+            .map { pid_t($0) }
+    }
+
+    /// Subagent changes from Claude Code's and Codex's hooks. Like
+    /// `agent.report`, it only ever describes the caller's own pane.
     private static func reportSubagents(
         _ request: KeroAutomationRequest,
         caller: PaneContext
@@ -437,7 +448,7 @@ enum KeroAutomationRouter {
         default:
             return failure(request, "invalid_params", "change must be start, stop, or remaining.")
         }
-        guard session.reportAutomationSubagents(change) else {
+        guard session.reportAutomationSubagents(change, reporter: reporterPIDs(request)) else {
             return failure(
                 request, "agent_not_recognized",
                 "Declare or start an agent in this terminal before reporting its subagents."

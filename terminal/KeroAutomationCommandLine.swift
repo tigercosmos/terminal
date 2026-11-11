@@ -268,6 +268,11 @@ enum KeroAutomationCommandLine {
     private static func runHookIntegration(agent: KeroAgentHook.Agent, event: String) {
         let actions = KeroAgentHook.actions(agent: agent, event: event, input: readHookInput())
         guard !actions.isEmpty, let connection = try? AppConnection() else { return }
+        // Which agent ran this hook, so the app can tell the pane's agent
+        // from one it started (see `KeroAgentHook.reportingAgentPIDs`).
+        let reporter = KeroJSONValue.array(
+            KeroAgentHook.reportingAgentPIDs(from: getpid()).map { .number(Double($0)) }
+        )
         for action in actions {
             let method: String
             let params: [String: KeroJSONValue]
@@ -289,7 +294,9 @@ enum KeroAutomationCommandLine {
                     "count": .number(Double(count)),
                 ]
             }
-            _ = try? connection.automationRequest(method: method, params: params, timeout: 1)
+            var request = params
+            request["reporter_pids"] = reporter
+            _ = try? connection.automationRequest(method: method, params: request, timeout: 1)
         }
     }
 

@@ -65,3 +65,14 @@ public nonisolated func processStartDate(pid: pid_t) -> Date? {
             + TimeInterval(info.pbi_start_tvusec) / 1_000_000
     )
 }
+
+/// The parent of a process, from kernel metadata. Same-user processes only;
+/// nil once the process has exited, and for launchd itself.
+public nonisolated func processParentPID(pid: pid_t) -> pid_t? {
+    guard pid > 1 else { return nil }
+    var info = proc_bsdinfo()
+    let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+    let parent = pid_t(info.pbi_ppid)
+    return parent > 0 ? parent : nil
+}

@@ -84,8 +84,13 @@ public nonisolated enum KeroAgentHook {
             }
 
         // Codex only: it reports an interrupt, where Claude Code is silent.
+        // An interrupt cancels the turn's subagents with it, and they report
+        // no stop of their own, so the list is emptied before the idle.
         case "Interrupt":
-            return [.report(state: "idle", reason: "\(name) turn interrupted")]
+            return [
+                .subagentsRemaining(ids: [], count: 0),
+                .report(state: "idle", reason: "\(name) turn interrupted"),
+            ]
 
         case "Stop":
             // The turn did end, but an input that could not be read says
@@ -138,6 +143,39 @@ public nonisolated enum KeroAgentHook {
         }
     }
 
+    /// The agent process a hook was run for, as the pids of its launcher
+    /// chain: walking up from the hook, the first process recognized as an
+    /// agent, then each parent while it is an agent of the same kind (an npm
+    /// launcher above Codex's native binary). Empty when no agent is found.
+    ///
+    /// Every process in a pane inherits the pane's automation variables, so
+    /// an agent run by the pane's agent — `claude -p` or `codex exec` from its
+    /// shell tool — reports through the same socket. The app compares this
+    /// chain with the pane's own agent and drops the inner agent's events.
+    public static func reportingAgentPIDs(
+        from pid: pid_t,
+        recognize: (pid_t) -> KeroAgentKind? = { KeroAgentKind.recognize(processID: $0) },
+        parent: (pid_t) -> pid_t? = { processParentPID(pid: $0) }
+    ) -> [pid_t] {
+        var current: pid_t? = pid
+        var chain: [pid_t] = []
+        var kind: KeroAgentKind?
+        // Bounded: a hook is a few processes below its agent, and a loop in
+        // stale kernel data must not spin.
+        for _ in 0..<32 {
+            guard let process = current else { break }
+            if let recognized = recognize(process) {
+                if let kind, recognized != kind { break }
+                kind = recognized
+                chain.append(process)
+            } else if kind != nil {
+                break
+            }
+            current = parent(process)
+        }
+        return chain
+    }
+
     private static func nonEmpty(_ value: KeroJSONValue?) -> String? {
         guard let string = value?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !string.isEmpty
@@ -176,8 +214,10 @@ public nonisolated struct KeroAgentSubagent: Equatable, Sendable, Identifiable {
             // stop; the end of the turn is when that is known. Keep the ones
             // still listed, else the most recent `count`, which are the ones
             // a turn that just ended can still be waiting on.
+            // Claude Code's task ids are the agents' ids, so any match means
+            // the ids can be trusted and nothing else is kept.
             let listed = subagents.filter { ids.contains($0.id) }
-            if listed.count == count { return listed }
+            if !listed.isEmpty || count == 0 { return listed }
             return Array(subagents.suffix(max(count, 0)))
         case .report:
             return subagents
