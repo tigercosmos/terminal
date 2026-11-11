@@ -3,6 +3,7 @@
 //  TerminalCore
 //
 
+import Darwin
 import Foundation
 
 /// Native lifecycle integrations for agent CLIs whose public event surfaces
@@ -15,6 +16,11 @@ public nonisolated enum KeroAgentIntegrations {
         case pi
         case opencode
         case grok
+        /// A Claude Code plugin whose manifest carries its hooks inline, so
+        /// the single linked file is the whole plugin. Claude Code loads a
+        /// plugin folder found in its skills directory without a marketplace
+        /// or an edit to the user's `settings.json`.
+        case claude
 
         var marker: String { "TERMINAL_INTEGRATION_ID=\(rawValue)" }
 
@@ -34,6 +40,11 @@ public nonisolated enum KeroAgentIntegrations {
                 return (
                     "terminal-agent-state.grok", "json",
                     ["AgentIntegrations/grok", "grok", nil]
+                )
+            case .claude:
+                return (
+                    "terminal-agent-state.claude", "json",
+                    ["AgentIntegrations/claude", "claude", nil]
                 )
             }
         }
@@ -65,6 +76,12 @@ public nonisolated enum KeroAgentIntegrations {
                     return expandedURL(configured, homeURL: homeURL)
                 }
                 return homeURL.appendingPathComponent(".grok", isDirectory: true)
+            case .claude:
+                if let configured = environment["CLAUDE_CONFIG_DIR"],
+                   !configured.isEmpty {
+                    return expandedURL(configured, homeURL: homeURL)
+                }
+                return homeURL.appendingPathComponent(".claude", isDirectory: true)
             }
         }
 
@@ -89,6 +106,25 @@ public nonisolated enum KeroAgentIntegrations {
                     "hooks/terminal-agent-state.json",
                     isDirectory: false
                 )
+            case .claude:
+                return root.appendingPathComponent(
+                    "skills/terminal-agent-state/.claude-plugin/plugin.json",
+                    isDirectory: false
+                )
+            }
+        }
+
+        /// Folders the install creates only to hold the link, innermost
+        /// first. Removing the link leaves them empty, and an empty folder in
+        /// Claude Code's skills directory still reads as a broken plugin.
+        func linkOnlyDirectories(homeURL: URL, environment: [String: String]) -> [URL] {
+            switch self {
+            case .claude:
+                let plugin = destinationURL(homeURL: homeURL, environment: environment)
+                    .deletingLastPathComponent()
+                return [plugin, plugin.deletingLastPathComponent()]
+            case .pi, .opencode, .grok:
+                return []
             }
         }
     }
@@ -124,6 +160,19 @@ public nonisolated enum KeroAgentIntegrations {
                 throw IntegrationError.message(
                     "The \(kind.rawValue) integration at \(destination.path) is not managed by Terminal."
                 )
+            }
+            // A folder of the plugin's name that holds anything else is the
+            // user's own skill or plugin; the link must not be planted in it.
+            let path = [destination] + kind.linkOnlyDirectories(homeURL: homeURL, environment: environment)
+            for (folder, expected) in zip(path.dropFirst(), path) where itemType(at: folder) != nil {
+                let entries = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [""]
+                guard itemType(at: folder) == .typeDirectory,
+                      entries.allSatisfy({ $0 == expected.lastPathComponent })
+                else {
+                    throw IntegrationError.message(
+                        "\(folder.path) is not managed by Terminal, so its \(kind.rawValue) integration was not added there."
+                    )
+                }
             }
         }
     }
@@ -187,9 +236,23 @@ public nonisolated enum KeroAgentIntegrations {
                 homeURL: homeURL,
                 environment: environment
             )
-            if itemType(at: destination) != nil {
-                try removeManaged(at: destination, kind: kind)
+            guard itemType(at: destination) != nil else { continue }
+            try removeManaged(at: destination, kind: kind)
+            // Only once Terminal's own link is gone: an empty folder found
+            // without one may be the start of something the user is making.
+            for directory in kind.linkOnlyDirectories(homeURL: homeURL, environment: environment) {
+                removeIfEmpty(directory)
             }
+        }
+    }
+
+    /// Only an empty folder goes: anything the user put beside the link is
+    /// theirs, and keeps the folder. `rmdir` refuses a folder that is not
+    /// empty, so a file written there after a check is never taken with it.
+    private static func removeIfEmpty(_ url: URL) {
+        guard itemType(at: url) == .typeDirectory else { return }
+        _ = url.withUnsafeFileSystemRepresentation { path in
+            path.map { Darwin.rmdir($0) }
         }
     }
 

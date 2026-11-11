@@ -471,6 +471,64 @@ done
 [[ ! -s $work/hand1.log && ! -s $work/hand2.log ]] \
     || fail "a refused prompt still reached an agent"
 
+# Claude Code's state comes only from its hooks. A stand-in `claude` runs each
+# hook the way Claude Code does — a child of the agent process, with the
+# pane's environment, the event's JSON on stdin — reading one event per line
+# from a FIFO the test writes to.
+mkdir -p "$work/hookbin"
+mkfifo "$work/hooks.fifo"
+cat > "$work/hookbin/claude" <<'AGENT'
+#!/bin/zsh
+exec 3<>"$1"
+while IFS=' ' read -r -u3 event payload; do
+    print -r -- "$payload" | terminal +agent _integration claude "$event"
+    print -r -- "$event" >> "$1.done"
+done
+AGENT
+chmod +x "$work/hookbin/claude"
+hook() {
+    local payload=${2:-'{}'}
+    local before=$(cat "$work/hooks.fifo.done" 2>/dev/null | wc -l)
+    # Opened read-write, as the stand-in does, so a stand-in that died never
+    # leaves this write waiting for a reader.
+    print -r -- "$1 $payload" 1<> "$work/hooks.fifo"
+    for _ in {1..25}; do
+        sleep 0.2
+        (( $(cat "$work/hooks.fifo.done" 2>/dev/null | wc -l) > before )) && return
+    done
+    fail "the stand-in never ran the $1 hook"
+}
+agent_field() {
+    in_shell agent.json terminal +agent get claude | json_field "agent.$1"
+}
+# The two stand-ins above were only sent Ctrl-C; a run into a pane whose agent
+# has not exited yet is refused as busy.
+for _ in {1..25}; do
+    [[ $(in_shell list-before-hooks.json terminal +agent list) == *"[]"* ]] && break
+    sleep 0.2
+done
+in_shell hooked.json terminal +pane run --pane "$worker" -- "'$work/hookbin/claude'" "'$work/hooks.fifo'" >/dev/null
+sleep 2
+check "a hand-started Claude Code is idle until its hooks say otherwise" "idle" "$(agent_field state)"
+hook UserPromptSubmit
+check "a submitted prompt makes Claude Code working" "working" "$(agent_field state)"
+hook SubagentStart '{"agent_id":"sub-1","agent_type":"Explore"}'
+check "a started subagent is listed under its agent" '"type": "Explore"' "$(agent_field subagents)"
+# The main turn ends while the subagent runs in the background: still working.
+hook Stop '{"background_tasks":[{"id":"sub-1","type":"subagent","status":"running"}]}'
+check "a turn waiting on a background subagent is still working" "working" "$(agent_field state)"
+hook SubagentStop '{"agent_id":"sub-1","agent_type":"Explore"}'
+check "a stopped subagent leaves the list" "[]" "$(agent_field subagents)"
+hook PermissionRequest '{"tool_name":"Bash"}'
+check "a permission prompt makes Claude Code blocked" "blocked" "$(agent_field state)"
+hook PostToolUse '{"tool_name":"Bash"}'
+hook Stop '{"background_tasks":[]}'
+# The worker pane is not focused, so the end of the turn is an unseen done.
+check "a finished turn in a pane not in view is done" "done" "$(agent_field state)"
+hook Notification '{"notification_type":"idle_prompt"}'
+check "the minute-later idle notice does not hide an unseen done" "done" "$(agent_field state)"
+in_shell stop-hooked.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
+
 # --- a TUI repainting after a resize --------------------------------------------
 
 # A stand-in for Claude Code's resize handling: cursor home, erase every row on

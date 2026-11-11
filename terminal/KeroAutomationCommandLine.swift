@@ -224,6 +224,10 @@ enum KeroAutomationCommandLine {
     /// intentionally absent from help and never appears in an agent prompt.
     /// Hook failures stay passive; Terminal does not guess state from terminal text.
     private static func runAgentIntegration(_ arguments: [String]) {
+        if arguments.count == 2, arguments[0] == "claude" {
+            runClaudeIntegration(event: arguments[1])
+            return
+        }
         guard arguments.count == 2 || arguments.count == 3,
               arguments[0] == "grok",
               let phase = KeroAgentPhase(rawValue: arguments[1]),
@@ -256,6 +260,55 @@ enum KeroAutomationCommandLine {
             ],
             timeout: 1
         )
+    }
+
+    /// One Claude Code hook. Prints nothing: Claude Code adds a
+    /// `UserPromptSubmit` or `SubagentStart` hook's output to the model's
+    /// context, and reads a `PermissionRequest` hook's output as a decision.
+    private static func runClaudeIntegration(event: String) {
+        let actions = KeroClaudeHook.actions(event: event, input: readHookInput())
+        guard !actions.isEmpty, let connection = try? AppConnection() else { return }
+        for action in actions {
+            let method: String
+            let params: [String: KeroJSONValue]
+            switch action {
+            case .report(let state, let reason):
+                method = "agent.report"
+                params = ["state": .string(state), "reason": .string(reason)]
+            case .subagentStarted(let id, let type):
+                method = "agent.subagents"
+                params = ["change": .string("start"), "id": .string(id), "type": .string(type)]
+            case .subagentStopped(let id):
+                method = "agent.subagents"
+                params = ["change": .string("stop"), "id": .string(id)]
+            case .subagentsRemaining(let ids, let count):
+                method = "agent.subagents"
+                params = [
+                    "change": .string("remaining"),
+                    "ids": .array(ids.map(KeroJSONValue.string)),
+                    "count": .number(Double(count)),
+                ]
+            }
+            _ = try? connection.automationRequest(method: method, params: params, timeout: 1)
+        }
+    }
+
+    /// The hook's JSON, or nil when it cannot be read whole. Stop carries the
+    /// last assistant message, so the input is read to its end in chunks —
+    /// a pipe hands over what it has, not the whole of it — and abandoned
+    /// past a bound rather than held in memory on the way to a few fields.
+    /// Truncated JSON would not decode, so a nil here means "unknown", and
+    /// `KeroClaudeHook` treats it as such rather than as an empty event.
+    private static func readHookInput() -> KeroJSONValue? {
+        let limit = 4 * 1_024 * 1_024
+        var input = Data()
+        while true {
+            let chunk = FileHandle.standardInput.readData(ofLength: 64 * 1_024)
+            if chunk.isEmpty { break }
+            input.append(chunk)
+            if input.count > limit { return nil }
+        }
+        return try? JSONDecoder().decode(KeroJSONValue.self, from: input)
     }
 
     private static func runAgentSkill(_ arguments: [String]) throws {

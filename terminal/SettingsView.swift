@@ -233,7 +233,7 @@ struct SettingsView: View {
                         set: setAIEnabled
                     )
                 )
-                Text("Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`.")
+                Text("Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if !aiError.isEmpty {

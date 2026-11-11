@@ -47,6 +47,10 @@ struct KeroAutomationInstallTests {
             to: resources.appendingPathComponent("terminal-agent-state.grok.json"),
             atomically: true, encoding: .utf8
         )
+        try "{\"_\": \"TERMINAL_INTEGRATION_ID=claude\"}\n".write(
+            to: resources.appendingPathComponent("terminal-agent-state.claude.json"),
+            atomically: true, encoding: .utf8
+        )
         bundle = try #require(Bundle(url: resources))
     }
 
@@ -177,10 +181,78 @@ struct KeroAutomationInstallTests {
         #expect(target.hasSuffix("/Resources/terminal-agent-state.js"))
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent(".pi").path))
         #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent(".grok").path))
+        #expect(!FileManager.default.fileExists(atPath: home.appendingPathComponent(".claude").path))
 
         try KeroAgentIntegrations.uninstallManaged(homeURL: home, environment: [:])
         #expect(!FileManager.default.fileExists(atPath: plugin.path))
         #expect(FileManager.default.fileExists(atPath: opencode.path))
+    }
+
+    /// Claude Code's hooks ride in a plugin manifest linked into its skills
+    /// directory. Removing it leaves no empty plugin folder behind, and
+    /// nothing else in the skills directory is touched.
+    @Test func claudeGetsAPluginInItsSkillsDirectory() throws {
+        defer { cleanUp() }
+        let skills = home.appendingPathComponent(".claude/skills", isDirectory: true)
+        let theirs = skills.appendingPathComponent("their-skill", isDirectory: true)
+        try FileManager.default.createDirectory(at: theirs, withIntermediateDirectories: true)
+
+        try KeroAgentIntegrations.installAvailable(bundle: bundle, homeURL: home, environment: [:])
+
+        let plugin = skills.appendingPathComponent("terminal-agent-state", isDirectory: true)
+        let manifest = plugin.appendingPathComponent(".claude-plugin/plugin.json")
+        let target = try FileManager.default.destinationOfSymbolicLink(atPath: manifest.path)
+        #expect(target.hasSuffix("/Resources/terminal-agent-state.claude.json"))
+
+        try KeroAgentIntegrations.uninstallManaged(homeURL: home, environment: [:])
+        #expect(!FileManager.default.fileExists(atPath: plugin.path))
+        #expect(FileManager.default.fileExists(atPath: theirs.path))
+    }
+
+    /// A file the user put in the plugin folder keeps the folder.
+    @Test func uninstallingKeepsAPluginFolderTheUserAddedTo() throws {
+        defer { cleanUp() }
+        let claude = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claude, withIntermediateDirectories: true)
+        try KeroAgentIntegrations.installAvailable(bundle: bundle, homeURL: home, environment: [:])
+        let plugin = claude.appendingPathComponent("skills/terminal-agent-state", isDirectory: true)
+        let note = plugin.appendingPathComponent("NOTES.md")
+        try "mine\n".write(to: note, atomically: true, encoding: .utf8)
+
+        try KeroAgentIntegrations.uninstallManaged(homeURL: home, environment: [:])
+        #expect(FileManager.default.fileExists(atPath: note.path))
+        #expect(!FileManager.default.fileExists(
+            atPath: plugin.appendingPathComponent(".claude-plugin").path
+        ))
+    }
+
+    /// A skill of the user's that happens to share the plugin's name is
+    /// theirs: no link is planted inside it.
+    @Test func aUserFolderWithThePluginsNameIsLeftAlone() throws {
+        defer { cleanUp() }
+        let skill = home.appendingPathComponent(".claude/skills/terminal-agent-state", isDirectory: true)
+        try FileManager.default.createDirectory(at: skill, withIntermediateDirectories: true)
+        try "---\nname: mine\n---\n".write(
+            to: skill.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8
+        )
+
+        #expect(throws: KeroAgentIntegrations.IntegrationError.self) {
+            try KeroAgentIntegrations.installAvailable(bundle: bundle, homeURL: home, environment: [:])
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: skill.path) == ["SKILL.md"])
+    }
+
+    /// No managed link, nothing removed: an empty plugin folder the user
+    /// made is theirs.
+    @Test func uninstallingWithoutALinkLeavesEmptyFoldersAlone() throws {
+        defer { cleanUp() }
+        let folder = home.appendingPathComponent(
+            ".claude/skills/terminal-agent-state/.claude-plugin", isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        try KeroAgentIntegrations.uninstallManaged(homeURL: home, environment: [:])
+        #expect(FileManager.default.fileExists(atPath: folder.path))
     }
 
     @Test func aHookFileTheUserWroteIsNeverReplaced() throws {

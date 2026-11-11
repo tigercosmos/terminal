@@ -133,6 +133,41 @@
         }
       }
     },
+    "%@, %@, in project %@, tab %@, running %lld subagents" : {
+      "comment" : "Accessibility label for an agent row in the sidebar when the agent runs subagents. Placeholders: agent name, agent state (such as “working”), project name, tab title, how many subagents.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@, %@, in project %@, tab %@, running %lld subagent"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@, %@, in project %@, tab %@, running %lld subagents"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@、%@、プロジェクト %@、タブ %@、%lld個のサブエージェントを実行中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@，%@，项目 %@，标签页 %@，正在运行 %lld 个子代理"
+          }
+        }
+      }
+    },
     "%lld agents finished" : {
       "localizations" : {
         "ja" : {
@@ -920,18 +955,18 @@
         }
       }
     },
-    "Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`." : {
+    "Links Terminal’s automation skill into Claude Code, Codex and other agents, and its lifecycle hooks into Claude Code, OpenCode, Pi and Grok Build where they are installed. Agents can then split panes, start other agents and wait for them with `terminal +pane` and `terminal +agent`." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Terminalの自動化スキルをClaude Code、Codexなどのエージェントにリンクし、インストール済みのOpenCode、Pi、Grok Buildにはライフサイクルフックをリンクします。エージェントは`terminal +pane`と`terminal +agent`でペインを分割し、別のエージェントを起動して完了を待てるようになります。"
+            "value" : "Terminalの自動化スキルをClaude Code、Codexなどのエージェントにリンクし、インストール済みのClaude Code、OpenCode、Pi、Grok Buildにはライフサイクルフックをリンクします。エージェントは`terminal +pane`と`terminal +agent`でペインを分割し、別のエージェントを起動して完了を待てるようになります。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将 Terminal 的自动化技能链接到 Claude Code、Codex 等代理，并将生命周期钩子链接到已安装的 OpenCode、Pi 和 Grok Build。之后代理可以通过 `terminal +pane` 和 `terminal +agent` 拆分面板、启动其他代理并等待其完成。"
+            "value" : "将 Terminal 的自动化技能链接到 Claude Code、Codex 等代理，并将生命周期钩子链接到已安装的 Claude Code、OpenCode、Pi 和 Grok Build。之后代理可以通过 `terminal +pane` 和 `terminal +agent` 拆分面板、启动其他代理并等待其完成。"
           }
         }
       }

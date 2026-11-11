@@ -99,6 +99,9 @@ enum KeroAutomationRouter {
         case "agent.report":
             return reportAgent(request, caller: caller)
 
+        case "agent.subagents":
+            return reportSubagents(request, caller: caller)
+
         default:
             return failure(
                 request, "method_not_found",
@@ -402,6 +405,47 @@ enum KeroAutomationRouter {
         return success(request, paneSnapshot(caller, caller: caller))
     }
 
+    /// Subagent changes from Claude Code's hooks. Like `agent.report`, it
+    /// only ever describes the caller's own pane.
+    private static func reportSubagents(
+        _ request: KeroAutomationRequest,
+        caller: PaneContext
+    ) -> KeroAutomationResponse {
+        guard let session = caller.session else {
+            return failure(request, "terminal_required", "The caller is not a terminal pane.")
+        }
+        let params = request.params
+        let id = params["id"]?.stringValue.flatMap { $0.utf8.count <= 256 ? $0 : nil }
+        let change: KeroClaudeHook.Action
+        switch params["change"]?.stringValue {
+        case "start":
+            guard let id, let type = params["type"]?.stringValue, !type.isEmpty else {
+                return failure(request, "invalid_params", "start requires id and type.")
+            }
+            change = .subagentStarted(id: id, type: String(type.prefix(80)))
+        case "stop":
+            guard let id else {
+                return failure(request, "invalid_params", "stop requires id.")
+            }
+            change = .subagentStopped(id: id)
+        case "remaining":
+            guard let count = params["count"]?.intValue, count >= 0 else {
+                return failure(request, "invalid_params", "remaining requires count.")
+            }
+            let ids = (params["ids"]?.arrayValue ?? []).prefix(64).compactMap(\.stringValue)
+            change = .subagentsRemaining(ids: ids, count: count)
+        default:
+            return failure(request, "invalid_params", "change must be start, stop, or remaining.")
+        }
+        guard session.reportAutomationSubagents(change) else {
+            return failure(
+                request, "agent_not_recognized",
+                "Declare or start an agent in this terminal before reporting its subagents."
+            )
+        }
+        return success(request, paneSnapshot(caller, caller: caller))
+    }
+
     private static func targetPane(
         _ request: KeroAutomationRequest,
         caller: PaneContext
@@ -510,12 +554,17 @@ enum KeroAutomationRouter {
             object["cwd"] = .string(session.currentDirectoryPath)
             object["shell_available"] = .bool(session.isShellAvailableForAutomation)
             object["exited"] = .bool(session.hasExited)
-            object["agent"] = session.agentStatus.map(agentSnapshot) ?? .null
+            object["agent"] = session.agentStatus.map {
+                agentSnapshot($0, subagents: session.agentSubagents)
+            } ?? .null
         }
         return .object(object)
     }
 
-    private static func agentSnapshot(_ status: KeroAgentStatus) -> KeroJSONValue {
+    private static func agentSnapshot(
+        _ status: KeroAgentStatus,
+        subagents: [KeroAgentSubagent]
+    ) -> KeroJSONValue {
         .object([
             "alias": .string(status.alias),
             "kind": .string(status.kind.rawValue),
@@ -525,6 +574,9 @@ enum KeroAutomationRouter {
             "updated_at": .string(ISO8601DateFormatter().string(from: status.updatedAt)),
             "process_id": status.processID.map { .number(Double($0)) } ?? .null,
             "unseen": .bool(status.unseen),
+            "subagents": .array(subagents.map {
+                .object(["id": .string($0.id), "type": .string($0.type)])
+            }),
         ])
     }
 

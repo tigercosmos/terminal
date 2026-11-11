@@ -53,6 +53,10 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// Published so the debounced autosave writes a newly found id down
     /// rather than waiting for the next unrelated change.
     @Published var agentSessionReference: KeroAgentSessionReference?
+    /// Subagents the agent here is running, in start order, as its native
+    /// integration reports them. Only Claude Code reports any. Cleared with
+    /// the agent status, like the label.
+    @Published var agentSubagents: [KeroAgentSubagent] = []
 
     /// The emulator driving this session. Fixed for the session's lifetime —
     /// changing the setting only affects terminals opened afterwards.

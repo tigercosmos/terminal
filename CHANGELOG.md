@@ -14,6 +14,17 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- Claude Code now shows its real state. Its badges and its row in the
+  sidebar's **Agents** section say it is working while it answers, blocked
+  while it waits for your permission, and done when it finishes in a pane you
+  are not looking at, with a notification; before, it always read idle. An
+  agent waiting on background subagents stays working, and the subagents it
+  runs are listed under its row. **Let coding agents coordinate panes** in
+  Settings → Agents links the hooks into Claude Code as a plugin in
+  `~/.claude/skills`; your `settings.json` is not edited
+
 ## [0.10.0]
 
 - An **Agents** section at the bottom of the sidebar lists every coding agent

@@ -404,6 +404,7 @@ extension TerminalSession {
         // carry them over to this one.
         agentCustomLabel = nil
         agentSessionReference = nil
+        agentSubagents = []
         agentObservation.sessionReferenceConfirmed = false
         agentObservation.alias = alias
         agentObservation.declaredKind = kind
@@ -442,9 +443,19 @@ extension TerminalSession {
     }
 
     func reportAutomationAgent(
-        phase: KeroAgentPhase,
-        reason: String?
+        phase reportedPhase: KeroAgentPhase,
+        reason reportedReason: String?
     ) -> Bool {
+        // A main thread whose turn ended while its background subagents run
+        // has not finished: they will wake it with their results. Presenting
+        // it idle, or posting "finished", would send the user to a pane with
+        // nothing to answer yet.
+        let waitsOnSubagents = (reportedPhase == .idle || reportedPhase == .done)
+            && !agentSubagents.isEmpty
+        let phase: KeroAgentPhase = waitsOnSubagents ? .working : reportedPhase
+        let reason = waitsOnSubagents
+            ? "Waiting for \(agentSubagents.count) subagents"
+            : reportedReason
         let foreground = surface.foregroundPid
         let rememberedProcess = agentStatus?.processID
         let recognized = [rememberedProcess, foreground]
@@ -466,6 +477,10 @@ extension TerminalSession {
         agentObservation.commandGraceDeadline = nil
         if phase == .working || phase == .blocked {
             agentObservation.integrationTurnActive = true
+            // A turn is under way, so a task was submitted, whether through
+            // `terminal +agent prompt` or typed into the pane. Without this,
+            // a typed prompt's end would read as "starting" again.
+            agentObservation.awaitingInitialPrompt = false
         }
 
         // A newly launched interactive CLI commonly publishes its initial idle
@@ -487,9 +502,13 @@ extension TerminalSession {
             return true
         }
 
+        // An unseen completion stays one through later idle events (Claude
+        // Code's minute-later idle notice among them): only focusing the
+        // pane acknowledges it.
         let completedTurn = agentObservation.integrationTurnActive
             || agentStatus?.phase == .working
             || agentStatus?.phase == .blocked
+            || (agentStatus?.phase == .done && agentStatus?.unseen == true)
         let presentedPhase: KeroAgentPhase
         switch phase {
         case .idle, .done:
@@ -507,6 +526,22 @@ extension TerminalSession {
             processID: processID,
             unseen: presentedPhase == .done
         )
+        return true
+    }
+
+    /// Applies a subagent change from the agent's native integration.
+    /// Refused, like a state report, unless a recognized agent runs here: a
+    /// stray hook must not give a plain shell a roster row.
+    func reportAutomationSubagents(_ change: KeroClaudeHook.Action) -> Bool {
+        // The same recognition `reportAutomationAgent` uses, remembered
+        // process first, so a Stop hook's subagent change and its state
+        // report are accepted or refused together.
+        guard let status = agentStatus,
+              [status.processID, surface.foregroundPid].compactMap({ $0 })
+                  .contains(where: { KeroAgentKind.recognize(processID: $0) == status.kind })
+        else { return false }
+        let updated = KeroAgentSubagent.applying(change, to: agentSubagents)
+        if updated != agentSubagents { agentSubagents = updated }
         return true
     }
 
@@ -555,6 +590,7 @@ extension TerminalSession {
                let foreground, previous != foreground {
                 agentCustomLabel = nil
                 agentSessionReference = nil
+                agentSubagents = []
                 agentObservation.sessionReferenceConfirmed = false
             }
             if !processIsAgent {
@@ -797,6 +833,7 @@ extension TerminalSession {
         agentStatus = nil
         agentCustomLabel = nil
         agentSessionReference = nil
+        agentSubagents = []
         agentObservation.sessionReferenceConfirmed = false
         agentObservation.alias = nil
         agentObservation.declaredKind = nil

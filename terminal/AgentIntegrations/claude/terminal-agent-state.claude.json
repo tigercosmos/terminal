@@ -1,0 +1,112 @@
+{
+  "name": "terminal-agent-state",
+  "version": "1.0.0",
+  "description": "Managed by Terminal. Reports whether this Claude Code session is working, waiting for you, or done, and which subagents it runs, to Terminal's agent badges and sidebar. Turning off \"Let coding agents coordinate panes\" removes it.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude UserPromptSubmit # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude PostToolUse # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude PostToolUseFailure # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude PermissionRequest # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog|elicitation_url_dialog|idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude Notification # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude Stop # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude StopFailure # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude SubagentStart # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$TERMINAL_AGENT_AUTOMATION\" = \"1\" ] || exit 0; command -v terminal >/dev/null 2>&1 || exit 0; exec terminal +agent _integration claude SubagentStop # TERMINAL_INTEGRATION_ID=claude",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

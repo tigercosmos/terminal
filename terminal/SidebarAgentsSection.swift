@@ -107,10 +107,11 @@ struct SidebarAgentsSection: View {
         return session
     }
 
-    /// Rows share one font and two lines, so the measured average stands in
-    /// for a row's height. Past the cap the strip stops half a row short:
-    /// macOS hides scrollers until a scroll starts, and the cut-off row is
-    /// what says there is more below.
+    /// Rows share one font, and most have two lines; an agent running
+    /// subagents adds a line per type. The measured average stands in for a
+    /// row's height, close enough to stop the strip near the cap. Past the
+    /// cap the strip stops half a row short: macOS hides scrollers until a
+    /// scroll starts, and the cut-off row is what says there is more below.
     private func visibleHeight(rowCount: Int) -> CGFloat {
         guard rowCount > Self.maxVisibleRows else { return rowsHeight }
         return rowsHeight / CGFloat(rowCount) * (CGFloat(Self.maxVisibleRows) - 0.5)
@@ -173,12 +174,34 @@ private struct SidebarAgentRow: View {
     }
 
     private func rowContent(phase: KeroAgentPhase) -> some View {
+        // Subagent lines sit below the badge's own block rather than inside
+        // it: inside, the badge would center on the taller stack and drift
+        // away from the name it belongs to.
+        VStack(alignment: .leading, spacing: 1) {
+            agentLines(phase: phase)
+            ForEach(subagentGroups, id: \.type) { group in
+                subagentLine(group)
+            }
+            .padding(.leading, badgeColumnWidth + 8)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// The badge column, shared with the subagent lines' indent so their
+    /// badges line up under the agent's name.
+    private var badgeColumnWidth: Double {
+        max(14, fontSize)
+    }
+
+    private func agentLines(phase: KeroAgentPhase) -> some View {
         HStack(spacing: 8) {
             // The badge's shape and motion carry the state, so the row never
             // relies on its tint; the row's own label speaks it to VoiceOver.
             AgentStatusBadgeRepresentable(rollup: KeroAgentRollup(phase: phase, count: 1))
                 .fixedSize()
-                .frame(width: max(14, fontSize), alignment: .center)
+                .frame(width: badgeColumnWidth, alignment: .center)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -216,15 +239,53 @@ private struct SidebarAgentRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Subagents by type, in the order each type first started. Agents of
+    /// one type are told apart by nothing the hooks report, so they share a
+    /// line with a count rather than repeat the same name.
+    private var subagentGroups: [(type: String, count: Int)] {
+        var groups: [(type: String, count: Int)] = []
+        for subagent in session.agentSubagents {
+            if let index = groups.firstIndex(where: { $0.type == subagent.type }) {
+                groups[index].count += 1
+            } else {
+                groups.append((subagent.type, 1))
+            }
+        }
+        return groups
+    }
+
+    /// A subagent is always at work while listed: its stop removes it. The
+    /// working badge says so, in the text column under the parent's name,
+    /// and the type stays secondary to the agent the user talks to. The badge
+    /// keeps its own size: it is an NSView, and a SwiftUI scale would blur its
+    /// layers without shrinking the space it takes.
+    private func subagentLine(_ group: (type: String, count: Int)) -> some View {
+        HStack(spacing: 5) {
+            AgentStatusBadgeRepresentable(rollup: KeroAgentRollup(phase: .working, count: group.count))
+                .fixedSize()
+                .accessibilityHidden(true)
+            Text(verbatim: group.type)
+                .font(.system(size: supportingFontSize))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.top, 2)
     }
 
     private func accessibilityLabel(phase: KeroAgentPhase) -> String {
-        String(
-            localized: "\(session.agentDisplayName), \(phase.rosterLabel), in project \(projectName), tab \(tabTitle)",
-            comment: "Accessibility label for an agent row in the sidebar. Placeholders: agent name, agent state (such as “working”), project name, tab title."
+        let count = session.agentSubagents.count
+        guard count > 0 else {
+            return String(
+                localized: "\(session.agentDisplayName), \(phase.rosterLabel), in project \(projectName), tab \(tabTitle)",
+                comment: "Accessibility label for an agent row in the sidebar. Placeholders: agent name, agent state (such as “working”), project name, tab title."
+            )
+        }
+        return String(
+            localized: "\(session.agentDisplayName), \(phase.rosterLabel), in project \(projectName), tab \(tabTitle), running \(count) subagents",
+            comment: "Accessibility label for an agent row in the sidebar when the agent runs subagents. Placeholders: agent name, agent state (such as “working”), project name, tab title, how many subagents."
         )
     }
 
