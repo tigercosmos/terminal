@@ -1211,6 +1211,22 @@
         }
       }
     },
+    "The SSH command did not respond in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH コマンドが時間内に応答しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 命令未能及时响应。"
+          }
+        }
+      }
+    },
     "The remote shell did not report a directory." : {
       "localizations" : {
         "ja" : {

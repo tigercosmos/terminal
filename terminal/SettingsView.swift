@@ -227,6 +227,7 @@ struct SettingsView: View {
             }
 
             Section("Agents") {
+                Toggle("Show agents in SSH panes", isOn: $settings.remoteAgentDiscovery)
                 Toggle(
                     "Let coding agents coordinate panes",
                     isOn: Binding(

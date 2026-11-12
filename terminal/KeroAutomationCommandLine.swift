@@ -27,6 +27,10 @@ enum KeroAutomationCommandLine {
             try runAgentSkill(Array(arguments.dropFirst()))
             return
         }
+        if namespace == "+agent", arguments.first == "remote-install" {
+            try installRemoteAgentHooks(Array(arguments.dropFirst()))
+            return
+        }
 
         let connection = try AppConnection()
         let result: KeroJSONValue
@@ -219,6 +223,27 @@ enum KeroAutomationCommandLine {
     }
 
     // MARK: - Agent commands
+
+    /// Explicit opt-in: copies only Terminal's helper and provider plugin to
+    /// the host. No local socket or automation credential is forwarded.
+    private static func installRemoteAgentHooks(_ arguments: [String]) throws {
+        guard arguments.count >= 3, ["claude", "codex"].contains(arguments[0]),
+              arguments[1] == "--",
+              let destination = parseSSHArguments(["ssh"] + arguments.dropFirst(2)) else {
+            throw CLIError.message(String(localized: "Usage: terminal +agent remote-install claude|codex -- [ssh-options] HOST"))
+        }
+        let result = RemoteFileService.execute(
+            script: RemoteAgent.installScript, arguments: [arguments[0]], maxBytes: 32 * 1024,
+            input: Data(try RemoteAgent.helperSource().utf8), timeout: 240, on: destination
+        )
+        guard result.status == 0 else {
+            let diagnostic = RemoteFileService.sanitized(result.stderr)
+            throw CLIError.message(diagnostic.isEmpty
+                ? String(localized: "Remote agent setup failed (exit code \(Int(result.status))).")
+                : diagnostic)
+        }
+        print(RemoteFileService.sanitized(String(decoding: result.stdout, as: UTF8.self)))
+    }
 
     /// Private entry point for lifecycle hooks installed by Terminal. It is
     /// intentionally absent from help and never appears in an agent prompt.
@@ -1033,6 +1058,7 @@ enum KeroAutomationCommandLine {
           terminal +agent read ALIAS [--lines N] [--columns N]
           terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]
           terminal +agent skill <path|print|status|install|uninstall> [options]
+          terminal +agent remote-install claude|codex -- [ssh-options] HOST
           terminal +agent explain
 
         Supported kinds: codex, claude, gemini, grok, opencode, cursor-agent,

@@ -28,7 +28,7 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
-      - run: swift test --package-path TerminalCore
+      - run: make test-swift
 
   rust:
     name: Alacritty bridge

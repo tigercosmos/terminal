@@ -38,13 +38,22 @@ ssh "$host" "mkdir -p ~/$remote_dir"
 # remote side parses its path with a shell, so the space in the bundle name is
 # escaped rather than quoted; macOS's rsync has no --protect-args.
 rsync -a --delete "$app/" "$host:~/$remote_dir/${name// /\\ }/"
-rsync -a "${0:h}/e2e.sh" "$host:~/$remote_dir/e2e.sh"
+rsync -a "${0:h}/e2e.sh" "${0:h}/e2e-ssh-agents.zsh" "$host:~/$remote_dir/"
+
+# SSH does not inherit the driver's environment. Forward only validated test
+# switches, so focused runs and the local-server opt-out work on either host.
+remote_agents_only=${E2E_REMOTE_AGENTS_ONLY:-0}
+ssh_agents=${E2E_SSH_AGENTS:-1}
+[[ $remote_agents_only == 0 || $remote_agents_only == 1 ]] \
+    || fail "E2E_REMOTE_AGENTS_ONLY must be 0 or 1"
+[[ $ssh_agents == 0 || $ssh_agents == 1 ]] \
+    || fail "E2E_SSH_AGENTS must be 0 or 1"
 
 # A login shell on the remote, so `open` and the CLI see the user's
 # environment rather than ssh's minimal one; the driver reads $TMPDIR, which
 # only a session-aware shell sets to the per-user confstr path.
 for backend in "${backends[@]}"; do
     print "== $backend on $host"
-    ssh "$host" "zsh -lc 'cd ~/$remote_dir && ./e2e.sh \"\$PWD/$name\" $backend'" \
+    ssh "$host" "env E2E_REMOTE_AGENTS_ONLY=$remote_agents_only E2E_SSH_AGENTS=$ssh_agents zsh -lc 'cd ~/$remote_dir && ./e2e.sh \"\$PWD/$name\" $backend'" \
         || fail "$backend failed on $host"
 done

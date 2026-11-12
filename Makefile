@@ -96,6 +96,7 @@ test: test-swift test-rust test-web ## Run every test suite
 # that needs no window, so this is the suite to reach for first.
 test-swift: ## Test the TerminalCore package
 	swift test --package-path $(CORE)
+	python3 scripts/test-remote-agents.py
 
 # Needs a GUI session: it launches the app and drives it. Nothing is captured
 # from the screen and no input is synthesized from outside the app, so neither

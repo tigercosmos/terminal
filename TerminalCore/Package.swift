@@ -23,7 +23,7 @@ let package = Package(
     targets: [
         .target(
             name: "TerminalCore",
-            resources: [.process("Resources/Localizable.xcstrings")],
+            resources: [.process("Resources/Localizable.xcstrings"), .copy("Resources/RemoteAgents")],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(

@@ -85,7 +85,11 @@ The suite runs once per backend, selecting each in
 `~/.config/terminal-dev/config.toml` and restoring your own file afterwards.
 Both surfaces implement one protocol separately, so a run that only drove the
 default would not see where they disagree. `make e2e E2E_BACKENDS=alacritty`
-narrows it while iterating.
+narrows it while iterating. `E2E_REMOTE_AGENTS_ONLY=1 make e2e` runs only
+remote agent checks. They use a private loopback SSH server, temporary keys,
+and a temporary home directory; no remote account or provider CLI is needed.
+Set `E2E_SSH_AGENTS=0` to skip them. An unavailable local SSH server also skips
+these checks without aborting unrelated tests.
 
 `make e2e-remote E2E_HOST=air` builds here and runs the same suite on another
 Mac: the bundle and `scripts/e2e.sh` go over rsync, and the checks run through

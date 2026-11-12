@@ -64,7 +64,7 @@ trap restore_state EXIT INT TERM
 
 mkdir -p "${config:h}"
 if [[ $had_config == true ]]; then
-    grep -vE '^terminal.(backend|paste-protection)' "$config_backup" > "$config" || true
+    grep -vE '^(terminal.(backend|paste-protection)|agents.remote-discovery)' "$config_backup" > "$config" || true
 else
     : > "$config"
 fi
@@ -72,6 +72,7 @@ print "terminal.backend = \"$backend\"" >> "$config"
 # Written out rather than left to the default, so the paste check asserts the
 # shipped behaviour even on a machine whose config turns protection on.
 print "terminal.paste-protection = false" >> "$config"
+print "agents.remote-discovery = true" >> "$config"
 
 # --- launch, armed -----------------------------------------------------------
 
@@ -149,6 +150,7 @@ check() {
 
 print "e2e: driving $app on the $backend backend"
 
+if [[ ${E2E_REMOTE_AGENTS_ONLY:-0} != 1 ]]; then
 # A shell is there and answering: send a command and read the grid back. This
 # is the loop every content-level check is built out of.
 marker="e2e-$RANDOM"
@@ -344,6 +346,8 @@ automate runCommand toggle-fps-counter
 sleep 1
 check "the window survives hiding it again" '"projects"' "$(automate queryState)"
 
+fi
+
 # --- pane and agent automation --------------------------------------------------
 
 # `terminal +pane` and `terminal +agent` run inside the app's own shell, the way
@@ -370,6 +374,14 @@ for key in sys.argv[1].split("."):
 print(json.dumps(value) if isinstance(value, (dict, list, bool)) or value is None else value)
 ' "$1"
 }
+
+if [[ ${E2E_REMOTE_AGENTS_ONLY:-0} == 1 ]]; then
+    [[ ${E2E_SSH_AGENTS:-1} == 1 ]] || { print "e2e: SSH agent checks disabled"; exit 0; }
+    automate runCommand new-project
+    sleep 3
+    source "${0:h}/e2e-ssh-agents.zsh"
+    exit 0
+fi
 
 check "the shell is told agent automation is on" "agent=[1]" \
       "$(in_shell env.txt 'printf "agent=[%s]" "$TERMINAL_AGENT_AUTOMATION"')"
@@ -571,6 +583,11 @@ hook Interrupt
 check "an interrupted Codex turn in a pane not in view is done" "done" "$(agent_field state codex)"
 check "and the interrupt took its subagents with it" "[]" "$(agent_field subagents codex)"
 in_shell stop-codex.json terminal +pane send --pane "$worker" --text "\$'\\x03'" >/dev/null
+
+# Exercise a real SSH pane against a private loopback server when available.
+if [[ ${E2E_SSH_AGENTS:-1} == 1 && -x /usr/sbin/sshd ]]; then
+    source "${0:h}/e2e-ssh-agents.zsh"
+fi
 
 # --- a TUI repainting after a resize --------------------------------------------
 

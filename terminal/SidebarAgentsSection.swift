@@ -290,7 +290,11 @@ private struct SidebarAgentRow: View {
     }
 
     private func beginRename() {
-        renameDraft = session.agentDisplayName
+        renameDraft = KeroAgentRoster.displayName(
+            customLabel: session.agentCustomLabel,
+            alias: session.agentStatus?.alias,
+            kindName: session.agentStatus?.kind.displayName ?? ""
+        )
         isRenaming = true
         DispatchQueue.main.async {
             renameFocused = true

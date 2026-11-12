@@ -101,6 +101,20 @@ extension TerminalCLIService {
             command.action()
             return .success()
 
+        case .remoteAgentDiscovery:
+            guard let value = request.arguments?.first, value == "0" || value == "1" else {
+                return .failure("remoteAgentDiscovery needs 0 or 1")
+            }
+            AppSettings.shared.remoteAgentDiscovery = value == "1"
+            return .success()
+
+        case .focusNextAgentAttention:
+            guard let manager = TerminalManager.keyWindowManager else {
+                return .failure("no window is open")
+            }
+            manager.focusNextAgentAttention()
+            return .success()
+
         case .queryState:
             guard let manager = TerminalManager.keyWindowManager else {
                 return .failure("no window is open")

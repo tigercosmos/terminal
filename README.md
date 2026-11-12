@@ -34,7 +34,10 @@ the full feature list, every keyboard shortcut, and the changelog.
   its answer with `terminal +pane` and `terminal +agent`. A badge on each pane,
   tab, and project shows which agents are working, blocked, or done, and an
   Agents section in the sidebar lists every running agent across projects,
-  with the subagents Claude Code or Codex runs under it.
+  with the subagents Claude Code or Codex runs under it. Agents in SSH panes
+  also appear with their host name on Linux and macOS hosts with Python 3.8 or later.
+  Presence alone shows unknown activity; optional remote Claude/Codex hooks
+  report working, blocked, done, and subagents. See [remote agent setup](docs/remote-agents.md).
 - **Watch what they started** — the focused shell's working directory, the
   processes running under it, and the ports they are listening on; long
   commands and bells reach Notification Center when the pane is unfocused.

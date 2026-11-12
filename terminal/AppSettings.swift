@@ -252,6 +252,12 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Remote probes open batch SSH channels. Users can keep local agent
+    /// discovery while disabling those background network enquiries.
+    @Published var remoteAgentDiscovery: Bool {
+        didSet { save() }
+    }
+
     /// Bring back the Claude Code or Codex conversation a pane held when the
     /// app relaunches, by typing the agent's own resume command into the
     /// restored shell. On by default: the agent keeps the conversation on
@@ -327,6 +333,7 @@ final class AppSettings: nonisolated ObservableObject {
         compareLineBlame = toml["editor.compare-line-blame"]?.bool ?? true
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         aiEnabled = toml["ai.enabled"]?.bool ?? false
+        remoteAgentDiscovery = toml["agents.remote-discovery"]?.bool ?? true
         resumeAgentsOnRestore = toml["agents.resume-on-restore"]?.bool ?? true
         terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
         denyProtectedFolders = toml["privacy.deny-protected-folders"]?.bool ?? false
@@ -427,6 +434,7 @@ final class AppSettings: nonisolated ObservableObject {
                 NSLog("terminal: failed to disable AI support: \(error)")
             }
         }
+        remoteAgentDiscovery = true
         resumeAgentsOnRestore = true
         terminalBackend = .fallback
         denyProtectedFolders = false
@@ -535,6 +543,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if aiEnabled {
             lines.append("ai.enabled = true")
+        }
+        if !remoteAgentDiscovery {
+            lines.append("agents.remote-discovery = false")
         }
         if !resumeAgentsOnRestore {
             lines.append("agents.resume-on-restore = false")

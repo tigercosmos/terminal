@@ -3,6 +3,7 @@
 //  TerminalCore
 //
 
+import Darwin
 import Foundation
 
 /// Lists directories and reads files on the far side of an ssh connection, so
@@ -173,12 +174,12 @@ public enum RemoteFileService {
     /// eventually blocks. `input` is fed to the command's stdin.
     public nonisolated static func execute(
         script: String, arguments: [String], maxBytes: Int? = nil,
-        input: Data? = nil, on destination: RemoteShellDestination
+        input: Data? = nil, timeout: TimeInterval? = nil, on destination: RemoteShellDestination
     ) -> (status: Int32, stdout: Data, stderr: String) {
         runSSH(
             arguments: sshInvocation(script: script, arguments: arguments, on: destination),
             maxBytes: maxBytes,
-            input: input
+            input: input, timeout: timeout
         )
     }
 
@@ -194,7 +195,7 @@ public enum RemoteFileService {
     /// shell may be csh or fish, where a leading `NAME=value` is not an
     /// assignment at all — the scripts that need an environment set it inside
     /// the `sh` they are already running in.
-    private nonisolated static func sshInvocation(
+    nonisolated static func sshInvocation(
         script: String, arguments: [String], on destination: RemoteShellDestination
     ) -> [String] {
         let remoteCommand = (["/bin/sh", "-c", script, "sh"] + arguments)
@@ -248,7 +249,8 @@ public enum RemoteFileService {
     }
 
     private nonisolated static func runSSH(
-        arguments: [String], maxBytes: Int? = nil, input: Data? = nil
+        arguments: [String], maxBytes: Int? = nil, input: Data? = nil,
+        timeout: TimeInterval? = nil
     ) -> (status: Int32, stdout: Data, stderr: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
@@ -260,75 +262,96 @@ public enum RemoteFileService {
         environment["DISPLAY"] = nil
         process.environment = environment
 
+        return capture(process, maxBytes: maxBytes, input: input, timeout: timeout)
+    }
+
+    public nonisolated static let timedOutStatus: Int32 = -2
+
+    /// Nonblocking pipe collection shares the command's deadline. Killing ssh
+    /// is insufficient when a ProxyCommand descendant still owns a pipe: no
+    /// reader thread or inherited descriptor may extend the caller's wait.
+    nonisolated static func capture(
+        _ process: Process, maxBytes: Int? = nil, input: Data? = nil, timeout: TimeInterval? = nil
+    ) -> (status: Int32, stdout: Data, stderr: String) {
         let stdout = Pipe()
         let stderr = Pipe()
         let stdin = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = input == nil ? FileHandle.nullDevice : stdin
-
         do {
             try process.run()
         } catch {
             return (-1, Data(), error.localizedDescription)
         }
-        if let input {
-            // Written on another queue: a buffer larger than the pipe blocks
-            // until ssh drains it, and ssh will not drain it while nothing is
-            // reading what it sends back.
-            DispatchQueue.global(qos: .userInitiated).async {
-                try? stdin.fileHandleForWriting.write(contentsOf: input)
-                try? stdin.fileHandleForWriting.close()
-            }
-        }
-        // Draining both pipes concurrently: waiting on the process first
-        // deadlocks as soon as either fills, and a directory listing can.
-        let outData = PipeData()
-        let errData = PipeData()
-        let readers = DispatchGroup()
-        // Read at the caller's priority: it blocks on these below, so pinning
-        // them to utility inverts the priority of a user-initiated listing.
-        let readerQoS = DispatchQoS.QoSClass(rawValue: qos_class_self()) ?? .utility
-        readers.enter()
-        DispatchQueue.global(qos: readerQoS).async {
-            outData.value = read(stdout.fileHandleForReading, retaining: maxBytes)
-            readers.leave()
-        }
-        readers.enter()
-        DispatchQueue.global(qos: readerQoS).async {
-            errData.value = stderr.fileHandleForReading.readDataToEndOfFile()
-            readers.leave()
-        }
-        process.waitUntilExit()
-        readers.wait()
-        return (
-            process.terminationStatus,
-            outData.value,
-            String(decoding: errData.value, as: UTF8.self)
-        )
-    }
 
-    /// Drains `handle`, keeping at most `limit` bytes plus one — enough to tell
-    /// a payload that sits exactly on a caller's ceiling from one that runs
-    /// over it. Everything past that is read and dropped, because a remote
-    /// command whose output nobody takes eventually blocks.
-    private nonisolated static func read(
-        _ handle: FileHandle, retaining limit: Int?
-    ) -> Data {
-        guard let limit else { return handle.readDataToEndOfFile() }
-        var kept = Data()
+        let handles = [stdout.fileHandleForReading, stderr.fileHandleForReading, stdin.fileHandleForWriting]
+        for handle in handles {
+            let descriptor = handle.fileDescriptor
+            _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK)
+        }
+        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        defer { for handle in handles { try? handle.close() } }
+        var outData = Data()
+        var errData = Data()
+        var open = [true, true, input != nil]
+        var written = 0
+        var timedOut = false
+        let deadline = timeout.map { ContinuousClock.now.advanced(by: .seconds($0)) }
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+
         while true {
-            guard let chunk = try? handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
+            let now = ContinuousClock.now
+            if let deadline, now >= deadline {
+                if !timedOut {
+                    timedOut = true
+                    if process.isRunning { process.terminate() }
+                }
+                if now >= deadline.advanced(by: .seconds(1)), process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
+                if !process.isRunning || now >= deadline.advanced(by: .seconds(2)) { break }
+            }
+            if !process.isRunning && !open[0] && !open[1] { break }
+
+            var descriptors = handles.enumerated().map { index, handle in
+                pollfd(fd: open[index] ? handle.fileDescriptor : -1,
+                       events: Int16(index == 2 ? POLLOUT : POLLIN), revents: 0)
+            }
+            let ready = poll(&descriptors, nfds_t(descriptors.count), 50)
+            if ready < 0 && errno != EINTR {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                timedOut = true
                 break
             }
-            let remaining = limit + 1 - kept.count
-            if remaining > 0 { kept.append(chunk.prefix(remaining)) }
+            for index in 0..<2 where open[index] && descriptors[index].revents != 0 {
+                let count = Darwin.read(handles[index].fileDescriptor, &buffer, buffer.count)
+                if count > 0 {
+                    let kept = index == 0 ? outData.count : errData.count
+                    let remaining = maxBytes.map { max(0, $0 + 1 - kept) } ?? count
+                    let bytes = buffer.prefix(min(count, remaining))
+                    if index == 0 { outData.append(contentsOf: bytes) }
+                    else { errData.append(contentsOf: bytes) }
+                } else if count == 0 || (errno != EAGAIN && errno != EINTR) {
+                    open[index] = false
+                }
+            }
+            if open[2], descriptors[2].revents != 0, let input {
+                let count = input.withUnsafeBytes { bytes in
+                    Darwin.write(handles[2].fileDescriptor, bytes.baseAddress?.advanced(by: written), input.count - written)
+                }
+                if count > 0 { written += count }
+                if written == input.count || (count < 0 && errno != EAGAIN && errno != EINTR) {
+                    open[2] = false
+                    try? handles[2].close()
+                }
+            }
         }
-        return kept
-    }
-
-    private nonisolated final class PipeData: @unchecked Sendable {
-        var value = Data()
+        if timedOut {
+            return (timedOutStatus, outData,
+                    String(localized: "The SSH command did not respond in time.", bundle: .module))
+        }
+        return (process.terminationStatus, outData, String(decoding: errData, as: UTF8.self))
     }
 
     /// The socket Terminal multiplexes a destination's connections through.

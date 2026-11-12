@@ -109,6 +109,14 @@ final class KeroAgentObservationState {
     /// they would wake it. Replayed once the last one stops, unless a new
     /// turn starts first.
     var deferredIdleReason: String?
+    var remoteDestination: RemoteShellDestination?
+    var remoteForegroundPID: pid_t?
+    var remoteProbeID: UUID?
+    var remotePolling = RemoteAgentPolling()
+    var remoteAgent: RemoteAgent?
+    var remoteLastIdentity: String?
+    var remoteNotifications = RemoteAgentNotifications()
+    var remotePresentation = RemoteAgentPresentation()
 }
 
 @MainActor
@@ -590,6 +598,11 @@ extension TerminalSession {
 
     func markAutomationAgentSeen() {
         guard let status = agentStatus, status.phase == .done || status.unseen else { return }
+        if let destination = agentObservation.remoteDestination,
+           let agent = agentObservation.remoteAgent {
+            presentRemoteAgent(agent, on: destination, isFocused: true)
+            return
+        }
         guard isAutomationAgentRunning(kind: status.kind) else {
             clearAutomationAgentStatus()
             return
@@ -610,6 +623,18 @@ extension TerminalSession {
 
     fileprivate func refreshAutomationAgentState(isFocused: Bool) {
         if isFocused { markAutomationAgentSeen() }
+
+        if let destination = remoteDestination, let foreground = surface.foregroundPid,
+           AppSettings.shared.remoteAgentDiscovery {
+            refreshRemoteAgent(on: destination, foreground: foreground, isFocused: isFocused)
+            return
+        }
+        if agentObservation.remoteDestination != nil {
+            agentObservation.remoteDestination = nil
+            agentObservation.remoteProbeID = nil
+            agentObservation.remoteAgent = nil
+            clearAutomationAgentStatus()
+        }
 
         let foreground = surface.foregroundPid
         let shell = shellPid
@@ -874,6 +899,7 @@ extension TerminalSession {
 
     private func clearAutomationAgentStatus() {
         agentStatus = nil
+        agentRemoteHost = nil
         agentCustomLabel = nil
         agentSessionReference = nil
         agentSubagents = []
@@ -895,7 +921,8 @@ extension TerminalSession {
         authority: KeroAgentStateAuthority,
         reason: String,
         processID: pid_t?,
-        unseen: Bool
+        unseen: Bool,
+        notify: Bool = true
     ) {
         if let current = agentStatus,
            current.alias == alias,
@@ -920,7 +947,7 @@ extension TerminalSession {
             unseen: unseen
         )
 
-        guard phase != previousPhase,
+        guard notify, phase != previousPhase,
               phase == .blocked || phase == .done,
               !TerminalManager.automationIsSessionFocused(id)
         else { return }
@@ -963,11 +990,12 @@ extension TerminalSession {
     /// only while `agentStatus` is set; without one it falls back to the
     /// label or an empty kind name.
     var agentDisplayName: String {
-        KeroAgentRoster.displayName(
+        let name = KeroAgentRoster.displayName(
             customLabel: agentCustomLabel,
             alias: agentStatus?.alias,
             kindName: agentStatus?.kind.displayName ?? ""
         )
+        return agentRemoteHost.map { "\(name) · \($0)" } ?? name
     }
 
     /// What a saved pane needs to bring this agent's conversation back on
@@ -1071,5 +1099,109 @@ extension TerminalSession {
 extension Project {
     var agentRollup: KeroAgentRollup? {
         PaneTab.rollup(sessions.compactMap(\.agentStatus))
+    }
+}
+
+extension TerminalSession {
+    /// One bounded enquiry per SSH pane, off the main actor. Destination and
+    /// foreground PID guard the reply: a slow answer from a departed host must
+    /// never create an agent in the local shell the user returned to.
+    private func refreshRemoteAgent(
+        on destination: RemoteShellDestination, foreground: pid_t, isFocused: Bool
+    ) {
+        let observation = agentObservation
+        if observation.remoteDestination != destination || observation.remoteForegroundPID != foreground {
+            clearAutomationAgentStatus()
+            observation.remoteDestination = destination
+            observation.remoteForegroundPID = foreground
+            observation.remoteProbeID = nil
+            observation.remotePolling = RemoteAgentPolling()
+            observation.remoteAgent = nil
+            observation.remoteLastIdentity = nil
+            observation.remoteNotifications = RemoteAgentNotifications()
+            observation.remotePresentation = RemoteAgentPresentation()
+        }
+        if let agent = observation.remoteAgent {
+            presentRemoteAgent(agent, on: destination, isFocused: isFocused)
+        }
+        guard observation.remoteProbeID == nil, observation.remotePolling.isDue(at: Date()) else { return }
+        guard let connection = sshConnection(pid: foreground) else {
+            // A multiplexed client may have no TCP socket of its own. Without
+            // enough evidence to identify its channel, never borrow another's.
+            observation.remotePolling.failed(.unsupported, at: Date())
+            observation.remoteAgent = nil
+            markRemoteAgentUnavailable()
+            return
+        }
+        let timeout = observation.remotePolling.timeout
+        let probeID = UUID()
+        observation.remoteProbeID = probeID
+        Task { [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                RemoteAgent.probe(connection: connection, timeout: timeout, on: destination)
+            }.value
+            guard let self, !self.hasExited,
+                  self.agentObservation.remoteProbeID == probeID else { return }
+            self.agentObservation.remoteProbeID = nil
+            guard self.surface.foregroundPid == foreground,
+                  self.remoteDestination == destination else { return }
+            switch result {
+            case .success(let agent):
+                self.agentObservation.remotePolling.succeeded(at: Date())
+                if self.agentObservation.remoteLastIdentity != agent?.identity {
+                    self.clearAutomationAgentStatus()
+                }
+                self.agentObservation.remoteLastIdentity = agent?.identity
+                self.agentObservation.remoteAgent = agent
+                guard let agent else {
+                    self.clearAutomationAgentStatus()
+                    return
+                }
+                self.presentRemoteAgent(
+                    agent, on: destination,
+                    isFocused: TerminalManager.automationIsSessionFocused(self.id)
+                )
+            case .failure(let reason):
+                self.agentObservation.remotePolling.failed(reason, at: Date())
+                // One interrupted channel can be a panel closing the shared
+                // master. Preserve the previous answer until a second failure.
+                if self.agentObservation.remotePolling.isUnavailable {
+                    self.agentObservation.remoteAgent = nil
+                    self.markRemoteAgentUnavailable()
+                }
+            }
+        }
+    }
+
+    private func presentRemoteAgent(
+        _ agent: RemoteAgent, on destination: RemoteShellDestination, isFocused: Bool
+    ) {
+        let phase = KeroAgentPhase(
+            rawValue: agentObservation.remotePresentation.phase(for: agent, isFocused: isFocused)
+        ) ?? .unknown
+        let host = RemoteFileService.sanitized(destination.host, maxLines: 1)
+        if agentRemoteHost != host { agentRemoteHost = host }
+        let subagents = (agent.state?.subagents ?? []).map { KeroAgentSubagent(id: $0.id, type: $0.type) }
+        if agentSubagents != subagents { agentSubagents = subagents }
+        let eventVersion = (phase == .done ? agent.state?.turn : agent.state?.revision) ?? 0
+        let event = "\(agent.identity):\(phase.rawValue):\(eventVersion)"
+        let notify = (phase == .done || phase == .blocked)
+            && agentObservation.remoteNotifications.shouldNotify(event: event, at: Date())
+        updateAutomationAgentStatus(
+            alias: agent.kind.rawValue, kind: agent.kind, phase: phase,
+            authority: agent.state == nil ? .process : .integration,
+            reason: agent.state == nil ? "Remote agent detected; lifecycle hooks unavailable" : "Remote lifecycle hook",
+            processID: nil, unseen: phase == .done, notify: notify
+        )
+    }
+
+    private func markRemoteAgentUnavailable() {
+        guard let previous = agentStatus else { return }
+        agentSubagents = []
+        updateAutomationAgentStatus(
+            alias: previous.alias, kind: previous.kind, phase: .unknown,
+            authority: .process, reason: "Remote agent status unavailable",
+            processID: nil, unseen: false
+        )
     }
 }

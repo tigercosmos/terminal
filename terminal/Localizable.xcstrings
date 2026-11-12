@@ -346,6 +346,38 @@
         }
       }
     },
+    "Remote agent setup failed (exit code %lld)." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートエージェントの設定に失敗しました（終了コード %lld）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程代理设置失败（退出代码 %lld）。"
+          }
+        }
+      }
+    },
+    "Show agents in SSH panes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH ペインのエージェントを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 SSH 窗格中的代理"
+          }
+        }
+      }
+    },
     "Terminal could not prepare its Codex plugin: %@" : {
       "comment" : "Shown in Settings → Agents. Placeholder: the system's description of a file error.",
       "localizations" : {
@@ -1891,18 +1923,34 @@
         }
       }
     },
-    "Usage:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\nSupported kinds: codex, claude, gemini, grok, opencode, cursor-agent,\naider, amp, and pi. Agent start requires an existing available shell and\nnever creates layout; it returns after Terminal recognizes the launched process.\nGuarded prompts accept agents in created, working, idle, or done. While\nan agent is working, its CLI decides whether input steers the active\nturn or queues it. Use +pane send only when raw input is intentional.\nTerminal never infers lifecycle from rendered terminal text. After Terminal\nsubmits a prompt, only a provider-native hook or plugin can advance it\nto blocked, idle, or done. A reported idle background agent appears as\ndone until its pane is focused. Without an integration, inspect the\nterminal output instead of relying on a lifecycle wait. `skill install`\nexplicitly links Terminal's bundled coordination skill into supported\nagents; it never changes user files unless invoked." : {
+    "Usage: terminal +agent remote-install claude|codex -- [ssh-options] HOST" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使い方:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\n対応する種類: codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp、pi。エージェントの起動には利用可能な既存のシェルが必要で、\nレイアウトは作成しません。Terminal が起動したプロセスを認識した時点で戻ります。\n保護されたプロンプトは created、working、idle、done のエージェントに送れます。\nエージェントの作業中は、入力で現在のターンを誘導するか待ち行列に入れるかを\nその CLI が決めます。+pane send は生の入力が意図的な場合にのみ使ってください。\nTerminal は表示されたターミナルのテキストからライフサイクルを推測しません。\nTerminal がプロンプトを送信した後は、提供元ネイティブのフックやプラグインだけが\nblocked、idle、done へ進められます。バックグラウンドで idle と報告された\nエージェントは、そのペインにフォーカスするまで done と表示されます。連携がない\n場合は、ライフサイクルの待機に頼らずターミナルの出力を確認してください。\n`skill install` は Terminal に同梱された連携スキルを対応エージェントへ明示的に\nリンクします。実行しない限りユーザーのファイルは変更しません。"
+            "value" : "使い方: terminal +agent remote-install claude|codex -- [ssh-options] HOST"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用法：\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent explain\n\n支持的类型：codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp 和 pi。启动代理需要一个现有的可用 Shell，且不会创建布局；\nTerminal 识别出启动的进程后即返回。受保护的提示接受处于 created、working、\nidle 或 done 状态的代理。代理工作时，由其 CLI 决定输入是引导当前轮次还是排队。\n仅在确实需要原始输入时使用 +pane send。Terminal 从不根据渲染的终端文本推断\n生命周期。Terminal 提交提示后，只有提供方原生的钩子或插件才能将其推进到\nblocked、idle 或 done。在后台报告为 idle 的代理会显示为 done，直到其面板获得\n焦点。没有集成时，请检查终端输出，而不要依赖生命周期等待。`skill install`\n会明确地将 Terminal 自带的协调技能链接到支持的代理；除非调用它，否则从不更改\n用户文件。"
+            "value" : "用法：terminal +agent remote-install claude|codex -- [ssh-options] HOST"
+          }
+        }
+      }
+    },
+    "Usage:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent remote-install claude|codex -- [ssh-options] HOST\n  terminal +agent explain\n\nSupported kinds: codex, claude, gemini, grok, opencode, cursor-agent,\naider, amp, and pi. Agent start requires an existing available shell and\nnever creates layout; it returns after Terminal recognizes the launched process.\nGuarded prompts accept agents in created, working, idle, or done. While\nan agent is working, its CLI decides whether input steers the active\nturn or queues it. Use +pane send only when raw input is intentional.\nTerminal never infers lifecycle from rendered terminal text. After Terminal\nsubmits a prompt, only a provider-native hook or plugin can advance it\nto blocked, idle, or done. A reported idle background agent appears as\ndone until its pane is focused. Without an integration, inspect the\nterminal output instead of relying on a lifecycle wait. `skill install`\nexplicitly links Terminal's bundled coordination skill into supported\nagents; it never changes user files unless invoked." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使い方:\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent remote-install claude|codex -- [ssh-options] HOST\n  terminal +agent explain\n\n対応する種類: codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp、pi。エージェントの起動には利用可能な既存のシェルが必要で、\nレイアウトは作成しません。Terminal が起動したプロセスを認識した時点で戻ります。\n保護されたプロンプトは created、working、idle、done のエージェントに送れます。\nエージェントの作業中は、入力で現在のターンを誘導するか待ち行列に入れるかを\nその CLI が決めます。+pane send は生の入力が意図的な場合にのみ使ってください。\nTerminal は表示されたターミナルのテキストからライフサイクルを推測しません。\nTerminal がプロンプトを送信した後は、提供元ネイティブのフックやプラグインだけが\nblocked、idle、done へ進められます。バックグラウンドで idle と報告された\nエージェントは、そのペインにフォーカスするまで done と表示されます。連携がない\n場合は、ライフサイクルの待機に頼らずターミナルの出力を確認してください。\n`skill install` は Terminal に同梱された連携スキルを対応エージェントへ明示的に\nリンクします。実行しない限りユーザーのファイルは変更しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：\n  terminal +agent list\n  terminal +agent get ALIAS | --pane ID | --current\n  terminal +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]\n  terminal +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]\n  terminal +agent read ALIAS [--lines N] [--columns N]\n  terminal +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]\n  terminal +agent skill <path|print|status|install|uninstall> [options]\n  terminal +agent remote-install claude|codex -- [ssh-options] HOST\n  terminal +agent explain\n\n支持的类型：codex、claude、gemini、grok、opencode、cursor-agent、\naider、amp 和 pi。启动代理需要一个现有的可用 Shell，且不会创建布局；\nTerminal 识别出启动的进程后即返回。受保护的提示接受处于 created、working、\nidle 或 done 状态的代理。代理工作时，由其 CLI 决定输入是引导当前轮次还是排队。\n仅在确实需要原始输入时使用 +pane send。Terminal 从不根据渲染的终端文本推断\n生命周期。Terminal 提交提示后，只有提供方原生的钩子或插件才能将其推进到\nblocked、idle 或 done。在后台报告为 idle 的代理会显示为 done，直到其面板获得\n焦点。没有集成时，请检查终端输出，而不要依赖生命周期等待。`skill install`\n会明确地将 Terminal 自带的协调技能链接到支持的代理；除非调用它，否则从不更改\n用户文件。"
           }
         }
       }

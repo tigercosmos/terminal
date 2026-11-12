@@ -173,7 +173,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Agents that hand off',
         detail:
-          'an agent in one pane can split another, start Claude Code, Codex or seven other CLIs there, prompt it and wait for the result with terminal +pane and terminal +agent — kept inside its own project, never stealing focus, with a badge on every pane, tab and project saying who is working, blocked or done, an agents list at the bottom of the sidebar naming every one across projects and the subagents Claude Code or Codex runs under it, and Cmd+Shift+A to jump to the next one waiting on you',
+          'an agent in one pane can split another, start Claude Code, Codex or seven other CLIs there, prompt it and wait for the result with terminal +pane and terminal +agent — kept inside its own project, never stealing focus, with a badge on every pane, tab and project saying who is working, blocked or done, an agents list at the bottom of the sidebar naming every one across projects and the subagents Claude Code or Codex runs under it, remote agents in SSH panes on Linux and macOS hosts with Python 3.8+, host names beside their names, a setting to disable remote discovery, optional Claude/Codex hooks for activity and subagents, and Cmd+Shift+A to jump to the next one waiting on you',
       },
       {
         name: 'Clear the clutter',

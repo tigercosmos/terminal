@@ -14,6 +14,13 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [unrelease]
+
+- The Agents sidebar follows coding agents in SSH panes on Linux and macOS
+  hosts with Python 3.8 or later, with a host name beside each agent. Optional remote
+  Claude Code and Codex hooks report activity and subagents. Lost connections
+  show unknown status until Terminal can reach the host again.
+
 ## [0.11.0]
 
 - Claude Code and Codex now show their real state. Their badges and their

@@ -124,6 +124,10 @@ public enum TerminalCLIAutomationAction: String, CaseIterable, Sendable {
     case paste = "automation.paste"
     /// Run a command-palette action by its identifier.
     case runCommand = "automation.runCommand"
+    /// The Agents menu action, including explicit completion acknowledgement.
+    case focusNextAgentAttention = "automation.focusNextAgentAttention"
+    /// The Settings toggle, so network opt-out can be exercised in a real pane.
+    case remoteAgentDiscovery = "automation.remoteAgentDiscovery"
     /// The model-layer state a test wants to assert on, as the same JSON a
     /// saved session is written in.
     case queryState = "automation.queryState"

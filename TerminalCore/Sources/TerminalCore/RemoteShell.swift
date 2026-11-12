@@ -172,7 +172,7 @@ private let sshReachFlags: Set<Character> = ["4", "6", "C"]
 /// Splits an ssh argument vector into the destination and the options that
 /// reach it. Returns nil when there is no destination operand — `ssh -V`, or
 /// a command line Terminal could not follow.
-func parseSSHArguments(_ arguments: [String]) -> RemoteShellDestination? {
+public func parseSSHArguments(_ arguments: [String]) -> RemoteShellDestination? {
     var reachOptions: [String] = []
     var index = 1
     while index < arguments.count {
