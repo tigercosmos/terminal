@@ -100,6 +100,13 @@ print(json.dumps(agent.get(sys.argv[1])))
     check "SSH presence shows its host and unknown activity" 'unknown' "$(remote_field state)"
     wait_remote integration_status ready
     check "remote hooks install automatically on agent discovery" 'true' "$([[ -f "$scratch/home/.local/share/terminal/remote-agents/terminal_remote_agent.py" && -L "$scratch/home/.claude/skills/terminal-remote-agent-state" ]] && print true)"
+    rm "$scratch/home/.claude/skills/terminal-remote-agent-state"
+    for _ in {1..50}; do
+        [[ -L "$scratch/home/.claude/skills/terminal-remote-agent-state" ]] && break
+        sleep 0.3
+    done
+    check "remote setup repairs a removed provider registration" 'true' "$([[ -L "$scratch/home/.claude/skills/terminal-remote-agent-state" ]] && print true)"
+    wait_remote integration_status ready
     automate remoteAgentDiscovery 0
     wait_remote state null
     check "remote discovery can be disabled while SSH stays open" 'null' "$(remote_field state)"

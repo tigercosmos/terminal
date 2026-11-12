@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -85,6 +86,75 @@ class RemoteAgentsTests(unittest.TestCase):
                 for _ in range(5):
                     self.assertEqual(agent.automatic_integration(process)['status'], 'failed')
                 self.assertEqual(calls.read_text().splitlines(), ['call'])
+
+    def test_ready_claude_setup_repairs_removed_registration_and_managed_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            managed = root / 'managed'
+            profile = root / '.claude'
+            environment = dict(HOME=directory, CLAUDE_CONFIG_DIR=str(profile), PATH=os.environ['PATH'])
+            with mock.patch.object(agent, 'ROOT', managed), mock.patch.object(agent, 'process_environment', return_value=environment):
+                process = row(20, 1)
+                self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                for path in [profile / 'skills/terminal-remote-agent-state',
+                             managed / 'claude/.claude-plugin/plugin.json',
+                             managed / 'terminal_remote_agent.py']:
+                    with self.subTest(path=path.name):
+                        path.unlink()
+                        self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                        self.assertTrue(path.is_file() or path.is_symlink())
+
+    def test_ready_codex_setup_repairs_lost_profile_and_cache_but_keeps_disabled_plugin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            managed = root / 'managed'
+            profile = root / '.codex'
+            config = profile / 'config.toml'
+            cached = profile / 'plugins/cache/terminal-remote-agents/terminal-remote-agent-state/1.0.0/hooks/hooks.json'
+            cached_manifest = cached.parent.parent / '.codex-plugin/plugin.json'
+            calls = root / 'calls.jsonl'
+
+            def provider_command(arguments, executable):
+                with calls.open('a') as stream:
+                    stream.write(json.dumps(arguments) + '\n')
+                if arguments[:2] == ['plugin', 'add']:
+                    # Native Codex requires an existing CODEX_HOME, including
+                    # when repairing a profile deleted during a live session.
+                    self.assertTrue(config.parent.is_dir())
+                    config.write_text('[plugins."terminal-remote-agent-state@terminal-remote-agents"]\nenabled = true\n')
+                    cached.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(managed / 'codex/hooks/hooks.json', cached)
+                    cached_manifest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(managed / 'codex/.codex-plugin/plugin.json', cached_manifest)
+
+            environment = dict(HOME=directory, CODEX_HOME=str(profile), PATH=os.environ['PATH'])
+            with mock.patch.object(agent, 'ROOT', managed), mock.patch.object(agent, 'process_environment', return_value=environment), mock.patch.object(agent, 'run_codex', side_effect=provider_command):
+                process = row(20, 1, executable='/opt/bin/codex')
+                self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                call_count = len(calls.read_text().splitlines())
+                config.write_text(config.read_text().replace('enabled = true', 'enabled = false'))
+                for _ in range(3):
+                    self.assertEqual(agent.automatic_integration(process)['status'], 'ready')
+                self.assertIn('enabled = false', config.read_text())
+                self.assertEqual(len(calls.read_text().splitlines()), call_count)
+                cached.unlink()
+                self.assertEqual(agent.automatic_integration(process)['status'], 'ready')
+                self.assertIn('enabled = false', config.read_text())
+                self.assertEqual(len(calls.read_text().splitlines()), call_count)
+                with mock.patch.object(agent, 'source_text', return_value=agent.source_text() + '\n# Update while disabled.\n'):
+                    self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertIn('enabled = false', config.read_text())
+                self.assertEqual(len(calls.read_text().splitlines()), call_count)
+                shutil.rmtree(profile)
+                self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertTrue(config.is_file())
+                self.assertTrue(cached.is_file())
+                cached.unlink()
+                self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertTrue(cached.is_file())
+                cached_manifest.unlink()
+                self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertTrue(cached_manifest.is_file())
 
     def test_tilde_profile_uses_the_agents_home(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -289,7 +359,7 @@ class RemoteAgentsTests(unittest.TestCase):
             self.assertFalse((root / '.codex/config.toml').exists())
             self.assertEqual(result.stdout, b'codex\n')
             config = root / '.codex/config.toml'
-            config.parent.mkdir()
+            self.assertTrue(config.parent.is_dir())
             config.write_text('[marketplaces.terminal-remote-agents]\nsource = "local"\n')
             result = subprocess.run([sys.executable, str(HELPER), 'install', 'codex'],
                                     env=dict(os.environ, HOME=directory, CODEX_HOME=str(config.parent),

@@ -416,6 +416,40 @@ def read_receipt(path):
         return {}
 
 
+def codex_registration_current(provider_home):
+    config = provider_home / 'config.toml'
+    configured = config.read_text() if config.is_file() else ''
+    header = re.search(r'''(?m)^[ \t]*\[plugins\.(?:"terminal-remote-agent-state@terminal-remote-agents"|'terminal-remote-agent-state@terminal-remote-agents')\][ \t]*(?:\#[^\n]*)?$''', configured)
+    if not header:
+        return False
+    section = re.split(r'(?m)^[ \t]*\[', configured[header.end():], maxsplit=1)[0]
+    # A provider-level disable is intentional, even if its cache was removed.
+    # Re-adding the plugin to repair that cache would silently enable it again.
+    if re.search(r'(?m)^[ \t]*enabled[ \t]*=[ \t]*false[ \t]*(?:\#[^\n]*)?$', section):
+        return True
+    cached = provider_home / 'plugins/cache/terminal-remote-agents/terminal-remote-agent-state/1.0.0'
+    return all((cached / relative).is_file()
+               and (cached / relative).read_bytes() == (ROOT / 'codex' / relative).read_bytes()
+               for relative in ('.codex-plugin/plugin.json', 'hooks/hooks.json'))
+
+
+def installation_present(kind, config_root, source):
+    # A receipt survives a profile reset or provider cache cleanup. Verify
+    # the managed files before using it, without running a CLI on every poll.
+    try:
+        if (ROOT / 'terminal_remote_agent.py').read_text() != source:
+            return False
+        manifest = ROOT / kind / ('.claude-plugin' if kind == 'claude' else '.codex-plugin') / 'plugin.json'
+        if not manifest.is_file():
+            return False
+        if kind == 'claude':
+            link = config_root / 'skills/terminal-remote-agent-state'
+            return link.is_symlink() and link.resolve() == (ROOT / kind).resolve()
+        return codex_registration_current(config_root)
+    except (OSError, ValueError):
+        return False
+
+
 def automatic_integration(row):
     kind = integration_kind(row)
     if kind is None:
@@ -443,7 +477,7 @@ def automatic_integration(row):
         digest = hashlib.sha256(source.encode()).hexdigest()
         previous = read_receipt(receipt)
         if previous.get('digest') == digest:
-            if previous.get('status') == 'ready':
+            if previous.get('status') == 'ready' and installation_present(kind, config_root, source):
                 restart = time.time() - row['age'] < previous.get('installed_at', 0) - 2
                 return dict(status='ready', restart=restart)
             if time.time() < previous.get('retry_at', 0):
@@ -525,11 +559,11 @@ def install(kind, source=None, executable='codex', quiet=False):
         (market / 'marketplace.json').write_text(json.dumps(dict(name='terminal-remote-agents', plugins=[dict(
             name=manifest['name'], source=dict(source='local', path='./codex'), description=manifest['description'])])))
         provider_home = Path(os.environ.get('CODEX_HOME') or str(Path.home() / '.codex')).expanduser()
+        # Codex resolves CODEX_HOME before its plugin command can recreate it.
+        provider_home.mkdir(parents=True, exist_ok=True, mode=0o700)
         config = provider_home / 'config.toml'
         configured = config.read_text() if config.exists() else ''
-        cached = provider_home / 'plugins/cache/terminal-remote-agents/terminal-remote-agent-state/1.0.0/hooks/hooks.json'
-        current = ('[plugins."terminal-remote-agent-state@terminal-remote-agents"]' in configured
-                   and cached.exists() and cached.read_bytes() == (plugin / 'hooks/hooks.json').read_bytes())
+        current = codex_registration_current(provider_home)
         changed = not current
         if not current:
             if re.search(r'^\s*\[marketplaces\.(?:terminal-remote-agents|"terminal-remote-agents")\]\s*$', configured, re.MULTILINE):
