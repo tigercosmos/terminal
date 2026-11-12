@@ -48,7 +48,7 @@ class RemoteAgentsTests(unittest.TestCase):
         rows = {10: row(10, 1, group=10, executable='/bin/zsh'), 20: row(20, 10),
                 40: row(40, 1, group=40, foreground=0), 41: row(41, 40, group=40, foreground=0)}
         ports = lambda pid: (1234, 22)
-        self.assertEqual(agent.select_processes(rows, {(1234, 22)}, 30, ports), [])
+        rows[40]['tty'] = rows[41]['tty'] = '??'
         selected = agent.select_processes(rows, {(1234, 22)}, 30, ports, excluded={40, 41})
         self.assertEqual([item['pid'] for item in selected], [20])
 
@@ -80,10 +80,21 @@ class RemoteAgentsTests(unittest.TestCase):
                 agent.prune_state({})
                 self.assertTrue(state.exists())
 
+    def test_orphaned_prompt_helper_on_the_same_tty_is_not_another_session(self):
+        # A prompt's zsh/gitstatus pair can detach from the live login shell.
+        # Both roots still name the same tty and foreground Codex group.
+        rows = {10: row(10, 1, group=10, foreground=30, executable='-zsh'),
+                20: row(20, 1, group=19, foreground=30, executable='-zsh'),
+                21: row(21, 20, group=19, foreground=30, executable='/opt/gitstatusd'),
+                30: row(30, 10, group=30, foreground=30, executable='/opt/codex')}
+        ports = {21: (1234, 22), 30: (1234, 22)}
+        self.assertEqual([item['pid'] for item in agent.select_processes(rows, {(1234, 22)}, 30, ports.get)], [30])
+
     def test_only_this_connections_foreground_job_is_selected(self):
         rows = {10: row(10, 1, group=10, executable='/bin/bash'),
                 20: row(20, 10), 21: row(21, 20),
                 30: row(30, 10, group=30), 40: row(40, 1)}
+        rows[40]['tty'] = 'pts/2'
         ports = {10: (1234, 22), 20: (1234, 22), 21: (1234, 22), 30: (1234, 22), 40: (5678, 22)}
         selected = agent.select_processes(rows, {(1234, 22)}, 30, ports.get)
         self.assertEqual([item['pid'] for item in selected], [20, 21])
@@ -96,11 +107,21 @@ class RemoteAgentsTests(unittest.TestCase):
 
     def test_ambiguous_or_old_connections_are_not_guessed(self):
         rows = {10: row(10, 1), 20: row(20, 1)}
+        rows[20]['tty'] = 'pts/2'
         ports = {10: (1234, 22), 20: (1234, 22)}
         self.assertEqual(agent.select_processes(rows, {(1234, 22)}, 30, ports.get), [])
         rows[10]['age'] = 100
         rows.pop(20)
         self.assertEqual(agent.select_processes(rows, {(1234, 22)}, 30, ports.get), [])
+
+    def test_tty_reuse_cannot_select_a_process_older_than_the_connection(self):
+        rows = {10: row(10, 1, group=10, foreground=20),
+                20: row(20, 10, group=20, foreground=20, age=100)}
+        self.assertEqual(agent.select_processes(rows, {(1234, 22)}, 30, {10: (1234, 22)}.get), [])
+
+    def test_changing_foreground_group_during_a_snapshot_is_not_guessed(self):
+        rows = {10: row(10, 1, foreground=20), 20: row(20, 10, foreground=30)}
+        self.assertEqual(agent.select_processes(rows, {(1234, 22)}, 30, lambda pid: (1234, 22)), [])
 
     def test_multiplexer_does_not_borrow_an_unrelated_agent(self):
         rows = {10: row(10, 1, executable='/bin/bash'),

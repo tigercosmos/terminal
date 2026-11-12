@@ -82,33 +82,28 @@ def select_processes(rows, connections, max_age, ports_for_pid=connection_ports,
     excluded = excluded or set()
     matches = {pid for pid, row in rows.items()
                if pid not in excluded and row['age'] <= max_age and ports_for_pid(pid) in connections}
-    roots = set()
-    for pid in matches:
-        # macOS shells can erase their initial environment from ps. A native
-        # child's inherited connection still identifies the controlling tty;
-        # climb that tty back to its login process before choosing a job.
-        visited = set()
-        while pid not in visited:
-            visited.add(pid)
-            parent = rows[pid]['parent']
-            tty = rows[pid].get('tty')
-            if parent not in rows or rows[parent]['age'] > max_age:
-                break
-            if parent not in matches and (tty in (None, '?', '??') or rows[parent].get('tty') != tty):
-                break
-            pid = parent
-        roots.add(pid)
-    # A multiplexed transport can carry multiple shells. A host-wide guess
-    # would attribute one pane's agent to another, so refuse ambiguity.
-    if len(roots) != 1:
+    terminals = {rows[pid].get('tty') for pid in matches
+                 if rows[pid].get('tty') not in (None, '?', '??')}
+    # Process ancestry is not terminal ownership: zsh prompt helpers can
+    # detach and become another root while retaining this session's tty and
+    # SSH_CONNECTION. The controlling tty and its foreground group are kernel
+    # evidence that survives that detachment. Distinct ttys on one transport
+    # still mean multiple interactive channels, which cannot be guessed here.
+    if len(terminals) != 1:
         return []
-    root = next(iter(roots))
-    descendants = [row for pid, row in rows.items() if belongs(pid, root, rows)]
-    if any(Path(row['executable']).name.startswith(('tmux', 'screen')) for row in descendants):
+    terminal = next(iter(terminals))
+    foregrounds = {rows[pid]['foreground'] for pid in matches if rows[pid].get('tty') == terminal}
+    if len(foregrounds) != 1:
         return []
-    foreground = rows[root]['foreground']
-    return sorted((row for row in descendants if foreground > 0 and row['group'] == foreground),
-                  key=lambda row: sum(belongs(row['pid'], other['pid'], rows) for other in descendants))[:32]
+    foreground = next(iter(foregrounds))
+    if foreground <= 0:
+        return []
+    members = [row for pid, row in rows.items()
+               if pid not in excluded and row.get('tty') == terminal and row['age'] <= max_age]
+    if any(Path(row['executable']).name.lower().startswith(('tmux', 'screen')) for row in members):
+        return []
+    return sorted((row for row in members if row['group'] == foreground),
+                  key=lambda row: sum(belongs(row['pid'], other['pid'], rows) for other in members))[:32]
 
 
 def details(row):
