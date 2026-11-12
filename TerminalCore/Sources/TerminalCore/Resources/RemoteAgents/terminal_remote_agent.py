@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """SSH agent discovery, state cleanup, and opt-in lifecycle plugins (Python 3, Linux/macOS)."""
+import ctypes
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
+import shutil
+import signal
 import shlex
 import subprocess
 import sys
 import tempfile
 import time
 
-ROOT = Path.home() / '.local/share/terminal/remote-agents'
+ROOT = Path(os.environ.get('TERMINAL_REMOTE_AGENT_ROOT') or str(Path.home() / '.local/share/terminal/remote-agents'))
 MAX_STATE = 32768
 
 
@@ -185,7 +189,7 @@ def prune_state(rows):
             continue
 
 
-def probe(max_age, pairs):
+def probe(max_age, pairs, auto_install=False):
     rows = processes()
     prune_state(rows)
     # A probe sharing the user's master inherits the very ports being queried.
@@ -208,8 +212,13 @@ def probe(max_age, pairs):
     for row in selected:
         try:
             details(row)
+            try:
+                integration = automatic_integration(row) if auto_install else None
+            except (OSError, ValueError):
+                integration = dict(status='failed', restart=False)
             records.append(dict(identity=identity(row), pid=row['pid'], parent=row['parent'], executable=row['executable'],
-                                arguments=row['arguments'], state=read_state(row)))
+                                arguments=row['arguments'], state=read_state(row),
+                                integration=integration))
         except (OSError, ValueError, subprocess.SubprocessError):
             continue
     print(json.dumps(dict(version=1, processes=records)))
@@ -307,27 +316,182 @@ def hook(kind, event):
                 os.unlink(name)
 
 
-def run_codex(arguments):
-    result = subprocess.run(['codex'] + arguments, capture_output=True, text=True, timeout=60)
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or
-                           'codex plugin command failed (exit %d)' % result.returncode)
+def run_codex(arguments, executable='codex'):
+    process = subprocess.Popen([executable] + arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    try:
+        stdout, stderr = process.communicate(timeout=60)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        try:
+            process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.stdout.close()
+            process.stderr.close()
+        raise RuntimeError('codex plugin command timed out')
+    if process.returncode:
+        raise RuntimeError(stderr.decode(errors='replace').strip() or stdout.decode(errors='replace').strip() or
+                           'codex plugin command failed (exit %d)' % process.returncode)
 
 
-def install(kind):
+def source_text():
+    # stdin probes carry their source explicitly, so a detached installer can
+    # persist an inspectable helper without reopening the exhausted SSH pipe.
+    return globals().get('_terminal_source') or Path(__file__).read_text()
+
+
+def write_atomic(path, data, mode=0o600):
+    # Preserve user-created links while replacing the resolved managed file.
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, name = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(data)
+        os.chmod(name, mode)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def process_environment(pid):
+    try:
+        if sys.platform.startswith('linux'):
+            data = Path('/proc/%d/environ' % pid).read_bytes()
+        else:
+            libc = ctypes.CDLL(None, use_errno=True)
+            mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2.
+            size = ctypes.c_size_t()
+            if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) or size.value < 4:
+                return {}
+            buffer = ctypes.create_string_buffer(size.value)
+            if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0):
+                return {}
+            blob = buffer.raw[:size.value]
+            count = int.from_bytes(blob[:4], sys.byteorder, signed=True)
+            if count <= 0:
+                return {}
+            offset = blob.index(b'\0', 4)
+            while offset < len(blob) and blob[offset] == 0:
+                offset += 1
+            for _ in range(count):
+                offset = blob.index(b'\0', offset) + 1
+            data = blob[offset:]
+        return {entry.split(b'=', 1)[0].decode(): entry.split(b'=', 1)[1].decode()
+                for entry in data.split(b'\0') if b'=' in entry}
+    except (OSError, ValueError, UnicodeError):
+        return {}
+
+
+def integration_kind(row):
+    for value in [row['executable']] + row['arguments'][:3]:
+        name = Path(value).name
+        if name in ('claude', 'claude.js'):
+            return 'claude'
+        if name in ('codex', 'codex.js'):
+            return 'codex'
+    return None
+
+
+def installation_paths(kind, config_root):
+    key = kind + '-' + hashlib.sha256(str(config_root.resolve()).encode()).hexdigest()[:16]
+    directory = ROOT / 'installations'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return directory / (key + '.json'), directory / (key + '.lock')
+
+
+def read_receipt(path):
+    try:
+        with path.open('rb') as stream:
+            data = json.loads(stream.read(MAX_STATE + 1))
+        if not isinstance(data, dict):
+            return {}
+        for field in ('installed_at', 'retry_at'):
+            value = data.get(field, 0)
+            if type(value) not in (int, float) or not math.isfinite(value):
+                return {}
+        return data
+    except (OSError, ValueError, OverflowError):
+        return {}
+
+
+def automatic_integration(row):
+    kind = integration_kind(row)
+    if kind is None:
+        return None
+    environment = process_environment(row['pid'])
+    home = Path(environment.get('HOME') or str(Path.home()))
+    variable = 'CODEX_HOME' if kind == 'codex' else 'CLAUDE_CONFIG_DIR'
+    configured = environment.get(variable)
+    if configured == '~':
+        config_root = home
+    elif configured and configured.startswith('~/'):
+        config_root = home / configured[2:]
+    else:
+        config_root = Path(configured or str(home / ('.codex' if kind == 'codex' else '.claude'))).expanduser()
+    if not config_root.is_absolute():
+        return dict(status='failed', restart=False)
+    receipt, lock_path = installation_paths(kind, config_root)
+    lock = lock_path.open('a')
+    try:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return dict(status='installing', restart=False)
+        source = source_text()
+        digest = hashlib.sha256(source.encode()).hexdigest()
+        previous = read_receipt(receipt)
+        if previous.get('digest') == digest:
+            if previous.get('status') == 'ready':
+                restart = time.time() - row['age'] < previous.get('installed_at', 0) - 2
+                return dict(status='ready', restart=restart)
+            if time.time() < previous.get('retry_at', 0):
+                return dict(status='failed', restart=False)
+        # fork keeps the lock alive in the child; closing the parent's copy
+        # must not explicitly unlock that shared open-file description.
+        child = os.fork()
+        if child:
+            return dict(status='installing', restart=False)
+        try:
+            os.setsid()
+            null = os.open(os.devnull, os.O_RDWR)
+            for descriptor in (0, 1, 2):
+                os.dup2(null, descriptor)
+            if null > 2:
+                os.close(null)
+            os.environ['HOME'] = str(home)
+            os.environ[variable] = str(config_root)
+            os.environ['PATH'] = environment.get('PATH') or os.environ.get('PATH', '')
+            executable = row['executable'] if Path(row['executable']).name == kind else shutil.which(kind)
+            result = dict(digest=digest, status='ready', installed_at=time.time())
+            try:
+                changed = install(kind, source=source, executable=executable or kind, quiet=True)
+                result['installed_at'] = time.time() if changed else previous.get('installed_at', 0)
+            except Exception as error:
+                result = dict(digest=digest, status='failed', retry_at=time.time() + 300,
+                              error=str(error)[:500])
+            write_atomic(receipt, json.dumps(result).encode())
+        finally:
+            os._exit(0)
+    finally:
+        lock.close()
+
+
+
+def install(kind, source=None, executable='codex', quiet=False):
     # Only Terminal's own plugin folders are written. Provider settings stay
     # with the provider; Codex installs and approves its plugin itself.
     ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     helper = ROOT / 'terminal_remote_agent.py'
-    helper.write_text(Path(__file__).read_text())
-    helper.chmod(0o700)
+    write_atomic(helper, (source or source_text()).encode(), mode=0o700)
     plugin = ROOT / kind
     manifest_dir = plugin / ('.claude-plugin' if kind == 'claude' else '.codex-plugin')
     manifest_dir.mkdir(parents=True, exist_ok=True)
     events = ['UserPromptSubmit', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop']
     events += ['PostToolUseFailure', 'Notification', 'StopFailure'] if kind == 'claude' else ['Interrupt']
     hooks = {event: [dict(hooks=[dict(type='command', timeout=5,
-              command=shlex.join([sys.executable, str(helper), 'hook', kind, event]))])] for event in events}
+              command=shlex.join(['env', 'TERMINAL_REMOTE_AGENT_ROOT=' + str(ROOT), sys.executable, str(helper), 'hook', kind, event]))])] for event in events}
     manifest = dict(name='terminal-remote-agent-state', version='1.0.0',
                     description='Reports remote agent activity to Terminal over SSH.')
     if kind == 'claude':
@@ -337,9 +501,24 @@ def install(kind):
         hook_dir.mkdir(exist_ok=True)
         (hook_dir / 'hooks.json').write_text(json.dumps(dict(hooks=hooks), indent=2))
         manifest['hooks'] = './hooks/hooks.json'
-    (manifest_dir / 'plugin.json').write_text(json.dumps(manifest, indent=2))
+    manifest_path = manifest_dir / 'plugin.json'
+    manifest_data = json.dumps(manifest, indent=2).encode()
+    changed = not manifest_path.exists() or manifest_path.read_bytes() != manifest_data
+    write_atomic(manifest_path, manifest_data)
     if kind == 'claude':
-        print(shlex.join(['claude', '--plugin-dir', str(plugin)]))
+        config_root = Path(os.environ.get('CLAUDE_CONFIG_DIR') or str(Path.home() / '.claude')).expanduser()
+        link = config_root / 'skills/terminal-remote-agent-state'
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink():
+            if link.resolve() != plugin.resolve():
+                raise RuntimeError('Remote Claude plugin path is occupied')
+        elif link.exists():
+            raise RuntimeError('Remote Claude plugin path is occupied')
+        else:
+            link.symlink_to(plugin, target_is_directory=True)
+            changed = True
+        if not quiet:
+            print('claude')
     else:
         market = ROOT / '.agents/plugins'
         market.mkdir(parents=True, exist_ok=True)
@@ -348,17 +527,40 @@ def install(kind):
         provider_home = Path(os.environ.get('CODEX_HOME') or str(Path.home() / '.codex')).expanduser()
         config = provider_home / 'config.toml'
         configured = config.read_text() if config.exists() else ''
-        if re.search(r'^\s*\[marketplaces\.(?:terminal-remote-agents|"terminal-remote-agents")\]\s*$', configured, re.MULTILINE):
-            run_codex(['plugin', 'marketplace', 'remove', 'terminal-remote-agents'])
-        run_codex(['plugin', 'marketplace', 'add', str(ROOT)])
-        run_codex(['plugin', 'add', 'terminal-remote-agent-state@terminal-remote-agents'])
-        print('codex')
+        cached = provider_home / 'plugins/cache/terminal-remote-agents/terminal-remote-agent-state/1.0.0/hooks/hooks.json'
+        current = ('[plugins."terminal-remote-agent-state@terminal-remote-agents"]' in configured
+                   and cached.exists() and cached.read_bytes() == (plugin / 'hooks/hooks.json').read_bytes())
+        changed = not current
+        if not current:
+            if re.search(r'^\s*\[marketplaces\.(?:terminal-remote-agents|"terminal-remote-agents")\]\s*$', configured, re.MULTILINE):
+                run_codex(['plugin', 'marketplace', 'remove', 'terminal-remote-agents'], executable)
+            run_codex(['plugin', 'marketplace', 'add', str(ROOT)], executable)
+            run_codex(['plugin', 'add', 'terminal-remote-agent-state@terminal-remote-agents'], executable)
+        if not quiet:
+            print('codex')
+    return changed
+
+
+def manual_install(kind):
+    variable = 'CODEX_HOME' if kind == 'codex' else 'CLAUDE_CONFIG_DIR'
+    config_root = Path(os.environ.get(variable) or str(Path.home() / ('.codex' if kind == 'codex' else '.claude'))).expanduser()
+    receipt, lock_path = installation_paths(kind, config_root)
+    with lock_path.open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('Remote hook setup is already running')
+        changed = install(kind)
+        previous = read_receipt(receipt)
+        result = dict(digest=hashlib.sha256(source_text().encode()).hexdigest(), status='ready',
+                      installed_at=time.time() if changed else previous.get('installed_at', 0))
+        write_atomic(receipt, json.dumps(result).encode())
 
 
 def main():
     command = sys.argv[1]
     if command == 'probe':
-        probe(int(sys.argv[2]), sys.argv[3:])
+        probe(int(sys.argv[2]), sys.argv[3:], auto_install=True)
     elif command == 'hook' and sys.argv[2] in ('claude', 'codex'):
         # Hooks must never print into the agent's context or block its turn.
         try:
@@ -367,7 +569,7 @@ def main():
             pass
     elif command == 'install' and sys.argv[2] in ('claude', 'codex'):
         try:
-            install(sys.argv[2])
+            manual_install(sys.argv[2])
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             raise SystemExit(str(error))
     else:

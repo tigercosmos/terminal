@@ -226,7 +226,8 @@ private struct SidebarAgentRow: View {
 
                         Spacer(minLength: 0)
 
-                        Text(phase.rosterLabel)
+                        Text(session.agentRosterLabel)
+                            .help(session.agentIntegrationHelp)
                             .font(.system(size: supportingFontSize))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
@@ -279,12 +280,12 @@ private struct SidebarAgentRow: View {
         let count = session.agentSubagents.count
         guard count > 0 else {
             return String(
-                localized: "\(session.agentDisplayName), \(phase.rosterLabel), in project \(projectName), tab \(tabTitle)",
+                localized: "\(session.agentDisplayName), \(session.agentRosterLabel), in project \(projectName), tab \(tabTitle)",
                 comment: "Accessibility label for an agent row in the sidebar. Placeholders: agent name, agent state (such as “working”), project name, tab title."
             )
         }
         return String(
-            localized: "\(session.agentDisplayName), \(phase.rosterLabel), in project \(projectName), tab \(tabTitle), running \(count) subagents",
+            localized: "\(session.agentDisplayName), \(session.agentRosterLabel), in project \(projectName), tab \(tabTitle), running \(count) subagents",
             comment: "Accessibility label for an agent row in the sidebar when the agent runs subagents. Placeholders: agent name, agent state (such as “working”), project name, tab title, how many subagents."
         )
     }

@@ -13,6 +13,12 @@ public nonisolated struct RemoteAgent: Equatable, Sendable {
     public let kind: KeroAgentKind
     public let processID: Int
     public let state: State?
+    public let integration: Integration?
+
+    public struct Integration: Decodable, Equatable, Sendable {
+        public let status: String
+        public let restart: Bool
+    }
 
     public struct State: Decodable, Equatable, Sendable {
         public let phase: String
@@ -38,9 +44,10 @@ public nonisolated struct RemoteAgent: Equatable, Sendable {
         let executable: String
         let arguments: [String]
         let state: State?
+        let integration: Integration?
 
         private enum CodingKeys: String, CodingKey {
-            case identity, pid, parent, executable, arguments, state
+            case identity, pid, parent, executable, arguments, state, integration
         }
 
         init(from decoder: any Decoder) throws {
@@ -52,6 +59,7 @@ public nonisolated struct RemoteAgent: Equatable, Sendable {
             arguments = try values.decode([String].self, forKey: .arguments)
             // A torn or older hook file must not hide a process we recognized.
             state = try? values.decode(State.self, forKey: .state)
+            integration = try? values.decode(Integration.self, forKey: .integration)
         }
     }
 
@@ -92,7 +100,8 @@ public nonisolated struct RemoteAgent: Equatable, Sendable {
                 }) {
                 state = nil
             }
-            return RemoteAgent(identity: record.identity, kind: kind, processID: record.pid, state: state)
+            return RemoteAgent(identity: record.identity, kind: kind, processID: record.pid,
+                               state: state, integration: record.integration)
         }
         return nil
     }
@@ -101,7 +110,14 @@ public nonisolated struct RemoteAgent: Equatable, Sendable {
         guard let url = Bundle.module.url(
             forResource: "terminal_remote_agent", withExtension: "py", subdirectory: "RemoteAgents"
         ) else { throw CocoaError(.fileNoSuchFile) }
-        return try String(contentsOf: url, encoding: .utf8)
+        let source = try String(contentsOf: url, encoding: .utf8)
+        // The detached remote installer needs an inspectable copy of the
+        // source after Python has consumed stdin. JSON string syntax is also
+        // a Python string literal; keep slash escapes out of that literal.
+        let literal = try JSONSerialization.data(
+            withJSONObject: source, options: [.fragmentsAllowed, .withoutEscapingSlashes]
+        )
+        return "_terminal_source = \(String(decoding: literal, as: UTF8.self))\n" + source
     }
 
     public static func probe(

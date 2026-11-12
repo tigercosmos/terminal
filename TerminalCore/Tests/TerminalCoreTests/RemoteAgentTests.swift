@@ -92,6 +92,20 @@ struct RemoteAgentTests {
         }
     }
 
+    @Test func remoteIntegrationReadinessIsSeparateFromActivity() throws {
+        var item = record(phase: nil)
+        item["integration"] = ["status": "ready", "restart": true]
+        let agent = try #require(try decode([item]))
+        #expect(agent.state == nil)
+        #expect(agent.integration?.status == "ready")
+        #expect(agent.integration?.restart == true)
+        var presentation = RemoteAgentPresentation()
+        #expect(presentation.phase(for: agent, isFocused: false) == "unknown")
+        item["integration"] = ["status": 123, "restart": "invalid"]
+        #expect(try decode([item])?.kind == .codex)
+        #expect(try decode([item])?.integration == nil)
+    }
+
     @Test func malformedHookStateKeepsProcessPresence() throws {
         for value: Any in ["not an object", ["phase": "idle"],
                            ["phase": "idle", "revision": "bad", "subagents": []]] {

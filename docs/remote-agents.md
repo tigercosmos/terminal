@@ -4,38 +4,56 @@ Connect with `ssh` and start your coding agent in that pane. Terminal lists
 recognized foreground agents in the Agents sidebar, with their host name.
 The remote host needs Python 3.8 or later and either Linux or macOS.
 
-Without lifecycle hooks, the row says **unknown**: Terminal knows the agent
-exists but cannot tell whether it is working or waiting for input.
+Terminal automatically installs lifecycle hooks when it detects Claude Code
+or Codex. You do not need an installation command or a special launch flag.
+Claude Code loads the plugin from its skills directory. Codex installs it
+through its own plugin CLI. Terminal leaves the provider's other settings alone.
 
-## Enable Claude Code activity
+## Activate hooks in an existing session
 
-Run this command on your Mac. Use the same SSH options and host as your pane:
+An agent already open when setup finishes can need a restart. The sidebar
+shows **setting up**, **restart agent**, or **waiting for hooks** until
+lifecycle events arrive. Codex can ask you to approve the hooks at startup.
+Terminal does not approve them or restart an active agent for you.
 
-```sh
-terminal +agent remote-install claude -- user@host
-# With an SSH port or identity file:
-terminal +agent remote-install claude -- -p 2222 -i ~/.ssh/work_key user@host
-```
+Once the hooks load, their events report working, blocked, finished, and
+subagents. Other supported agents still show **unknown** activity when no
+lifecycle integration is available.
 
-The command prints a `claude --plugin-dir ...` command. Run that command in
-your remote pane to load the lifecycle hooks. Append your usual Claude Code
-arguments. The hooks report working, blocked, finished, and subagents.
+## Retry setup manually
 
-## Enable Codex activity
+Terminal shares installation work across panes using the same remote profile.
+It records successful setup and backs off for five minutes after a failure.
+Subsequent probes do not repeatedly install the same hooks. A helper update
+keeps matching Codex hooks in its cache, preserving their approval.
 
-Run this command on your Mac:
+For an immediate retry, run this in a local pane on the Mac running Terminal:
 
 ```sh
 terminal +agent remote-install codex -- user@host
+terminal +agent remote-install claude -- user@host
 ```
 
-Codex must be on the remote login shell's `PATH`. The installer asks Codex
-to install Terminal's plugin from a local marketplace on that host. Restart
-Codex in the remote pane and approve its hooks when asked.
+Use the same SSH options as your remote pane. For example:
 
-## Remove remote hooks
+```sh
+terminal +agent remote-install codex -- -p 2222 -i ~/.ssh/work_key user@host
+```
 
-For Claude Code, stop passing `--plugin-dir` when you start it.
+## Disable setup or remove hooks
+
+Disable **Settings → Agents → Show agents in SSH panes** to stop discovery
+and further automatic installation. The matching configuration key is
+`agents.remote-discovery = false`. Disabling discovery leaves installed
+plugins in place.
+
+With discovery disabled, remove Claude Code's managed link on the remote host:
+
+```sh
+rm ~/.claude/skills/terminal-remote-agent-state
+```
+
+Use the profile's directory if you set `CLAUDE_CONFIG_DIR`.
 For Codex, run these commands on the remote host:
 
 ```sh
@@ -43,7 +61,7 @@ codex plugin remove terminal-remote-agent-state@terminal-remote-agents
 codex plugin marketplace remove terminal-remote-agents
 ```
 
-After stopping agents that use the hooks, remove their helper and state files:
+After stopping agents that use the hooks, remove the helper and state files:
 
 ```sh
 rm -r ~/.local/share/terminal/remote-agents
@@ -57,19 +75,17 @@ Remote sessions are not saved as local resumable conversations.
 
 SSH probes use batch authentication and never open a password prompt.
 A host that needs another password, lacks Python, or becomes unreachable
-cannot provide status. A previously detected agent then shows **unknown**.
-Leaving SSH removes its remote row. One failed probe preserves the last
-answer; consecutive failures show unknown and retries slow down. Authentication
+cannot provide status. One failed probe preserves the last answer;
+consecutive failures show unknown and retries slow down. Authentication
 failures or missing Python suspend probes until you reconnect or toggle discovery.
 
-Disable discovery in **Settings → Agents → Show agents in SSH panes**.
-The matching configuration key is `agents.remote-discovery = false`.
+Sessions inside tmux or screen, multiple interactive terminals sharing one
+multiplexed SSH transport, and unidentifiable proxies can have no agent row.
+Separate SSH connections avoid transport ambiguity:
 
-Terminal refuses ambiguous attribution. Sessions inside tmux or screen,
-multiple shells sharing one multiplexed SSH transport, and connections through
-an unidentifiable proxy can therefore have no agent row. Separate SSH
-connections avoid transport ambiguity; `ssh -o ControlMaster=no -o ControlPath=none host`
-starts one without sharing a master.
+```sh
+ssh -o ControlMaster=no -o ControlPath=none host
+```
 
 The hooks write private state files on the remote host. Terminal reads them
 over SSH; it does not forward the Mac's automation socket or credentials.

@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 import io
@@ -24,6 +25,107 @@ def row(pid, parent, group=20, foreground=20, age=10, executable='/usr/bin/claud
 
 
 class RemoteAgentsTests(unittest.TestCase):
+    def wait_for_install(self, process):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            state = agent.automatic_integration(process)
+            if state['status'] != 'installing':
+                return state
+            time.sleep(0.05)
+        self.fail('automatic installer did not finish')
+
+    def test_claude_installs_automatically_into_the_detected_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = root / 'profile with spaces'
+            profile.mkdir()
+            settings = profile / 'settings.json'
+            settings.write_text('{"user_setting": true}')
+            environment = dict(HOME=directory, CLAUDE_CONFIG_DIR=str(profile), PATH=os.environ['PATH'])
+            process = row(20, 1, age=100)
+            with mock.patch.object(agent, 'ROOT', root / 'managed'), mock.patch.object(agent, 'process_environment', return_value=environment):
+                status = self.wait_for_install(process)
+                self.assertEqual(status, dict(status='ready', restart=True))
+                link = profile / 'skills/terminal-remote-agent-state'
+                self.assertTrue(link.is_symlink())
+                self.assertTrue((link / '.claude-plugin/plugin.json').is_file())
+                self.assertEqual(settings.read_text(), '{"user_setting": true}')
+                manifest = (link / '.claude-plugin/plugin.json').read_bytes()
+                self.assertEqual(agent.automatic_integration(process), status)
+                self.assertEqual((link / '.claude-plugin/plugin.json').read_bytes(), manifest)
+                self.assertFalse(agent.automatic_integration(dict(process, age=0))['restart'])
+                receipt = next((root / 'managed/installations').glob('*.json'))
+                installed_at = json.loads(receipt.read_text())['installed_at']
+                upgraded = agent.source_text() + '\n# A helper-only update.\n'
+                with mock.patch.object(agent, 'source_text', return_value=upgraded):
+                    self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertEqual(json.loads(receipt.read_text())['installed_at'], installed_at)
+                alias = root / 'profile-alias'
+                alias.symlink_to(profile, target_is_directory=True)
+                with mock.patch.object(agent, 'process_environment', return_value=dict(environment, CLAUDE_CONFIG_DIR=str(alias))):
+                    self.assertIn(agent.automatic_integration(process)['status'], ['installing', 'ready'])
+                    # Restore the original source digest after the upgrade test.
+                    self.assertEqual(self.wait_for_install(process)['status'], 'ready')
+                self.assertEqual(len(list((root / 'managed/installations').glob('*.json'))), 1)
+
+    def test_automatic_codex_setup_coalesces_calls_and_caches_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'codex'
+            calls = root / 'calls'
+            binary.write_text('#!/bin/sh\nprintf "call\\n" >> "$HOME/calls"\nsleep 0.1\nexit 1\n')
+            binary.chmod(0o700)
+            process = row(20, 1, executable=str(binary))
+            environment = dict(HOME=directory, CODEX_HOME=str(root / '.codex'), PATH=os.environ['PATH'])
+            with mock.patch.object(agent, 'ROOT', root / 'managed'), mock.patch.object(agent, 'process_environment', return_value=environment):
+                self.assertEqual(agent.automatic_integration(process)['status'], 'installing')
+                for _ in range(5):
+                    self.assertIn(agent.automatic_integration(process)['status'], ['installing', 'failed'])
+                self.assertEqual(self.wait_for_install(process)['status'], 'failed')
+                for _ in range(5):
+                    self.assertEqual(agent.automatic_integration(process)['status'], 'failed')
+                self.assertEqual(calls.read_text().splitlines(), ['call'])
+
+    def test_tilde_profile_uses_the_agents_home(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / 'other home'
+            home.mkdir()
+            environment = dict(HOME=str(home), CLAUDE_CONFIG_DIR='~/custom', PATH=os.environ['PATH'])
+            with mock.patch.object(agent, 'ROOT', Path(directory) / 'managed'), mock.patch.object(agent, 'process_environment', return_value=environment):
+                self.assertEqual(self.wait_for_install(row(20, 1))['status'], 'ready')
+                self.assertTrue((home / 'custom/skills/terminal-remote-agent-state').is_symlink())
+
+    def test_kernel_environment_preserves_profile_paths_with_spaces(self):
+        with tempfile.TemporaryDirectory(prefix='terminal profile ') as directory:
+            code = 'import runpy,json,os; m=runpy.run_path(' + repr(str(HELPER)) + '); e=m["process_environment"](os.getpid()); print(json.dumps({k:e.get(k) for k in ["HOME","CODEX_HOME"]}))'
+            result = subprocess.run([sys.executable, '-c', code],
+                                    env=dict(os.environ, HOME=directory, CODEX_HOME=directory + '/codex profile'),
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), dict(HOME=directory, CODEX_HOME=directory + '/codex profile'))
+
+    def test_malformed_install_receipts_are_recoverable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'receipt.json'
+            for data in [[], dict(installed_at='invalid'), dict(retry_at=float('inf'))]:
+                receipt.write_text(json.dumps(data))
+                self.assertEqual(agent.read_receipt(receipt), {})
+
+    def test_setup_permission_failure_does_not_hide_the_agent(self):
+        process = row(20, 1)
+        with mock.patch.object(agent, 'processes', return_value={20: process}), mock.patch.object(agent, 'prune_state'), mock.patch.object(agent, 'select_processes', return_value=[process]), mock.patch.object(agent, 'details', side_effect=lambda value: value), mock.patch.object(agent, 'read_state', return_value=None), mock.patch.object(agent, 'automatic_integration', side_effect=PermissionError), mock.patch.object(agent.sys, 'platform', 'linux'), mock.patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            agent.probe(30, ['1234:22'], auto_install=True)
+        data = json.loads(stdout.getvalue())['processes']
+        self.assertEqual(data[0]['pid'], 20)
+        self.assertEqual(data[0]['integration']['status'], 'failed')
+
+    def test_other_agent_kinds_do_not_create_an_installation_directory(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(agent, 'ROOT', Path(directory) / 'managed'):
+            process = row(20, 1, executable='/opt/aider')
+            process['arguments'] = ['aider']
+            self.assertIsNone(agent.automatic_integration(process))
+            self.assertFalse(agent.ROOT.exists())
+
     def test_macos_ps_arguments_do_not_parse_prompt_quotes_as_shell_syntax(self):
         with mock.patch.object(agent.sys, 'platform', 'darwin'), mock.patch.object(agent, 'output', side_effect=['Mon Nov 1 12:00:00 2026', "claude -p what's up"]):
             result = agent.details(row(20, 10))

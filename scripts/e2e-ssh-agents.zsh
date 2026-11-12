@@ -51,9 +51,8 @@ CONFIG
         print "  skip private SSH server unavailable: $(cat "$scratch/sshd.log")"
         return 0
     fi
-    local install_output
-    install_output=$("$cli" +agent remote-install claude -- "${options[@]}" 127.0.0.1)
-    check "remote hook installer provides a Claude launch command" '--plugin-dir' "$install_output"
+    [[ ! -e "$scratch/home/.local/share/terminal/remote-agents/terminal_remote_agent.py" ]] \
+        || fail "remote helper already exists before agent discovery"
     mkfifo "$scratch/events"
     cat > "$scratch/claude" <<'AGENT'
 #!/usr/bin/env python3
@@ -99,6 +98,8 @@ print(json.dumps(agent.get(sys.argv[1])))
     }
     wait_remote remote_host 127.0.0.1
     check "SSH presence shows its host and unknown activity" 'unknown' "$(remote_field state)"
+    wait_remote integration_status ready
+    check "remote hooks install automatically on agent discovery" 'true' "$([[ -f "$scratch/home/.local/share/terminal/remote-agents/terminal_remote_agent.py" && -L "$scratch/home/.claude/skills/terminal-remote-agent-state" ]] && print true)"
     automate remoteAgentDiscovery 0
     wait_remote state null
     check "remote discovery can be disabled while SSH stays open" 'null' "$(remote_field state)"

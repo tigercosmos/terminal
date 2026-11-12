@@ -900,6 +900,7 @@ extension TerminalSession {
     private func clearAutomationAgentStatus() {
         agentStatus = nil
         agentRemoteHost = nil
+        agentRemoteIntegration = nil
         agentCustomLabel = nil
         agentSessionReference = nil
         agentSubagents = []
@@ -984,6 +985,34 @@ extension PaneTab {
 extension TerminalSession {
     var agentRollup: KeroAgentRollup? {
         PaneTab.rollup(agentStatus.map { [$0] } ?? [])
+    }
+
+    /// Installation readiness is separate from actual agent activity. Native
+    /// hook approval and restarting an existing CLI remain provider actions.
+    var agentRosterLabel: String {
+        if agentStatus?.phase == .unknown, let integration = agentRemoteIntegration {
+            switch integration.status {
+            case "installing": return String(localized: "setting up")
+            case "failed": return String(localized: "setup failed")
+            case "ready":
+                return integration.restart
+                    ? String(localized: "restart agent")
+                    : String(localized: "waiting for hooks")
+            default: break
+            }
+        }
+        return agentStatus?.phase.rosterLabel ?? ""
+    }
+
+    var agentIntegrationHelp: String {
+        guard let integration = agentRemoteIntegration else { return "" }
+        switch integration.status {
+        case "ready":
+            return String(localized: "Remote hooks are installed. Restart the remote agent if needed and approve its hooks when asked.")
+        case "failed":
+            return String(localized: "Remote hook setup failed. Terminal will retry automatically.")
+        default: return ""
+        }
     }
 
     /// The name the sidebar roster shows for this pane's agent. Meaningful
@@ -1181,6 +1210,7 @@ extension TerminalSession {
         ) ?? .unknown
         let host = RemoteFileService.sanitized(destination.host, maxLines: 1)
         if agentRemoteHost != host { agentRemoteHost = host }
+        if agentRemoteIntegration != agent.integration { agentRemoteIntegration = agent.integration }
         let subagents = (agent.state?.subagents ?? []).map { KeroAgentSubagent(id: $0.id, type: $0.type) }
         if agentSubagents != subagents { agentSubagents = subagents }
         let eventVersion = (phase == .done ? agent.state?.turn : agent.state?.revision) ?? 0
@@ -1197,6 +1227,7 @@ extension TerminalSession {
 
     private func markRemoteAgentUnavailable() {
         guard let previous = agentStatus else { return }
+        agentRemoteIntegration = nil
         agentSubagents = []
         updateAutomationAgentStatus(
             alias: previous.alias, kind: previous.kind, phase: .unknown,

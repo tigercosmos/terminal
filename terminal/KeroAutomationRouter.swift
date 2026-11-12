@@ -566,7 +566,7 @@ enum KeroAutomationRouter {
             object["shell_available"] = .bool(session.isShellAvailableForAutomation)
             object["exited"] = .bool(session.hasExited)
             object["agent"] = session.agentStatus.map {
-                agentSnapshot($0, subagents: session.agentSubagents, remoteHost: session.agentRemoteHost)
+                agentSnapshot($0, subagents: session.agentSubagents, remoteHost: session.agentRemoteHost, integration: session.agentRemoteIntegration)
             } ?? .null
         }
         return .object(object)
@@ -574,7 +574,7 @@ enum KeroAutomationRouter {
 
     private static func agentSnapshot(
         _ status: KeroAgentStatus,
-        subagents: [KeroAgentSubagent], remoteHost: String?
+        subagents: [KeroAgentSubagent], remoteHost: String?, integration: RemoteAgent.Integration?
     ) -> KeroJSONValue {
         .object([
             "alias": .string(status.alias),
@@ -585,6 +585,8 @@ enum KeroAutomationRouter {
             "updated_at": .string(ISO8601DateFormatter().string(from: status.updatedAt)),
             "process_id": status.processID.map { .number(Double($0)) } ?? .null,
             "remote_host": remoteHost.map(KeroJSONValue.string) ?? .null,
+            "integration_status": integration.map { .string($0.status) } ?? .null,
+            "integration_restart_required": .bool(integration?.restart ?? false),
             "unseen": .bool(status.unseen),
             "subagents": .array(subagents.map {
                 .object(["id": .string($0.id), "type": .string($0.type)])

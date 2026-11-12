@@ -173,7 +173,7 @@ const FEATURES: { group: string; rows: Row[] }[] = [
       {
         name: 'Agents that hand off',
         detail:
-          'an agent in one pane can split another, start Claude Code, Codex or seven other CLIs there, prompt it and wait for the result with terminal +pane and terminal +agent — kept inside its own project, never stealing focus, with a badge on every pane, tab and project saying who is working, blocked or done, an agents list at the bottom of the sidebar naming every one across projects and the subagents Claude Code or Codex runs under it, remote agents in SSH panes on Linux and macOS hosts with Python 3.8+, host names beside their names, a setting to disable remote discovery, optional Claude/Codex hooks for activity and subagents, and Cmd+Shift+A to jump to the next one waiting on you',
+          'an agent in one pane can split another, start Claude Code, Codex or seven other CLIs there, prompt it and wait for the result with terminal +pane and terminal +agent — kept inside its own project, never stealing focus, with a badge on every pane, tab and project saying who is working, blocked or done, an agents list at the bottom of the sidebar naming every one across projects and the subagents Claude Code or Codex runs under it, remote agents in SSH panes on Linux and macOS hosts with Python 3.8+, host names beside their names, a setting to disable remote discovery, automatically installed Claude/Codex hooks for activity and subagents, and Cmd+Shift+A to jump to the next one waiting on you',
       },
       {
         name: 'Clear the clutter',
@@ -383,7 +383,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
   },
   {
     q: 'Does it run the agent for me?',
-    a: 'No. Terminal never wraps, proxies, or rewrites what you type — the agent CLI you install is the one that runs, with your shell and its config untouched. The one thing it starts unasked is a Claude Code or Codex conversation a pane was running before a relaunch, which you can turn off in Settings → Agents. Nothing is sent anywhere on your behalf.',
+    a: 'You choose the agent CLI and send prompts in your own shell. Terminal can restore saved Claude Code or Codex sessions and automatically install their lifecycle hooks on SSH hosts. Settings → Agents controls restoration and remote discovery. Codex still asks you to approve hooks; Terminal does not approve them or restart an active remote agent.',
   },
   {
     q: 'Is terminal free?',

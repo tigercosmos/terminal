@@ -312,6 +312,22 @@
         }
       }
     },
+    "Automatically installs Claude Code and Codex hooks on SSH hosts. Existing agents may need a restart, and Codex can ask for hook approval." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH ホストに Claude Code と Codex のフックを自動でインストールします。実行中のエージェントは再起動が必要な場合があり、Codex はフックの承認を求めることがあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动在 SSH 主机上安装 Claude Code 和 Codex 钩子。正在运行的代理可能需要重启，Codex 也可能请求批准钩子。"
+          }
+        }
+      }
+    },
     "Codex is set up on this Mac, but Terminal could not find the `codex` command in your login shell’s PATH, so its Codex hooks were not changed." : {
       "comment" : "Shown in Settings → Agents when Codex's config folder exists but its command cannot be found.",
       "localizations" : {
@@ -358,6 +374,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "远程代理设置失败（退出代码 %lld）。"
+          }
+        }
+      }
+    },
+    "Remote hook setup failed. Terminal will retry automatically." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートフックの設定に失敗しました。Terminal は自動的に再試行します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程钩子设置失败。Terminal 将自动重试。"
+          }
+        }
+      }
+    },
+    "Remote hooks are installed. Restart the remote agent if needed and approve its hooks when asked." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートのフックをインストールしました。必要に応じてリモートエージェントを再起動し、確認を求められたらフックを承認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "远程钩子已安装。请按需重启远程代理，并在提示时批准其钩子。"
           }
         }
       }
@@ -1407,6 +1455,54 @@
         }
       }
     },
+    "restart agent" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再起動が必要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要重启代理"
+          }
+        }
+      }
+    },
+    "setting up" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在设置"
+          }
+        }
+      }
+    },
+    "setup failed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定失敗"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置失败"
+          }
+        }
+      }
+    },
     "starting" : {
       "comment" : "Agent state in the sidebar roster.",
       "localizations" : {
@@ -1999,6 +2095,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用代理名称"
+          }
+        }
+      }
+    },
+    "waiting for hooks" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フック待機中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待钩子"
           }
         }
       }

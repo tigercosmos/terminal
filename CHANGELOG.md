@@ -17,8 +17,9 @@ the original feature bullet instead of adding separate entries for them.
 ## [unrelease]
 
 - The Agents sidebar follows coding agents in SSH panes on Linux and macOS
-  hosts with Python 3.8 or later, with a host name beside each agent. Optional remote
-  Claude Code and Codex hooks report activity and subagents. Lost connections
+  hosts with Python 3.8 or later, with a host name beside each agent. Remote
+  Claude Code and Codex hooks install automatically and report activity and
+  subagents after the agent loads them and any required approval completes. Lost connections
   show unknown status until Terminal can reach the host again.
 
 ## [0.11.0]

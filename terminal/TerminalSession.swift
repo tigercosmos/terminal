@@ -43,6 +43,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     @Published var agentStatus: KeroAgentStatus?
     /// Display only. Remote process IDs and paths never become local resume evidence.
     @Published var agentRemoteHost: String?
+    @Published var agentRemoteIntegration: RemoteAgent.Integration?
     /// User-chosen label for the agent roster row, e.g. "reviewer". Display
     /// only: the automation alias stays the CLI target, so renaming a row can
     /// never break a script addressing the agent. Cleared with the agent

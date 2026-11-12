@@ -228,6 +228,9 @@ struct SettingsView: View {
 
             Section("Agents") {
                 Toggle("Show agents in SSH panes", isOn: $settings.remoteAgentDiscovery)
+                Text("Automatically installs Claude Code and Codex hooks on SSH hosts. Existing agents may need a restart, and Codex can ask for hook approval.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 Toggle(
                     "Let coding agents coordinate panes",
                     isOn: Binding(
